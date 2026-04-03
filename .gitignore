@@ -70,6 +70,11 @@ web_modules/
 .env.*
 !.env.example
 
+# CLAUDE skills are typically local/project-specific; ignore the skill files by default
+# while keeping the README in git.
+.claude/*
+!.claude/README.md
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache

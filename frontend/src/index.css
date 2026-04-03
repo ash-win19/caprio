@@ -1,0 +1,115 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 240 6% 6%;
+    --foreground: 40 7% 94%;
+
+    --card: 240 5% 9%;
+    --card-foreground: 40 7% 94%;
+
+    --popover: 240 5% 12%;
+    --popover-foreground: 40 7% 94%;
+
+    --primary: 142 69% 58%;
+    --primary-foreground: 240 6% 6%;
+
+    --secondary: 240 4% 13%;
+    --secondary-foreground: 40 7% 94%;
+
+    --muted: 240 4% 16%;
+    --muted-foreground: 240 3% 55%;
+
+    --accent: 240 4% 16%;
+    --accent-foreground: 40 7% 94%;
+
+    --destructive: 0 72% 71%;
+    --destructive-foreground: 40 7% 94%;
+
+    --border: 240 3% 18%;
+    --border-subtle: 240 3% 14%;
+    --input: 240 3% 18%;
+    --ring: 142 69% 58%;
+
+    --radius: 10px;
+
+    --bg-base: 240 6% 6%;
+    --bg-surface: 240 5% 9%;
+    --bg-elevated: 240 4% 12%;
+    --bg-hover: 240 3% 16%;
+
+    --text-primary: 40 7% 94%;
+    --text-secondary: 240 2% 55%;
+    --text-muted: 240 3% 35%;
+
+    --brand: 142 69% 58%;
+    --brand-dim: 152 61% 24%;
+    --amber: 44 93% 56%;
+    --red: 0 91% 71%;
+    --blue: 217 91% 68%;
+
+    --cat-work: 224 100% 65%;
+    --cat-gym: 25 95% 53%;
+    --cat-personal: 271 81% 56%;
+    --cat-health: 0 84% 60%;
+    --cat-finance: 48 96% 53%;
+    --cat-social: 330 81% 60%;
+    --cat-learning: 187 94% 43%;
+    --cat-family: 84 61% 45%;
+
+    --sidebar-background: 240 5% 9%;
+    --sidebar-foreground: 240 3% 55%;
+    --sidebar-primary: 142 69% 58%;
+    --sidebar-primary-foreground: 240 6% 6%;
+    --sidebar-accent: 240 4% 12%;
+    --sidebar-accent-foreground: 40 7% 94%;
+    --sidebar-border: 240 3% 18%;
+    --sidebar-ring: 142 69% 58%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  .font-mono {
+    font-family: 'SF Mono', 'Fira Code', 'Fira Mono', 'Roboto Mono', monospace;
+  }
+}
+
+@layer utilities {
+  .text-display {
+    @apply text-[28px] font-medium leading-tight;
+  }
+  .text-heading {
+    @apply text-[20px] font-medium;
+  }
+  .text-subheading {
+    @apply text-[15px] font-medium;
+  }
+  .text-body {
+    @apply text-[14px] font-normal;
+  }
+  .text-caption {
+    @apply text-[12px] font-normal;
+    color: hsl(var(--text-secondary));
+  }
+  .text-mono {
+    @apply text-[12px] font-mono;
+    color: hsl(var(--text-muted));
+  }
+
+  .shadow-float {
+    box-shadow: 0 0 0 1px hsl(var(--border)), 0 8px 24px rgba(0,0,0,0.4);
+  }
+}
