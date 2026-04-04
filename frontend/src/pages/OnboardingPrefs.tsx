@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/lib/store';
+import type { UserPrefs } from '@/lib/types';
 
 const TIMES = ['6 AM', '7 AM', '8 AM', '9 AM', 'Custom'];
 const FREQUENCIES = [
@@ -17,7 +18,7 @@ export default function OnboardingPrefs() {
   const { setPrefs, initializeMockData } = useAppStore();
 
   const handleStart = () => {
-    setPrefs({ nudgeFrequency: frequency as any, briefTime: selectedTime });
+    setPrefs({ nudgeFrequency: frequency as UserPrefs['nudgeFrequency'], briefTime: selectedTime });
     localStorage.setItem('onboarding_complete', 'true');
     initializeMockData();
     navigate('/today');
