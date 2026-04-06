@@ -21,9 +21,9 @@ func main() {
 	defer pool.Close()
 	log.Println("connected to database")
 
-	_ = db.NewStore(pool)
+	store := db.NewStore(pool)
 
-	router := httproutes.NewRouter(cfg)
+	router := httproutes.NewRouter(cfg, store.Queries)
 
 	addr := ":" + cfg.Port
 	log.Printf("listening on %s", addr)
