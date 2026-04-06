@@ -7,22 +7,56 @@ import (
 )
 
 type Config struct {
-	Port        string
+	// Server
+	Port string
+
+	// Database
 	DatabaseURL string
+
+	// Auth0
+	Auth0Domain   string
+	Auth0Audience string
+
+	// Groq (Speech-to-Text)
+	GroqAPIKey string
+
+	// OpenAI (LLM extraction + prioritization)
+	OpenAIAPIKey string
+	OpenAIModel  string
+
+	// CORS
+	CORSAllowedOrigins string
 }
 
 func Load() Config {
-	// Loads variables from .env if present; does nothing if the file is missing.
 	_ = godotenv.Load()
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-
 	return Config{
-		Port:        port,
+		// Server
+		Port: getEnv("PORT", "8080"),
+
+		// Database
 		DatabaseURL: os.Getenv("DATABASE_URL"),
+
+		// Auth0
+		Auth0Domain:   os.Getenv("AUTH0_DOMAIN"),
+		Auth0Audience: os.Getenv("AUTH0_AUDIENCE"),
+
+		// Groq
+		GroqAPIKey: os.Getenv("GROQ_API_KEY"),
+
+		// OpenAI
+		OpenAIAPIKey: os.Getenv("OPENAI_API_KEY"),
+		OpenAIModel:  getEnv("OPENAI_MODEL", "gpt-4o-mini"),
+
+		// CORS
+		CORSAllowedOrigins: getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173"),
 	}
 }
 
+func getEnv(key, fallback string) string {
+	if val := os.Getenv(key); val != "" {
+		return val
+	}
+	return fallback
+}

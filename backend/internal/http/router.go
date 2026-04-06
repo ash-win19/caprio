@@ -1,12 +1,28 @@
 package http
 
-import "github.com/gin-gonic/gin"
+import (
+	"strings"
 
-// NewRouter creates the Gin engine and mounts all routes.
-func NewRouter() *gin.Engine {
+	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/gin"
+
+	"github.com/ashwinshanmugam/caprio/backend/internal/config"
+)
+
+func NewRouter(cfg config.Config) *gin.Engine {
 	r := gin.Default()
 
-	// Liveness probe
+	// CORS
+	origins := strings.Split(cfg.CORSAllowedOrigins, ",")
+	r.Use(cors.New(cors.Config{
+		AllowOrigins:     origins,
+		AllowMethods:     []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+	}))
+
+	// Health check
 	r.GET("/healthz", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
@@ -15,13 +31,9 @@ func NewRouter() *gin.Engine {
 	api := r.Group("/api")
 	{
 		api.GET("/tasks", func(c *gin.Context) {
-			// Stub response; later this will be backed by SQLC + DB queries.
-			c.JSON(200, gin.H{
-				"tasks": []any{},
-			})
+			c.JSON(200, gin.H{"tasks": []any{}})
 		})
 	}
 
 	return r
 }
-

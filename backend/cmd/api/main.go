@@ -23,7 +23,7 @@ func main() {
 
 	_ = db.NewStore(pool)
 
-	router := httproutes.NewRouter()
+	router := httproutes.NewRouter(cfg)
 
 	addr := ":" + cfg.Port
 	log.Printf("listening on %s", addr)
