@@ -7,12 +7,13 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/ashwinshanmugam/caprio/backend/internal/config"
-	db "github.com/ashwinshanmugam/caprio/backend/internal/db/generated"
+	"github.com/ashwinshanmugam/caprio/backend/internal/db"
+	"github.com/ashwinshanmugam/caprio/backend/internal/http/handlers"
 	"github.com/ashwinshanmugam/caprio/backend/internal/http/middleware"
 )
 
 // NewRouter creates the Gin engine and mounts all routes.
-func NewRouter(cfg config.Config, queries *db.Queries) *gin.Engine {
+func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 	r := gin.Default()
 
 	// CORS
@@ -33,16 +34,29 @@ func NewRouter(cfg config.Config, queries *db.Queries) *gin.Engine {
 	// API routes
 	api := r.Group("/api")
 
-	// Apply auth middleware if Auth0 is configured.
+	// Apply auth middleware if Auth0 is configured, otherwise use dev bypass.
 	if cfg.Auth0Domain != "" && cfg.Auth0Audience != "" {
 		api.Use(middleware.NewAuth0Middleware(cfg.Auth0Domain, cfg.Auth0Audience))
-		api.Use(middleware.UserResolver(queries))
+		api.Use(middleware.UserResolver(store.Queries))
+	} else {
+		api.Use(middleware.DevBypass(store.Queries))
 	}
 
+	// Handlers
+	bootstrap := handlers.NewBootstrapHandler(store)
+	onboarding := handlers.NewOnboardingHandler(store)
+	tasks := handlers.NewTaskHandler(store)
+
 	{
-		api.GET("/tasks", func(c *gin.Context) {
-			c.JSON(200, gin.H{"tasks": []any{}})
-		})
+		api.GET("/bootstrap", bootstrap.Get)
+		api.POST("/onboarding", onboarding.Complete)
+
+		api.GET("/tasks", tasks.List)
+		api.POST("/tasks", tasks.Create)
+		api.PATCH("/tasks/:id", tasks.Update)
+		api.DELETE("/tasks/:id", tasks.Delete)
+		api.POST("/tasks/reorder", tasks.Reorder)
+		api.POST("/tasks/:id/defer", tasks.Defer)
 	}
 
 	return r

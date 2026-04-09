@@ -1,0 +1,19 @@
+meta {
+  name: Update Task
+  type: http
+  seq: 3
+}
+
+patch {
+  url: {{baseUrl}}/api/tasks/{{taskId}}
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "title": "Build the onboarding flow (updated)",
+    "urgency": "critical",
+    "status": "completed"
+  }
+}

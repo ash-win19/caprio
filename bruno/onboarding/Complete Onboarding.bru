@@ -1,0 +1,27 @@
+meta {
+  name: Complete Onboarding
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/onboarding
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "preferences": {
+      "briefTime": "9 AM",
+      "nudgeFrequency": "gentle",
+      "eodReminder": true,
+      "eodTime": "7 PM"
+    },
+    "categories": [
+      { "name": "Work", "color": "#4A7CFF", "hoursPerWeek": 40 },
+      { "name": "Gym", "color": "#F97316", "hoursPerWeek": 5 },
+      { "name": "Learning", "color": "#06B6D4", "hoursPerWeek": 10 }
+    ]
+  }
+}
