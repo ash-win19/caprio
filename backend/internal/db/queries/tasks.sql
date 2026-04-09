@@ -6,16 +6,32 @@ ORDER BY sort_order ASC;
 -- name: ListTodayTasksByUser :many
 SELECT * FROM tasks
 WHERE user_id = $1
-    AND completed = false
-    AND created_at >= CURRENT_DATE
+    AND planned_for_date = $2
+    AND status = 'planned'
 ORDER BY sort_order ASC;
+
+-- name: ListBacklogTasks :many
+SELECT * FROM tasks
+WHERE user_id = $1
+    AND status = 'backlog'
+ORDER BY sort_order ASC;
+
+-- name: ListCompletedTasksByDate :many
+SELECT * FROM tasks
+WHERE user_id = $1
+    AND planned_for_date = $2
+    AND status = 'completed'
+ORDER BY completed_at ASC;
 
 -- name: GetTaskByID :one
 SELECT * FROM tasks WHERE id = $1 AND user_id = $2;
 
 -- name: CreateTask :one
-INSERT INTO tasks (user_id, title, description, category_id, urgency, duration, source, due_date, sort_order)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+INSERT INTO tasks (
+    user_id, title, description, category_id, urgency, duration,
+    source, due_date, sort_order, planned_for_date, status, priority_reason
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 RETURNING *;
 
 -- name: UpdateTask :one
@@ -28,12 +44,20 @@ UPDATE tasks SET
     completed = COALESCE(sqlc.narg(completed), completed),
     sort_order = COALESCE(sqlc.narg(sort_order), sort_order),
     due_date = COALESCE(sqlc.narg(due_date), due_date),
+    planned_for_date = COALESCE(sqlc.narg(planned_for_date), planned_for_date),
+    status = COALESCE(sqlc.narg(status), status),
+    priority_reason = COALESCE(sqlc.narg(priority_reason), priority_reason),
+    completed_at = COALESCE(sqlc.narg(completed_at), completed_at),
     updated_at = now()
 WHERE id = sqlc.arg(id) AND user_id = sqlc.arg(user_id)
 RETURNING *;
 
 -- name: ToggleTaskComplete :one
-UPDATE tasks SET completed = NOT completed, updated_at = now()
+UPDATE tasks SET
+    completed = NOT completed,
+    status = CASE WHEN completed = false THEN 'completed'::task_status ELSE 'planned'::task_status END,
+    completed_at = CASE WHEN completed = false THEN now() ELSE NULL END,
+    updated_at = now()
 WHERE id = $1 AND user_id = $2
 RETURNING *;
 
@@ -41,6 +65,7 @@ RETURNING *;
 UPDATE tasks SET
     carried_over = true,
     added_today = false,
+    status = 'backlog'::task_status,
     defer_count = defer_count + 1,
     updated_at = now()
 WHERE id = $1 AND user_id = $2
@@ -55,5 +80,19 @@ WHERE id = $1 AND user_id = $2;
 
 -- name: ListCarriedOverTasks :many
 SELECT * FROM tasks
-WHERE user_id = $1 AND carried_over = true AND completed = false
+WHERE user_id = $1
+    AND status = 'backlog'
+    AND completed = false
 ORDER BY sort_order ASC;
+
+-- name: CarryOverTasks :exec
+UPDATE tasks SET
+    planned_for_date = $2,
+    status = 'backlog'::task_status,
+    carried_over = true,
+    added_today = false,
+    source = 'carried'::task_source,
+    updated_at = now()
+WHERE user_id = $1
+    AND status = 'backlog'
+    AND planned_for_date < $2;

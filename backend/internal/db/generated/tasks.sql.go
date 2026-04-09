@@ -12,22 +12,51 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const carryOverTasks = `-- name: CarryOverTasks :exec
+UPDATE tasks SET
+    planned_for_date = $2,
+    status = 'backlog'::task_status,
+    carried_over = true,
+    added_today = false,
+    source = 'carried'::task_source,
+    updated_at = now()
+WHERE user_id = $1
+    AND status = 'backlog'
+    AND planned_for_date < $2
+`
+
+type CarryOverTasksParams struct {
+	UserID         uuid.UUID   `json:"userId"`
+	PlannedForDate pgtype.Date `json:"plannedForDate"`
+}
+
+func (q *Queries) CarryOverTasks(ctx context.Context, arg CarryOverTasksParams) error {
+	_, err := q.db.Exec(ctx, carryOverTasks, arg.UserID, arg.PlannedForDate)
+	return err
+}
+
 const createTask = `-- name: CreateTask :one
-INSERT INTO tasks (user_id, title, description, category_id, urgency, duration, source, due_date, sort_order)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, user_id, title, description, category_id, urgency, duration, source, completed, added_today, carried_over, sort_order, due_date, defer_count, created_at, updated_at
+INSERT INTO tasks (
+    user_id, title, description, category_id, urgency, duration,
+    source, due_date, sort_order, planned_for_date, status, priority_reason
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+RETURNING id, user_id, title, description, category_id, urgency, duration, source, completed, added_today, carried_over, sort_order, due_date, defer_count, created_at, updated_at, planned_for_date, status, priority_reason, completed_at
 `
 
 type CreateTaskParams struct {
-	UserID      uuid.UUID    `json:"userId"`
-	Title       string       `json:"title"`
-	Description *string      `json:"description"`
-	CategoryID  *uuid.UUID   `json:"categoryId"`
-	Urgency     UrgencyLevel `json:"urgency"`
-	Duration    *int32       `json:"duration"`
-	Source      TaskSource   `json:"source"`
-	DueDate     pgtype.Date  `json:"dueDate"`
-	SortOrder   int32        `json:"sortOrder"`
+	UserID         uuid.UUID    `json:"userId"`
+	Title          string       `json:"title"`
+	Description    *string      `json:"description"`
+	CategoryID     *uuid.UUID   `json:"categoryId"`
+	Urgency        UrgencyLevel `json:"urgency"`
+	Duration       *int32       `json:"duration"`
+	Source         TaskSource   `json:"source"`
+	DueDate        pgtype.Date  `json:"dueDate"`
+	SortOrder      int32        `json:"sortOrder"`
+	PlannedForDate pgtype.Date  `json:"plannedForDate"`
+	Status         TaskStatus   `json:"status"`
+	PriorityReason *string      `json:"priorityReason"`
 }
 
 func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error) {
@@ -41,6 +70,9 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 		arg.Source,
 		arg.DueDate,
 		arg.SortOrder,
+		arg.PlannedForDate,
+		arg.Status,
+		arg.PriorityReason,
 	)
 	var i Task
 	err := row.Scan(
@@ -60,6 +92,10 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 		&i.DeferCount,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PlannedForDate,
+		&i.Status,
+		&i.PriorityReason,
+		&i.CompletedAt,
 	)
 	return i, err
 }
@@ -68,10 +104,11 @@ const deferTask = `-- name: DeferTask :one
 UPDATE tasks SET
     carried_over = true,
     added_today = false,
+    status = 'backlog'::task_status,
     defer_count = defer_count + 1,
     updated_at = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, title, description, category_id, urgency, duration, source, completed, added_today, carried_over, sort_order, due_date, defer_count, created_at, updated_at
+RETURNING id, user_id, title, description, category_id, urgency, duration, source, completed, added_today, carried_over, sort_order, due_date, defer_count, created_at, updated_at, planned_for_date, status, priority_reason, completed_at
 `
 
 type DeferTaskParams struct {
@@ -99,6 +136,10 @@ func (q *Queries) DeferTask(ctx context.Context, arg DeferTaskParams) (Task, err
 		&i.DeferCount,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PlannedForDate,
+		&i.Status,
+		&i.PriorityReason,
+		&i.CompletedAt,
 	)
 	return i, err
 }
@@ -118,7 +159,7 @@ func (q *Queries) DeleteTask(ctx context.Context, arg DeleteTaskParams) error {
 }
 
 const getTaskByID = `-- name: GetTaskByID :one
-SELECT id, user_id, title, description, category_id, urgency, duration, source, completed, added_today, carried_over, sort_order, due_date, defer_count, created_at, updated_at FROM tasks WHERE id = $1 AND user_id = $2
+SELECT id, user_id, title, description, category_id, urgency, duration, source, completed, added_today, carried_over, sort_order, due_date, defer_count, created_at, updated_at, planned_for_date, status, priority_reason, completed_at FROM tasks WHERE id = $1 AND user_id = $2
 `
 
 type GetTaskByIDParams struct {
@@ -146,13 +187,67 @@ func (q *Queries) GetTaskByID(ctx context.Context, arg GetTaskByIDParams) (Task,
 		&i.DeferCount,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PlannedForDate,
+		&i.Status,
+		&i.PriorityReason,
+		&i.CompletedAt,
 	)
 	return i, err
 }
 
+const listBacklogTasks = `-- name: ListBacklogTasks :many
+SELECT id, user_id, title, description, category_id, urgency, duration, source, completed, added_today, carried_over, sort_order, due_date, defer_count, created_at, updated_at, planned_for_date, status, priority_reason, completed_at FROM tasks
+WHERE user_id = $1
+    AND status = 'backlog'
+ORDER BY sort_order ASC
+`
+
+func (q *Queries) ListBacklogTasks(ctx context.Context, userID uuid.UUID) ([]Task, error) {
+	rows, err := q.db.Query(ctx, listBacklogTasks, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Task{}
+	for rows.Next() {
+		var i Task
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Title,
+			&i.Description,
+			&i.CategoryID,
+			&i.Urgency,
+			&i.Duration,
+			&i.Source,
+			&i.Completed,
+			&i.AddedToday,
+			&i.CarriedOver,
+			&i.SortOrder,
+			&i.DueDate,
+			&i.DeferCount,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.PlannedForDate,
+			&i.Status,
+			&i.PriorityReason,
+			&i.CompletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCarriedOverTasks = `-- name: ListCarriedOverTasks :many
-SELECT id, user_id, title, description, category_id, urgency, duration, source, completed, added_today, carried_over, sort_order, due_date, defer_count, created_at, updated_at FROM tasks
-WHERE user_id = $1 AND carried_over = true AND completed = false
+SELECT id, user_id, title, description, category_id, urgency, duration, source, completed, added_today, carried_over, sort_order, due_date, defer_count, created_at, updated_at, planned_for_date, status, priority_reason, completed_at FROM tasks
+WHERE user_id = $1
+    AND status = 'backlog'
+    AND completed = false
 ORDER BY sort_order ASC
 `
 
@@ -182,6 +277,64 @@ func (q *Queries) ListCarriedOverTasks(ctx context.Context, userID uuid.UUID) ([
 			&i.DeferCount,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.PlannedForDate,
+			&i.Status,
+			&i.PriorityReason,
+			&i.CompletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCompletedTasksByDate = `-- name: ListCompletedTasksByDate :many
+SELECT id, user_id, title, description, category_id, urgency, duration, source, completed, added_today, carried_over, sort_order, due_date, defer_count, created_at, updated_at, planned_for_date, status, priority_reason, completed_at FROM tasks
+WHERE user_id = $1
+    AND planned_for_date = $2
+    AND status = 'completed'
+ORDER BY completed_at ASC
+`
+
+type ListCompletedTasksByDateParams struct {
+	UserID         uuid.UUID   `json:"userId"`
+	PlannedForDate pgtype.Date `json:"plannedForDate"`
+}
+
+func (q *Queries) ListCompletedTasksByDate(ctx context.Context, arg ListCompletedTasksByDateParams) ([]Task, error) {
+	rows, err := q.db.Query(ctx, listCompletedTasksByDate, arg.UserID, arg.PlannedForDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Task{}
+	for rows.Next() {
+		var i Task
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Title,
+			&i.Description,
+			&i.CategoryID,
+			&i.Urgency,
+			&i.Duration,
+			&i.Source,
+			&i.Completed,
+			&i.AddedToday,
+			&i.CarriedOver,
+			&i.SortOrder,
+			&i.DueDate,
+			&i.DeferCount,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.PlannedForDate,
+			&i.Status,
+			&i.PriorityReason,
+			&i.CompletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -194,7 +347,7 @@ func (q *Queries) ListCarriedOverTasks(ctx context.Context, userID uuid.UUID) ([
 }
 
 const listTasksByUser = `-- name: ListTasksByUser :many
-SELECT id, user_id, title, description, category_id, urgency, duration, source, completed, added_today, carried_over, sort_order, due_date, defer_count, created_at, updated_at FROM tasks
+SELECT id, user_id, title, description, category_id, urgency, duration, source, completed, added_today, carried_over, sort_order, due_date, defer_count, created_at, updated_at, planned_for_date, status, priority_reason, completed_at FROM tasks
 WHERE user_id = $1
 ORDER BY sort_order ASC
 `
@@ -225,6 +378,10 @@ func (q *Queries) ListTasksByUser(ctx context.Context, userID uuid.UUID) ([]Task
 			&i.DeferCount,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.PlannedForDate,
+			&i.Status,
+			&i.PriorityReason,
+			&i.CompletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -237,15 +394,20 @@ func (q *Queries) ListTasksByUser(ctx context.Context, userID uuid.UUID) ([]Task
 }
 
 const listTodayTasksByUser = `-- name: ListTodayTasksByUser :many
-SELECT id, user_id, title, description, category_id, urgency, duration, source, completed, added_today, carried_over, sort_order, due_date, defer_count, created_at, updated_at FROM tasks
+SELECT id, user_id, title, description, category_id, urgency, duration, source, completed, added_today, carried_over, sort_order, due_date, defer_count, created_at, updated_at, planned_for_date, status, priority_reason, completed_at FROM tasks
 WHERE user_id = $1
-    AND completed = false
-    AND created_at >= CURRENT_DATE
+    AND planned_for_date = $2
+    AND status = 'planned'
 ORDER BY sort_order ASC
 `
 
-func (q *Queries) ListTodayTasksByUser(ctx context.Context, userID uuid.UUID) ([]Task, error) {
-	rows, err := q.db.Query(ctx, listTodayTasksByUser, userID)
+type ListTodayTasksByUserParams struct {
+	UserID         uuid.UUID   `json:"userId"`
+	PlannedForDate pgtype.Date `json:"plannedForDate"`
+}
+
+func (q *Queries) ListTodayTasksByUser(ctx context.Context, arg ListTodayTasksByUserParams) ([]Task, error) {
+	rows, err := q.db.Query(ctx, listTodayTasksByUser, arg.UserID, arg.PlannedForDate)
 	if err != nil {
 		return nil, err
 	}
@@ -270,6 +432,10 @@ func (q *Queries) ListTodayTasksByUser(ctx context.Context, userID uuid.UUID) ([
 			&i.DeferCount,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.PlannedForDate,
+			&i.Status,
+			&i.PriorityReason,
+			&i.CompletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -282,9 +448,13 @@ func (q *Queries) ListTodayTasksByUser(ctx context.Context, userID uuid.UUID) ([
 }
 
 const toggleTaskComplete = `-- name: ToggleTaskComplete :one
-UPDATE tasks SET completed = NOT completed, updated_at = now()
+UPDATE tasks SET
+    completed = NOT completed,
+    status = CASE WHEN completed = false THEN 'completed'::task_status ELSE 'planned'::task_status END,
+    completed_at = CASE WHEN completed = false THEN now() ELSE NULL END,
+    updated_at = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, title, description, category_id, urgency, duration, source, completed, added_today, carried_over, sort_order, due_date, defer_count, created_at, updated_at
+RETURNING id, user_id, title, description, category_id, urgency, duration, source, completed, added_today, carried_over, sort_order, due_date, defer_count, created_at, updated_at, planned_for_date, status, priority_reason, completed_at
 `
 
 type ToggleTaskCompleteParams struct {
@@ -312,6 +482,10 @@ func (q *Queries) ToggleTaskComplete(ctx context.Context, arg ToggleTaskComplete
 		&i.DeferCount,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PlannedForDate,
+		&i.Status,
+		&i.PriorityReason,
+		&i.CompletedAt,
 	)
 	return i, err
 }
@@ -326,22 +500,30 @@ UPDATE tasks SET
     completed = COALESCE($6, completed),
     sort_order = COALESCE($7, sort_order),
     due_date = COALESCE($8, due_date),
+    planned_for_date = COALESCE($9, planned_for_date),
+    status = COALESCE($10, status),
+    priority_reason = COALESCE($11, priority_reason),
+    completed_at = COALESCE($12, completed_at),
     updated_at = now()
-WHERE id = $9 AND user_id = $10
-RETURNING id, user_id, title, description, category_id, urgency, duration, source, completed, added_today, carried_over, sort_order, due_date, defer_count, created_at, updated_at
+WHERE id = $13 AND user_id = $14
+RETURNING id, user_id, title, description, category_id, urgency, duration, source, completed, added_today, carried_over, sort_order, due_date, defer_count, created_at, updated_at, planned_for_date, status, priority_reason, completed_at
 `
 
 type UpdateTaskParams struct {
-	Title       *string          `json:"title"`
-	Description *string          `json:"description"`
-	CategoryID  *uuid.UUID       `json:"categoryId"`
-	Urgency     NullUrgencyLevel `json:"urgency"`
-	Duration    *int32           `json:"duration"`
-	Completed   *bool            `json:"completed"`
-	SortOrder   *int32           `json:"sortOrder"`
-	DueDate     pgtype.Date      `json:"dueDate"`
-	ID          uuid.UUID        `json:"id"`
-	UserID      uuid.UUID        `json:"userId"`
+	Title          *string            `json:"title"`
+	Description    *string            `json:"description"`
+	CategoryID     *uuid.UUID         `json:"categoryId"`
+	Urgency        NullUrgencyLevel   `json:"urgency"`
+	Duration       *int32             `json:"duration"`
+	Completed      *bool              `json:"completed"`
+	SortOrder      *int32             `json:"sortOrder"`
+	DueDate        pgtype.Date        `json:"dueDate"`
+	PlannedForDate pgtype.Date        `json:"plannedForDate"`
+	Status         NullTaskStatus     `json:"status"`
+	PriorityReason *string            `json:"priorityReason"`
+	CompletedAt    pgtype.Timestamptz `json:"completedAt"`
+	ID             uuid.UUID          `json:"id"`
+	UserID         uuid.UUID          `json:"userId"`
 }
 
 func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) (Task, error) {
@@ -354,6 +536,10 @@ func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) (Task, e
 		arg.Completed,
 		arg.SortOrder,
 		arg.DueDate,
+		arg.PlannedForDate,
+		arg.Status,
+		arg.PriorityReason,
+		arg.CompletedAt,
 		arg.ID,
 		arg.UserID,
 	)
@@ -375,6 +561,10 @@ func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) (Task, e
 		&i.DeferCount,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PlannedForDate,
+		&i.Status,
+		&i.PriorityReason,
+		&i.CompletedAt,
 	)
 	return i, err
 }
