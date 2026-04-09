@@ -1,0 +1,20 @@
+meta {
+  name: Reorder Tasks
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/tasks/reorder
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "tasks": [
+      { "id": "{{taskId}}", "sortOrder": 1 },
+      { "id": "{{taskId2}}", "sortOrder": 0 }
+    ]
+  }
+}

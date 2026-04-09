@@ -15,13 +15,13 @@ import (
 const carryOverTasks = `-- name: CarryOverTasks :exec
 UPDATE tasks SET
     planned_for_date = $2,
-    status = 'backlog'::task_status,
+    status = 'planned'::task_status,
     carried_over = true,
     added_today = false,
     source = 'carried'::task_source,
     updated_at = now()
 WHERE user_id = $1
-    AND status = 'backlog'
+    AND status = 'planned'
     AND planned_for_date < $2
 `
 

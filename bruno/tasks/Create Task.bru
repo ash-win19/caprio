@@ -1,0 +1,21 @@
+meta {
+  name: Create Task
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/tasks
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "title": "Build the onboarding flow",
+    "description": "Implement the frontend onboarding wizard",
+    "urgency": "high",
+    "duration": 120,
+    "sortOrder": 0
+  }
+}
