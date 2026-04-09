@@ -10,6 +10,7 @@ import (
 	"github.com/ashwinshanmugam/caprio/backend/internal/db"
 	"github.com/ashwinshanmugam/caprio/backend/internal/http/handlers"
 	"github.com/ashwinshanmugam/caprio/backend/internal/http/middleware"
+	"github.com/ashwinshanmugam/caprio/backend/internal/services/reprioritize"
 )
 
 // NewRouter creates the Gin engine and mounts all routes.
@@ -42,10 +43,15 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 		api.Use(middleware.DevBypass(store.Queries))
 	}
 
+	// Services
+	reprioritizeSvc := reprioritize.NewService(cfg.OpenAIAPIKey, cfg.OpenAIModel)
+
 	// Handlers
 	bootstrap := handlers.NewBootstrapHandler(store)
 	onboarding := handlers.NewOnboardingHandler(store)
 	tasks := handlers.NewTaskHandler(store)
+	voiceEntries := handlers.NewVoiceEntryHandler(store)
+	reprioritizeH := handlers.NewReprioritizeHandler(store, reprioritizeSvc)
 
 	{
 		api.GET("/bootstrap", bootstrap.Get)
@@ -57,6 +63,9 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 		api.DELETE("/tasks/:id", tasks.Delete)
 		api.POST("/tasks/reorder", tasks.Reorder)
 		api.POST("/tasks/:id/defer", tasks.Defer)
+
+		api.POST("/voice-entries", voiceEntries.Create)
+		api.POST("/tasks/reprioritize", reprioritizeH.Reprioritize)
 	}
 
 	return r

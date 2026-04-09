@@ -34,6 +34,27 @@ func (q *Queries) CreateVoiceEntry(ctx context.Context, arg CreateVoiceEntryPara
 	return i, err
 }
 
+const getVoiceEntryByID = `-- name: GetVoiceEntryByID :one
+SELECT id, user_id, transcript, created_at FROM voice_entries WHERE id = $1 AND user_id = $2
+`
+
+type GetVoiceEntryByIDParams struct {
+	ID     uuid.UUID `json:"id"`
+	UserID uuid.UUID `json:"userId"`
+}
+
+func (q *Queries) GetVoiceEntryByID(ctx context.Context, arg GetVoiceEntryByIDParams) (VoiceEntry, error) {
+	row := q.db.QueryRow(ctx, getVoiceEntryByID, arg.ID, arg.UserID)
+	var i VoiceEntry
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Transcript,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const listVoiceEntriesByUser = `-- name: ListVoiceEntriesByUser :many
 SELECT id, user_id, transcript, created_at FROM voice_entries
 WHERE user_id = $1
