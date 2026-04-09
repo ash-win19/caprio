@@ -76,6 +76,70 @@ func AllTaskSourceValues() []TaskSource {
 	}
 }
 
+type TaskStatus string
+
+const (
+	TaskStatusBacklog   TaskStatus = "backlog"
+	TaskStatusPlanned   TaskStatus = "planned"
+	TaskStatusCompleted TaskStatus = "completed"
+	TaskStatusDropped   TaskStatus = "dropped"
+)
+
+func (e *TaskStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = TaskStatus(s)
+	case string:
+		*e = TaskStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for TaskStatus: %T", src)
+	}
+	return nil
+}
+
+type NullTaskStatus struct {
+	TaskStatus TaskStatus `json:"taskStatus"`
+	Valid      bool       `json:"valid"` // Valid is true if TaskStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullTaskStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.TaskStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.TaskStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullTaskStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.TaskStatus), nil
+}
+
+func (e TaskStatus) Valid() bool {
+	switch e {
+	case TaskStatusBacklog,
+		TaskStatusPlanned,
+		TaskStatusCompleted,
+		TaskStatusDropped:
+		return true
+	}
+	return false
+}
+
+func AllTaskStatusValues() []TaskStatus {
+	return []TaskStatus{
+		TaskStatusBacklog,
+		TaskStatusPlanned,
+		TaskStatusCompleted,
+		TaskStatusDropped,
+	}
+}
+
 type UrgencyLevel string
 
 const (
@@ -162,22 +226,26 @@ type StandupSession struct {
 }
 
 type Task struct {
-	ID          uuid.UUID          `json:"id"`
-	UserID      uuid.UUID          `json:"userId"`
-	Title       string             `json:"title"`
-	Description *string            `json:"description"`
-	CategoryID  *uuid.UUID         `json:"categoryId"`
-	Urgency     UrgencyLevel       `json:"urgency"`
-	Duration    *int32             `json:"duration"`
-	Source      TaskSource         `json:"source"`
-	Completed   bool               `json:"completed"`
-	AddedToday  bool               `json:"addedToday"`
-	CarriedOver bool               `json:"carriedOver"`
-	SortOrder   int32              `json:"sortOrder"`
-	DueDate     pgtype.Date        `json:"dueDate"`
-	DeferCount  int32              `json:"deferCount"`
-	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
-	UpdatedAt   pgtype.Timestamptz `json:"updatedAt"`
+	ID             uuid.UUID          `json:"id"`
+	UserID         uuid.UUID          `json:"userId"`
+	Title          string             `json:"title"`
+	Description    *string            `json:"description"`
+	CategoryID     *uuid.UUID         `json:"categoryId"`
+	Urgency        UrgencyLevel       `json:"urgency"`
+	Duration       *int32             `json:"duration"`
+	Source         TaskSource         `json:"source"`
+	Completed      bool               `json:"completed"`
+	AddedToday     bool               `json:"addedToday"`
+	CarriedOver    bool               `json:"carriedOver"`
+	SortOrder      int32              `json:"sortOrder"`
+	DueDate        pgtype.Date        `json:"dueDate"`
+	DeferCount     int32              `json:"deferCount"`
+	CreatedAt      pgtype.Timestamptz `json:"createdAt"`
+	UpdatedAt      pgtype.Timestamptz `json:"updatedAt"`
+	PlannedForDate pgtype.Date        `json:"plannedForDate"`
+	Status         TaskStatus         `json:"status"`
+	PriorityReason *string            `json:"priorityReason"`
+	CompletedAt    pgtype.Timestamptz `json:"completedAt"`
 }
 
 type User struct {

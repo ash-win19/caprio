@@ -12,6 +12,7 @@ import (
 
 type Querier interface {
 	BatchUpdateCategoryOrder(ctx context.Context, arg BatchUpdateCategoryOrderParams) error
+	CarryOverTasks(ctx context.Context, arg CarryOverTasksParams) error
 	CreateCategory(ctx context.Context, arg CreateCategoryParams) (Category, error)
 	CreateStandupSession(ctx context.Context, arg CreateStandupSessionParams) (StandupSession, error)
 	CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error)
@@ -24,10 +25,12 @@ type Querier interface {
 	GetTaskByID(ctx context.Context, arg GetTaskByIDParams) (Task, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
+	ListBacklogTasks(ctx context.Context, userID uuid.UUID) ([]Task, error)
 	ListCarriedOverTasks(ctx context.Context, userID uuid.UUID) ([]Task, error)
 	ListCategoriesByUser(ctx context.Context, userID uuid.UUID) ([]Category, error)
+	ListCompletedTasksByDate(ctx context.Context, arg ListCompletedTasksByDateParams) ([]Task, error)
 	ListTasksByUser(ctx context.Context, userID uuid.UUID) ([]Task, error)
-	ListTodayTasksByUser(ctx context.Context, userID uuid.UUID) ([]Task, error)
+	ListTodayTasksByUser(ctx context.Context, arg ListTodayTasksByUserParams) ([]Task, error)
 	ListVoiceEntriesByUser(ctx context.Context, arg ListVoiceEntriesByUserParams) ([]VoiceEntry, error)
 	ToggleTaskComplete(ctx context.Context, arg ToggleTaskCompleteParams) (Task, error)
 	UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (Category, error)
