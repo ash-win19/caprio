@@ -25,6 +25,7 @@ type Querier interface {
 	GetTaskByID(ctx context.Context, arg GetTaskByIDParams) (Task, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
+	GetVoiceEntryByID(ctx context.Context, arg GetVoiceEntryByIDParams) (VoiceEntry, error)
 	ListBacklogTasks(ctx context.Context, userID uuid.UUID) ([]Task, error)
 	ListCarriedOverTasks(ctx context.Context, userID uuid.UUID) ([]Task, error)
 	ListCategoriesByUser(ctx context.Context, userID uuid.UUID) ([]Category, error)
