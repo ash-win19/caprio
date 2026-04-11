@@ -13,6 +13,9 @@ import (
 type Querier interface {
 	BatchUpdateCategoryOrder(ctx context.Context, arg BatchUpdateCategoryOrderParams) error
 	CarryOverTasks(ctx context.Context, arg CarryOverTasksParams) error
+	CloseTaskDone(ctx context.Context, arg CloseTaskDoneParams) error
+	CloseTaskDrop(ctx context.Context, arg CloseTaskDropParams) error
+	CloseTaskTomorrow(ctx context.Context, arg CloseTaskTomorrowParams) error
 	CreateCategory(ctx context.Context, arg CreateCategoryParams) (Category, error)
 	CreateStandupSession(ctx context.Context, arg CreateStandupSessionParams) (StandupSession, error)
 	CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error)
@@ -26,6 +29,7 @@ type Querier interface {
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
 	GetVoiceEntryByID(ctx context.Context, arg GetVoiceEntryByIDParams) (VoiceEntry, error)
+	ListAllTasksByUserAndDate(ctx context.Context, arg ListAllTasksByUserAndDateParams) ([]Task, error)
 	ListBacklogTasks(ctx context.Context, userID uuid.UUID) ([]Task, error)
 	ListCarriedOverTasks(ctx context.Context, userID uuid.UUID) ([]Task, error)
 	ListCategoriesByUser(ctx context.Context, userID uuid.UUID) ([]Category, error)

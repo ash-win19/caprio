@@ -35,6 +35,64 @@ func (q *Queries) CarryOverTasks(ctx context.Context, arg CarryOverTasksParams) 
 	return err
 }
 
+const closeTaskDone = `-- name: CloseTaskDone :exec
+UPDATE tasks SET
+    completed = true,
+    status = 'completed'::task_status,
+    completed_at = now(),
+    updated_at = now()
+WHERE id = $1 AND user_id = $2
+`
+
+type CloseTaskDoneParams struct {
+	ID     uuid.UUID `json:"id"`
+	UserID uuid.UUID `json:"userId"`
+}
+
+func (q *Queries) CloseTaskDone(ctx context.Context, arg CloseTaskDoneParams) error {
+	_, err := q.db.Exec(ctx, closeTaskDone, arg.ID, arg.UserID)
+	return err
+}
+
+const closeTaskDrop = `-- name: CloseTaskDrop :exec
+UPDATE tasks SET
+    status = 'dropped'::task_status,
+    updated_at = now()
+WHERE id = $1 AND user_id = $2
+`
+
+type CloseTaskDropParams struct {
+	ID     uuid.UUID `json:"id"`
+	UserID uuid.UUID `json:"userId"`
+}
+
+func (q *Queries) CloseTaskDrop(ctx context.Context, arg CloseTaskDropParams) error {
+	_, err := q.db.Exec(ctx, closeTaskDrop, arg.ID, arg.UserID)
+	return err
+}
+
+const closeTaskTomorrow = `-- name: CloseTaskTomorrow :exec
+UPDATE tasks SET
+    planned_for_date = $3,
+    status = 'planned'::task_status,
+    carried_over = true,
+    source = 'carried'::task_source,
+    defer_count = defer_count + 1,
+    updated_at = now()
+WHERE id = $1 AND user_id = $2
+`
+
+type CloseTaskTomorrowParams struct {
+	ID             uuid.UUID   `json:"id"`
+	UserID         uuid.UUID   `json:"userId"`
+	PlannedForDate pgtype.Date `json:"plannedForDate"`
+}
+
+func (q *Queries) CloseTaskTomorrow(ctx context.Context, arg CloseTaskTomorrowParams) error {
+	_, err := q.db.Exec(ctx, closeTaskTomorrow, arg.ID, arg.UserID, arg.PlannedForDate)
+	return err
+}
+
 const createTask = `-- name: CreateTask :one
 INSERT INTO tasks (
     user_id, title, description, category_id, urgency, duration,
@@ -193,6 +251,59 @@ func (q *Queries) GetTaskByID(ctx context.Context, arg GetTaskByIDParams) (Task,
 		&i.CompletedAt,
 	)
 	return i, err
+}
+
+const listAllTasksByUserAndDate = `-- name: ListAllTasksByUserAndDate :many
+SELECT id, user_id, title, description, category_id, urgency, duration, source, completed, added_today, carried_over, sort_order, due_date, defer_count, created_at, updated_at, planned_for_date, status, priority_reason, completed_at FROM tasks
+WHERE user_id = $1
+    AND planned_for_date = $2
+ORDER BY sort_order ASC
+`
+
+type ListAllTasksByUserAndDateParams struct {
+	UserID         uuid.UUID   `json:"userId"`
+	PlannedForDate pgtype.Date `json:"plannedForDate"`
+}
+
+func (q *Queries) ListAllTasksByUserAndDate(ctx context.Context, arg ListAllTasksByUserAndDateParams) ([]Task, error) {
+	rows, err := q.db.Query(ctx, listAllTasksByUserAndDate, arg.UserID, arg.PlannedForDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Task{}
+	for rows.Next() {
+		var i Task
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Title,
+			&i.Description,
+			&i.CategoryID,
+			&i.Urgency,
+			&i.Duration,
+			&i.Source,
+			&i.Completed,
+			&i.AddedToday,
+			&i.CarriedOver,
+			&i.SortOrder,
+			&i.DueDate,
+			&i.DeferCount,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.PlannedForDate,
+			&i.Status,
+			&i.PriorityReason,
+			&i.CompletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listBacklogTasks = `-- name: ListBacklogTasks :many

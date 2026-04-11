@@ -52,6 +52,7 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 	tasks := handlers.NewTaskHandler(store)
 	voiceEntries := handlers.NewVoiceEntryHandler(store)
 	reprioritizeH := handlers.NewReprioritizeHandler(store, reprioritizeSvc)
+	dayClose := handlers.NewDayCloseHandler(store)
 
 	{
 		api.GET("/bootstrap", bootstrap.Get)
@@ -66,6 +67,8 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 
 		api.POST("/voice-entries", voiceEntries.Create)
 		api.POST("/tasks/reprioritize", reprioritizeH.Reprioritize)
+
+		api.POST("/day/close", dayClose.Close)
 	}
 
 	return r
