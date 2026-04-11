@@ -96,3 +96,33 @@ UPDATE tasks SET
 WHERE user_id = $1
     AND status = 'planned'
     AND planned_for_date < $2;
+
+-- name: ListAllTasksByUserAndDate :many
+SELECT * FROM tasks
+WHERE user_id = $1
+    AND planned_for_date = $2
+ORDER BY sort_order ASC;
+
+-- name: CloseTaskDone :exec
+UPDATE tasks SET
+    completed = true,
+    status = 'completed'::task_status,
+    completed_at = now(),
+    updated_at = now()
+WHERE id = $1 AND user_id = $2;
+
+-- name: CloseTaskTomorrow :exec
+UPDATE tasks SET
+    planned_for_date = $3,
+    status = 'planned'::task_status,
+    carried_over = true,
+    source = 'carried'::task_source,
+    defer_count = defer_count + 1,
+    updated_at = now()
+WHERE id = $1 AND user_id = $2;
+
+-- name: CloseTaskDrop :exec
+UPDATE tasks SET
+    status = 'dropped'::task_status,
+    updated_at = now()
+WHERE id = $1 AND user_id = $2;

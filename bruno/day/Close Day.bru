@@ -1,0 +1,33 @@
+meta {
+  name: Close Day
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/day/close
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "date": "2026-04-11",
+    "energyLevel": 3,
+    "notes": "Productive day, finished main feature work",
+    "taskActions": [
+      {
+        "taskId": "00000000-0000-0000-0000-000000000001",
+        "action": "done"
+      },
+      {
+        "taskId": "00000000-0000-0000-0000-000000000002",
+        "action": "tomorrow"
+      },
+      {
+        "taskId": "00000000-0000-0000-0000-000000000003",
+        "action": "drop"
+      }
+    ]
+  }
+}
