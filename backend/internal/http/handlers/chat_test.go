@@ -133,9 +133,12 @@ func TestChat_ListSessions(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	resp, err := http.Get(ts.URL + "/api/chat/sessions")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/api/chat/sessions", nil)
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "no-store", resp.Header.Get("Cache-Control"))
 
 	result := parseResponse(t, resp)
 	sessions, ok := result["sessions"].([]interface{})

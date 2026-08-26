@@ -34,6 +34,7 @@ func (h *ChatHandler) ListSessions(c *gin.Context) {
 		return
 	}
 
+	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, gin.H{"sessions": sessions})
 }
 
