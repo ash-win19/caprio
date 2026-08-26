@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -96,7 +96,8 @@ func setupChatTest(t *testing.T) (*httptest.Server, *db.Store, uuid.UUID) {
 
 	mockService := &mockChatService{}
 	handler := handlers.NewChatHandler(store, mockService)
-	
+
+	r.GET("/api/chat/sessions", handler.ListSessions)
 	r.POST("/api/chat/:date", handler.SendMessage)
 	r.POST("/api/chat/:date/confirm", handler.ConfirmTasks)
 
@@ -108,6 +109,44 @@ func setupChatTest(t *testing.T) (*httptest.Server, *db.Store, uuid.UUID) {
 	})
 
 	return ts, store, user.ID
+}
+
+func TestChat_ListSessions(t *testing.T) {
+	ts, store, userID := setupChatTest(t)
+	ctx := context.Background()
+
+	for _, message := range []generated.CreateChatMessageParams{
+		{
+			UserID:      userID,
+			SessionDate: pgtype.Date{Time: time.Date(2026, time.August, 26, 0, 0, 0, 0, time.UTC), Valid: true},
+			Role:        "user",
+			Content:     "Plan the product launch",
+		},
+		{
+			UserID:      userID,
+			SessionDate: pgtype.Date{Time: time.Date(2026, time.August, 26, 0, 0, 0, 0, time.UTC), Valid: true},
+			Role:        "assistant",
+			Content:     "What time is the launch meeting?",
+		},
+	} {
+		_, err := store.Queries.CreateChatMessage(ctx, message)
+		require.NoError(t, err)
+	}
+
+	resp, err := http.Get(ts.URL + "/api/chat/sessions")
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	result := parseResponse(t, resp)
+	sessions, ok := result["sessions"].([]interface{})
+	require.True(t, ok)
+	require.Len(t, sessions, 1)
+
+	session, ok := sessions[0].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "2026-08-26", session["sessionDate"])
+	assert.Equal(t, "Plan the product launch", session["title"])
+	assert.Equal(t, float64(2), session["messageCount"])
 }
 
 // TestChat_ConfirmGate verifies that tasks are only created after explicit confirmation.
@@ -128,7 +167,7 @@ func TestChat_ConfirmGate(t *testing.T) {
 	result1 := parseResponse(t, resp1)
 	response1, ok := result1["response"].(map[string]interface{})
 	require.True(t, ok)
-	
+
 	// Should receive a confirmation response.
 	assert.Equal(t, "confirmation", response1["type"])
 
@@ -153,7 +192,7 @@ func TestChat_ConfirmGate(t *testing.T) {
 	result2 := parseResponse(t, resp2)
 	response2, ok := result2["response"].(map[string]interface{})
 	require.True(t, ok)
-	
+
 	// Should receive a tasks response.
 	assert.Equal(t, "tasks", response2["type"])
 
@@ -184,7 +223,7 @@ func TestChat_ConfirmGate(t *testing.T) {
 	result3 := parseResponse(t, resp3)
 	createdTasks, ok := result3["tasks"].([]interface{})
 	require.True(t, ok)
-	
+
 	// Now tasks should be created.
 	assert.Len(t, createdTasks, 2)
 

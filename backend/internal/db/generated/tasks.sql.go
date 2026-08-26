@@ -71,79 +71,6 @@ func (q *Queries) CloseTaskDrop(ctx context.Context, arg CloseTaskDropParams) er
 	return err
 }
 
-const listYesterdayLeftovers = `-- name: ListYesterdayLeftovers :many
-SELECT id, user_id, title, description, category_id, urgency, duration, source, completed, added_today, carried_over, sort_order, due_date, defer_count, created_at, updated_at, planned_for_date, status, priority_reason, completed_at FROM tasks
-WHERE user_id = $1
-    AND planned_for_date = $2
-    AND status = 'planned'
-    AND completed = false
-ORDER BY sort_order ASC
-`
-
-type ListYesterdayLeftoversParams struct {
-	UserID         uuid.UUID   `json:"userId"`
-	PlannedForDate pgtype.Date `json:"plannedForDate"`
-}
-
-func (q *Queries) ListYesterdayLeftovers(ctx context.Context, arg ListYesterdayLeftoversParams) ([]Task, error) {
-	rows, err := q.db.Query(ctx, listYesterdayLeftovers, arg.UserID, arg.PlannedForDate)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Task
-	for rows.Next() {
-		var i Task
-		if err := rows.Scan(
-			&i.ID,
-			&i.UserID,
-			&i.Title,
-			&i.Description,
-			&i.CategoryID,
-			&i.Urgency,
-			&i.Duration,
-			&i.Source,
-			&i.Completed,
-			&i.AddedToday,
-			&i.CarriedOver,
-			&i.SortOrder,
-			&i.DueDate,
-			&i.DeferCount,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.PlannedForDate,
-			&i.Status,
-			&i.PriorityReason,
-			&i.CompletedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const markTaskAsLeftover = `-- name: MarkTaskAsLeftover :exec
-UPDATE tasks SET
-    carried_over = true,
-    source = 'carried'::task_source,
-    updated_at = now()
-WHERE id = $1 AND user_id = $2
-`
-
-type MarkTaskAsLeftoverParams struct {
-	ID     uuid.UUID `json:"id"`
-	UserID uuid.UUID `json:"userId"`
-}
-
-func (q *Queries) MarkTaskAsLeftover(ctx context.Context, arg MarkTaskAsLeftoverParams) error {
-	_, err := q.db.Exec(ctx, markTaskAsLeftover, arg.ID, arg.UserID)
-	return err
-}
-
 const closeTaskTomorrow = `-- name: CloseTaskTomorrow :exec
 UPDATE tasks SET
     planned_for_date = $3,
@@ -629,6 +556,79 @@ func (q *Queries) ListTodayTasksByUser(ctx context.Context, arg ListTodayTasksBy
 		return nil, err
 	}
 	return items, nil
+}
+
+const listYesterdayLeftovers = `-- name: ListYesterdayLeftovers :many
+SELECT id, user_id, title, description, category_id, urgency, duration, source, completed, added_today, carried_over, sort_order, due_date, defer_count, created_at, updated_at, planned_for_date, status, priority_reason, completed_at FROM tasks
+WHERE user_id = $1
+    AND planned_for_date = $2
+    AND status = 'planned'
+    AND completed = false
+ORDER BY sort_order ASC
+`
+
+type ListYesterdayLeftoversParams struct {
+	UserID         uuid.UUID   `json:"userId"`
+	PlannedForDate pgtype.Date `json:"plannedForDate"`
+}
+
+func (q *Queries) ListYesterdayLeftovers(ctx context.Context, arg ListYesterdayLeftoversParams) ([]Task, error) {
+	rows, err := q.db.Query(ctx, listYesterdayLeftovers, arg.UserID, arg.PlannedForDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Task{}
+	for rows.Next() {
+		var i Task
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Title,
+			&i.Description,
+			&i.CategoryID,
+			&i.Urgency,
+			&i.Duration,
+			&i.Source,
+			&i.Completed,
+			&i.AddedToday,
+			&i.CarriedOver,
+			&i.SortOrder,
+			&i.DueDate,
+			&i.DeferCount,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.PlannedForDate,
+			&i.Status,
+			&i.PriorityReason,
+			&i.CompletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markTaskAsLeftover = `-- name: MarkTaskAsLeftover :exec
+UPDATE tasks SET
+    carried_over = true,
+    source = 'carried'::task_source,
+    updated_at = now()
+WHERE id = $1 AND user_id = $2
+`
+
+type MarkTaskAsLeftoverParams struct {
+	ID     uuid.UUID `json:"id"`
+	UserID uuid.UUID `json:"userId"`
+}
+
+func (q *Queries) MarkTaskAsLeftover(ctx context.Context, arg MarkTaskAsLeftoverParams) error {
+	_, err := q.db.Exec(ctx, markTaskAsLeftover, arg.ID, arg.UserID)
+	return err
 }
 
 const toggleTaskComplete = `-- name: ToggleTaskComplete :one
