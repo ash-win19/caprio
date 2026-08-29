@@ -10,6 +10,7 @@ import (
 	"github.com/ashwinshanmugam/caprio/backend/internal/db"
 	"github.com/ashwinshanmugam/caprio/backend/internal/http/handlers"
 	"github.com/ashwinshanmugam/caprio/backend/internal/http/middleware"
+	"github.com/ashwinshanmugam/caprio/backend/internal/services/chat"
 	"github.com/ashwinshanmugam/caprio/backend/internal/services/reprioritize"
 )
 
@@ -45,6 +46,7 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 
 	// Services
 	reprioritizeSvc := reprioritize.NewService(cfg.OpenAIAPIKey, cfg.OpenAIModel)
+	chatSvc := chat.NewService(cfg.OpenAIAPIKey, cfg.OpenAIModel)
 
 	// Handlers
 	bootstrap := handlers.NewBootstrapHandler(store)
@@ -53,6 +55,8 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 	voiceEntries := handlers.NewVoiceEntryHandler(store)
 	reprioritizeH := handlers.NewReprioritizeHandler(store, reprioritizeSvc)
 	dayClose := handlers.NewDayCloseHandler(store)
+	chatH := handlers.NewChatHandler(store, chatSvc)
+	dayH := handlers.NewDayHandler(store)
 
 	{
 		api.GET("/bootstrap", bootstrap.Get)
@@ -69,6 +73,12 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 		api.POST("/tasks/reprioritize", reprioritizeH.Reprioritize)
 
 		api.POST("/day/close", dayClose.Close)
+		api.GET("/day/:date/status", dayH.GetStatus)
+		api.GET("/day/leftovers", dayH.GetLeftovers)
+
+		api.GET("/chat/:date", chatH.GetMessages)
+		api.POST("/chat/:date", chatH.SendMessage)
+		api.POST("/chat/:date/confirm", chatH.ConfirmTasks)
 	}
 
 	return r

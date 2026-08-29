@@ -5,12 +5,14 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthGuard } from "@/components/AuthGuard";
 import AppLayout from "@/layouts/AppLayout";
+import Index from "./pages/Index";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import Onboarding from "./pages/Onboarding";
 import OnboardingPrefs from "./pages/OnboardingPrefs";
 import Today from "./pages/Today";
+import New from "./pages/New";
 import Capture from "./pages/Capture";
 import Review from "./pages/Review";
 import Momentum from "./pages/Momentum";
@@ -30,11 +32,13 @@ const App = () => (
       <BrowserRouter>
         <AuthGuard>
           <Routes>
-            <Route path="/" element={<Landing />} />
+            <Route path="/" element={<Index />} />
+            <Route path="/landing" element={<Landing />} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
             <Route path="/onboarding" element={<Onboarding />} />
             <Route path="/onboarding/prefs" element={<OnboardingPrefs />} />
+            <Route path="/new" element={<New />} />
             <Route element={<AppLayout />}>
               <Route path="/today" element={<Today />} />
               <Route path="/capture" element={<Capture />} />
