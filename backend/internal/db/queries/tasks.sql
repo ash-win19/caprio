@@ -126,3 +126,18 @@ UPDATE tasks SET
     status = 'dropped'::task_status,
     updated_at = now()
 WHERE id = $1 AND user_id = $2;
+
+-- name: ListYesterdayLeftovers :many
+SELECT * FROM tasks
+WHERE user_id = $1
+    AND planned_for_date = $2
+    AND status = 'planned'
+    AND completed = false
+ORDER BY sort_order ASC;
+
+-- name: MarkTaskAsLeftover :exec
+UPDATE tasks SET
+    carried_over = true,
+    source = 'carried'::task_source,
+    updated_at = now()
+WHERE id = $1 AND user_id = $2;

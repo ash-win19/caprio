@@ -1,16 +1,41 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { api } from '@/lib/api';
 
-// IMPORTANT: Fully REPLACE this with your own code
-const PlaceholderIndex = () => {
-  // PLACEHOLDER: Replace this entire return statement with the user's app.
-  // The inline background color is intentionally not part of the design system.
-  return (
-    <div className="flex min-h-screen items-center justify-center" style={{ backgroundColor: '#fcfbf8' }}>
-      <img data-lovable-blank-page-placeholder="REMOVE_THIS" src="/placeholder.svg" alt="Your app will live here!" />
-    </div>
-  );
-};
+export default function Index() {
+  const navigate = useNavigate();
+  const [isChecking, setIsChecking] = useState(true);
 
-const Index = PlaceholderIndex;
+  useEffect(() => {
+    const today = new Date().toISOString().split('T')[0];
+    
+    api.getDayStatus(today)
+      .then((status) => {
+        if (status.hasTasks) {
+          // User has tasks for today, go to list view
+          navigate('/today', { replace: true });
+        } else {
+          // First open of the day, go to conversational capture
+          navigate('/new', { replace: true });
+        }
+      })
+      .catch((error) => {
+        console.error('Failed to check day status:', error);
+        // Default to /new on error
+        navigate('/new', { replace: true });
+      })
+      .finally(() => {
+        setIsChecking(false);
+      });
+  }, [navigate]);
 
-export default Index;
+  if (isChecking) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
+
+  return null;
+}

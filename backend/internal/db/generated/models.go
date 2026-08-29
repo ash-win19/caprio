@@ -214,6 +214,15 @@ type Category struct {
 	CreatedAt    pgtype.Timestamptz `json:"createdAt"`
 }
 
+type ChatMessage struct {
+	ID          uuid.UUID          `json:"id"`
+	UserID      uuid.UUID          `json:"userId"`
+	SessionDate pgtype.Date        `json:"sessionDate"`
+	Role        string             `json:"role"`
+	Content     string             `json:"content"`
+	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
+}
+
 type StandupSession struct {
 	ID             uuid.UUID          `json:"id"`
 	UserID         uuid.UUID          `json:"userId"`
