@@ -33,6 +33,17 @@ const MOCK_VOICE_ENTRIES: VoiceEntry[] = [
   { id: 'v3', transcript: 'Only have 2 hours before my flight leaves', timestamp: '2 days ago' },
 ];
 
+const DEFAULT_PREFS: UserPrefs = {
+  briefTime: '08:00',
+  nudgeFrequency: 'regular',
+  proactiveReprioritization: true,
+  eodReminder: true,
+  eodTime: '21:00',
+  micSensitivity: 50,
+  language: 'en-US',
+  saveTranscripts: true,
+};
+
 interface AppState {
   user: { name: string; email: string; categories: string[] } | null;
   tasks: Task[];
@@ -61,6 +72,7 @@ interface AppState {
   removeVoiceEntry: (id: string) => void;
   clearVoiceEntries: () => void;
   initializeMockData: () => void;
+  resetAccountState: () => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -73,16 +85,7 @@ export const useAppStore = create<AppState>()(
       voiceState: 'idle',
       lastPrioritization: null,
       categories: DEFAULT_CATEGORIES,
-      prefs: {
-        briefTime: '08:00',
-        nudgeFrequency: 'regular',
-        proactiveReprioritization: true,
-        eodReminder: true,
-        eodTime: '21:00',
-        micSensitivity: 50,
-        language: 'en-US',
-        saveTranscripts: true,
-      },
+      prefs: DEFAULT_PREFS,
       voiceEntries: MOCK_VOICE_ENTRIES,
       streak: 4,
 
@@ -117,6 +120,18 @@ export const useAppStore = create<AppState>()(
           });
         }
       },
+      resetAccountState: () => set({
+        user: null,
+        tasks: [],
+        capturePool: [],
+        carriedOver: [],
+        voiceState: 'idle',
+        lastPrioritization: null,
+        categories: DEFAULT_CATEGORIES,
+        prefs: DEFAULT_PREFS,
+        voiceEntries: MOCK_VOICE_ENTRIES,
+        streak: 4,
+      }),
     }),
     { name: 'caprio-store' }
   )

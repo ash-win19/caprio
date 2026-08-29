@@ -1,6 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuth0 } from '@auth0/auth0-react';
+import { activateAccount } from '@/lib/accountSession';
 import { useAppStore } from '@/lib/store';
 
 export default function Login() {
@@ -17,6 +18,7 @@ export default function Login() {
   };
 
   const handleDemo = () => {
+    activateAccount('demo');
     localStorage.setItem('caprio_session', 'demo');
     localStorage.setItem('demo_user', 'true');
     setUser({ name: 'Demo User', email: 'demo@caprio.app', categories: ['Work', 'Gym', 'Personal Growth', 'Finance'] });

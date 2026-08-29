@@ -1,10 +1,11 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { ChevronRight, LogOut } from 'lucide-react';
 import { useAuth0 } from '@auth0/auth0-react';
+import { clearActiveAccount } from '@/lib/accountSession';
 import { useAppStore } from '@/lib/store';
 
 export default function SettingsPage() {
-  const { user, setUser } = useAppStore();
+  const { user, setUser, resetAccountState } = useAppStore();
   const navigate = useNavigate();
   const { isAuthenticated, logout } = useAuth0();
 
@@ -12,16 +13,18 @@ export default function SettingsPage() {
     const isDemo = localStorage.getItem('caprio_session') === 'demo';
 
     localStorage.removeItem('caprio_session');
-    localStorage.removeItem('onboarding_complete');
     localStorage.removeItem('demo_user');
     setUser(null);
-    localStorage.removeItem('caprio-store');
 
     if (isAuthenticated && !isDemo) {
       void logout({ logoutParams: { returnTo: window.location.origin } });
       return;
     }
 
+    resetAccountState();
+    clearActiveAccount();
+    localStorage.removeItem('onboarding_complete');
+    localStorage.removeItem('caprio-store');
     navigate('/login');
   };
 

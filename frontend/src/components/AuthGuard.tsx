@@ -1,6 +1,7 @@
 import { ReactNode, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth0 } from '@auth0/auth0-react';
+import { activateAccount } from '@/lib/accountSession';
 import { useAppStore } from '@/lib/store';
 
 const PUBLIC_ROUTES = ['/', '/login', '/signup'];
@@ -14,10 +15,11 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   const isDemo = localStorage.getItem('caprio_session') === 'demo';
 
   useEffect(() => {
-    if (!isAuthenticated || !user) return;
+    if (!isAuthenticated || !user?.sub) return;
 
     localStorage.removeItem('caprio_session');
     localStorage.removeItem('demo_user');
+    activateAccount(user.sub);
 
     const currentUser = useAppStore.getState().user;
     const nextUser = {
