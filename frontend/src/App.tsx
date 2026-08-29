@@ -41,6 +41,7 @@ const App = () => (
             <Route path="/new" element={<New />} />
             <Route element={<AppLayout />}>
               <Route path="/today" element={<Today />} />
+              <Route path="/new" element={<New />} />
               <Route path="/capture" element={<Capture />} />
               <Route path="/review" element={<Review />} />
               <Route path="/momentum" element={<Momentum />} />
