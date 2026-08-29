@@ -21,13 +21,21 @@ import { Link } from 'react-router-dom';
 
 const ease = [0.22, 1, 0.36, 1] as const;
 
-const plannedTasks = [
+type PreviewTask = {
+  title: string;
+  meta: string;
+  color: string;
+  rank: string;
+  moved?: boolean;
+};
+
+const plannedTasks: PreviewTask[] = [
   { title: 'Finalize launch brief', meta: 'Deep work · 90 min', color: '#F5F5F3', rank: '01' },
   { title: 'Review product metrics', meta: 'Work · 30 min', color: '#B8B8B4', rank: '02' },
   { title: 'Strength training', meta: 'Health · 45 min', color: '#7A7A76', rank: '03' },
 ];
 
-const adaptedTasks = [
+const adaptedTasks: PreviewTask[] = [
   { title: 'Review product metrics', meta: 'Deadline moved up · 30 min', color: '#F5F5F3', rank: '01', moved: true },
   { title: 'Finalize launch brief', meta: 'Protected focus · 60 min', color: '#B8B8B4', rank: '02' },
   { title: 'Strength training', meta: 'Moved to 5:30 PM · 45 min', color: '#7A7A76', rank: '03', moved: true },
