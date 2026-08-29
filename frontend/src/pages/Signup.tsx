@@ -1,19 +1,14 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { useAppStore } from '@/lib/store';
+import { useAuth0 } from '@auth0/auth0-react';
 
 export default function Signup() {
-  const navigate = useNavigate();
-  const { setUser, initializeMockData } = useAppStore();
+  const { loginWithRedirect, error, isLoading } = useAuth0();
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    localStorage.setItem('caprio_session', 'demo');
-    setUser({ name: 'Demo User', email: 'demo@caprio.app', categories: [] });
-    initializeMockData();
-    navigate('/onboarding');
+  const handleSignup = () => {
+    localStorage.removeItem('caprio_session');
+    localStorage.removeItem('demo_user');
+    void loginWithRedirect({ authorizationParams: { screen_hint: 'signup' } });
   };
 
   return (
@@ -24,25 +19,19 @@ export default function Signup() {
         <h1 className="text-heading text-foreground mb-1">Create your account</h1>
         <p className="text-sm text-muted-foreground mb-6">Get started with Caprio</p>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <Label>Full name</Label>
-            <Input className="mt-1 bg-accent border-border" />
-          </div>
-          <div>
-            <Label>Email</Label>
-            <Input type="email" className="mt-1 bg-accent border-border" />
-          </div>
-          <div>
-            <Label>Password</Label>
-            <Input type="password" className="mt-1 bg-accent border-border" />
-          </div>
-          <div>
-            <Label>Confirm password</Label>
-            <Input type="password" className="mt-1 bg-accent border-border" />
-          </div>
-          <Button type="submit" className="w-full bg-primary text-primary-foreground">Create account</Button>
-        </form>
+        <p className="text-sm text-muted-foreground mb-5">
+          Auth0 will open a secure sign-up page for your email and password.
+        </p>
+
+        {error && <p className="mb-4 text-sm text-cap-red">{error.message}</p>}
+
+        <Button
+          className="w-full bg-primary text-primary-foreground"
+          onClick={handleSignup}
+          disabled={isLoading}
+        >
+          Continue to sign up
+        </Button>
       </div>
 
       <p className="mt-4 text-sm text-muted-foreground">
