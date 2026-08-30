@@ -1,6 +1,14 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { CalendarDays, Menu, MessageSquare, Search, X } from "lucide-react";
+import {
+  CalendarDays,
+  Menu,
+  MessageSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Search,
+  X,
+} from "lucide-react";
 import type { ChatSession } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
 
@@ -60,7 +68,11 @@ function SidebarContent({
   onSelect,
   onToday,
   onClose,
-}: ConversationSidebarProps & { onClose?: () => void }) {
+  onCollapse,
+}: ConversationSidebarProps & {
+  onClose?: () => void;
+  onCollapse?: () => void;
+}) {
   const user = useAppStore((state) => state.user);
   const [query, setQuery] = useState("");
   const visibleSessions = useMemo(() => {
@@ -95,16 +107,29 @@ function SidebarContent({
             caprio
           </span>
         </Link>
-        {onClose && (
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md p-2 text-muted-foreground transition hover:bg-accent hover:text-foreground"
-            aria-label="Close conversation history"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        )}
+        <div className="flex items-center gap-1">
+          {onCollapse && (
+            <button
+              type="button"
+              onClick={onCollapse}
+              className="rounded-md p-2 text-muted-foreground transition hover:bg-accent hover:text-foreground"
+              aria-label="Collapse sidebar"
+              title="Collapse sidebar"
+            >
+              <PanelLeftClose className="h-4 w-4" />
+            </button>
+          )}
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md p-2 text-muted-foreground transition hover:bg-accent hover:text-foreground"
+              aria-label="Close conversation history"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="px-3">
@@ -201,12 +226,48 @@ function SidebarContent({
 
 export function ConversationSidebar(props: ConversationSidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [desktopOpen, setDesktopOpen] = useState(true);
+  const user = useAppStore((state) => state.user);
+  const initial = user?.name?.trim().charAt(0).toUpperCase() || "C";
 
   return (
     <>
-      <aside className="hidden h-screen w-[280px] shrink-0 border-r border-border md:block">
-        <SidebarContent {...props} />
-      </aside>
+      {desktopOpen ? (
+        <aside
+          id="conversation-sidebar"
+          className="hidden h-screen w-[280px] shrink-0 border-r border-border md:block"
+        >
+          <SidebarContent
+            {...props}
+            onCollapse={() => setDesktopOpen(false)}
+          />
+        </aside>
+      ) : (
+        <aside className="hidden h-screen w-16 shrink-0 flex-col items-center border-r border-border bg-card py-4 md:flex">
+          <Link to="/today" aria-label="Go to today" className="p-2">
+            <CaprioMark />
+          </Link>
+          <button
+            type="button"
+            onClick={() => setDesktopOpen(true)}
+            className="mt-3 grid h-10 w-10 place-items-center rounded-lg text-muted-foreground transition hover:bg-accent hover:text-foreground"
+            aria-label="Expand sidebar"
+            aria-controls="conversation-sidebar"
+            aria-expanded="false"
+            title="Expand sidebar"
+          >
+            <PanelLeftOpen className="h-5 w-5" />
+          </button>
+          <Link
+            to="/settings"
+            aria-label={user?.name ? `Open ${user.name}'s profile` : "Open profile"}
+            className="mt-auto grid h-10 w-10 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground"
+            title={user?.name || "Caprio user"}
+          >
+            {initial}
+          </Link>
+        </aside>
+      )}
 
       <div className="absolute left-4 top-4 z-30 md:hidden">
         <button
