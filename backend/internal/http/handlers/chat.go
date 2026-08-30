@@ -19,6 +19,25 @@ type ChatHandler struct {
 	chatService chat.Processor
 }
 
+// ListSessions returns the user's most recent conversation sessions.
+func (h *ChatHandler) ListSessions(c *gin.Context) {
+	ctx := c.Request.Context()
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	sessions, err := h.store.Queries.ListChatSessionsByUser(ctx, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusOK, gin.H{"sessions": sessions})
+}
+
 // NewChatHandler creates a new ChatHandler.
 func NewChatHandler(store *db.Store, chatService chat.Processor) *ChatHandler {
 	return &ChatHandler{

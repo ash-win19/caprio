@@ -76,6 +76,7 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 		api.GET("/day/:date/status", dayH.GetStatus)
 		api.GET("/day/leftovers", dayH.GetLeftovers)
 
+		api.GET("/chat/sessions", chatH.ListSessions)
 		api.GET("/chat/:date", chatH.GetMessages)
 		api.POST("/chat/:date", chatH.SendMessage)
 		api.POST("/chat/:date/confirm", chatH.ConfirmTasks)

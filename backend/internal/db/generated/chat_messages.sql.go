@@ -93,7 +93,7 @@ func (q *Queries) ListChatMessagesByUserAndDate(ctx context.Context, arg ListCha
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ChatMessage
+	items := []ChatMessage{}
 	for rows.Next() {
 		var i ChatMessage
 		if err := rows.Scan(
@@ -103,6 +103,54 @@ func (q *Queries) ListChatMessagesByUserAndDate(ctx context.Context, arg ListCha
 			&i.Role,
 			&i.Content,
 			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listChatSessionsByUser = `-- name: ListChatSessionsByUser :many
+SELECT
+    session_date,
+    COALESCE(
+        (ARRAY_AGG(content ORDER BY created_at) FILTER (WHERE role = 'user'))[1],
+        'Untitled conversation'
+    )::text AS title,
+    COUNT(*) AS message_count,
+    MAX(created_at)::timestamptz AS updated_at
+FROM chat_messages
+WHERE user_id = $1
+GROUP BY session_date
+ORDER BY updated_at DESC
+LIMIT 30
+`
+
+type ListChatSessionsByUserRow struct {
+	SessionDate  pgtype.Date        `json:"sessionDate"`
+	Title        string             `json:"title"`
+	MessageCount int64              `json:"messageCount"`
+	UpdatedAt    pgtype.Timestamptz `json:"updatedAt"`
+}
+
+func (q *Queries) ListChatSessionsByUser(ctx context.Context, userID uuid.UUID) ([]ListChatSessionsByUserRow, error) {
+	rows, err := q.db.Query(ctx, listChatSessionsByUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListChatSessionsByUserRow{}
+	for rows.Next() {
+		var i ListChatSessionsByUserRow
+		if err := rows.Scan(
+			&i.SessionDate,
+			&i.Title,
+			&i.MessageCount,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
