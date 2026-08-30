@@ -1,6 +1,7 @@
 package http
 
 import (
+	"net/http"
 	"strings"
 
 	"github.com/gin-contrib/cors"
@@ -10,6 +11,7 @@ import (
 	"github.com/ashwinshanmugam/caprio/backend/internal/db"
 	"github.com/ashwinshanmugam/caprio/backend/internal/http/handlers"
 	"github.com/ashwinshanmugam/caprio/backend/internal/http/middleware"
+	"github.com/ashwinshanmugam/caprio/backend/internal/mastra"
 	"github.com/ashwinshanmugam/caprio/backend/internal/services/chat"
 	"github.com/ashwinshanmugam/caprio/backend/internal/services/reprioritize"
 )
@@ -46,9 +48,11 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 
 	// Services
 	reprioritizeSvc := reprioritize.NewService(cfg.OpenAIAPIKey, cfg.OpenAIModel)
-	var chatSvc chat.Processor = chat.NewService(cfg.OpenAIAPIKey, cfg.OpenAIModel)
-	if cfg.GeminiAPIKey != "" {
-		chatSvc = chat.NewGeminiService(cfg.GeminiAPIKey, cfg.GeminiModel)
+	
+	var chatSvc *chat.Service
+	if cfg.MastraURL != "" {
+		mastraClient := mastra.NewClient(cfg.MastraURL)
+		chatSvc = chat.NewService(store, mastraClient)
 	}
 
 	// Handlers
@@ -58,8 +62,13 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 	voiceEntries := handlers.NewVoiceEntryHandler(store)
 	reprioritizeH := handlers.NewReprioritizeHandler(store, reprioritizeSvc)
 	dayClose := handlers.NewDayCloseHandler(store)
-	chatH := handlers.NewChatHandler(store, chatSvc)
 	dayH := handlers.NewDayHandler(store)
+
+	// Chat handler requires Mastra URL
+	var chatH *handlers.ChatHandler
+	if chatSvc != nil {
+		chatH = handlers.NewChatHandler(store, chatSvc)
+	}
 
 	{
 		api.GET("/bootstrap", bootstrap.Get)
@@ -79,10 +88,22 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 		api.GET("/day/:date/status", dayH.GetStatus)
 		api.GET("/day/leftovers", dayH.GetLeftovers)
 
-		api.GET("/chat/sessions", chatH.ListSessions)
-		api.GET("/chat/:date", chatH.GetMessages)
-		api.POST("/chat/:date", chatH.SendMessage)
-		api.POST("/chat/:date/confirm", chatH.ConfirmTasks)
+		// Chat routes require MASTRA_URL to be set
+		if chatH != nil {
+			api.GET("/chat/sessions", chatH.ListSessions)
+			api.GET("/chat/:date", chatH.GetMessages)
+			api.POST("/chat/:date", chatH.SendMessage)
+			api.POST("/chat/:date/confirm", chatH.ConfirmTasks)
+		} else {
+			// Return 503 for chat endpoints when Mastra is not configured
+			chatUnavailable := func(c *gin.Context) {
+				c.JSON(http.StatusServiceUnavailable, gin.H{"error": "chat service unavailable: MASTRA_URL not configured"})
+			}
+			api.GET("/chat/sessions", chatUnavailable)
+			api.GET("/chat/:date", chatUnavailable)
+			api.POST("/chat/:date", chatUnavailable)
+			api.POST("/chat/:date/confirm", chatUnavailable)
+		}
 	}
 
 	return r
