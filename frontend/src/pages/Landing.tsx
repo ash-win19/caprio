@@ -335,33 +335,23 @@ export default function Landing() {
         <section className="relative px-5 pb-24 pt-40 md:px-8 md:pb-32 md:pt-48">
           <div className="pointer-events-none absolute inset-0 [background-image:linear-gradient(to_right,rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.025)_1px,transparent_1px)] [background-size:72px_72px] [mask-image:linear-gradient(to_bottom,black,transparent_80%)]" />
           <div className="relative mx-auto max-w-4xl text-center">
-            <motion.div
-              initial={reduceMotion ? false : { opacity: 0, y: 12 }}
-              animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, ease }}
-              className="mx-auto inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.045] px-3.5 py-1.5 text-[10px] font-semibold tracking-[0.13em] text-[#D6D6D2]"
-            >
-              <span className="relative flex h-1.5 w-1.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-35" /><span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#F5F5F3]" /></span>
-              YOUR DAY, INTELLIGENTLY ARRANGED
-            </motion.div>
-
             <motion.h1
               initial={reduceMotion ? false : { opacity: 0, y: 22 }}
               animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
               transition={{ duration: 0.75, delay: 0.08, ease }}
-              className="mx-auto mt-7 max-w-[880px] text-[46px] font-medium leading-[0.98] tracking-[-0.065em] text-white sm:text-[64px] md:text-[82px]"
+              className="mx-auto max-w-[880px] text-[46px] font-medium leading-[0.98] tracking-[-0.065em] text-white sm:text-[64px] md:text-[82px]"
             >
               Calendar <span className="font-light text-white/25">+</span> prioritization.<br />
-              <span className="text-white/42">One operating system</span><br className="sm:hidden" /> <span className="text-white/42">for your day.</span>
+              <span className="text-[32px] text-white/42 sm:text-[44px] md:whitespace-nowrap md:text-[56px]">One operating system for your day.</span>
             </motion.h1>
 
             <motion.p
               initial={reduceMotion ? false : { opacity: 0, y: 18 }}
               animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
               transition={{ duration: 0.7, delay: 0.16, ease }}
-              className="mx-auto mt-7 max-w-xl text-[15px] leading-7 text-white/45 md:text-base"
+              className="mx-auto mt-7 max-w-xl text-[15px] leading-7 text-white/45 md:whitespace-nowrap md:text-[17px]"
             >
-              Caprio turns everything you need to do into a realistic day plan—then reshapes it when life inevitably changes.
+              Caprio turns everything you need to do into a realistic day plan. Then reshapes it when life inevitably changes.
             </motion.p>
 
             <motion.div
