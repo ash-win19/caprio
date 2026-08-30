@@ -4,7 +4,6 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthGuard } from './AuthGuard';
 import { useAuth0 } from '@auth0/auth0-react';
 import type { Auth0ContextInterface } from '@auth0/auth0-react';
-import * as api from '@/lib/api';
 
 // Mock Auth0
 vi.mock('@auth0/auth0-react', () => ({
@@ -13,9 +12,7 @@ vi.mock('@auth0/auth0-react', () => ({
 
 // Mock the API
 vi.mock('@/lib/api', () => ({
-  api: {
-    getDayStatus: vi.fn(),
-  },
+  getDayStatus: vi.fn(),
 }));
 
 // Mock the store

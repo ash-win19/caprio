@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '@/lib/api';
+import { getDayStatus } from '@/lib/api';
 
 export default function Index() {
   const navigate = useNavigate();
@@ -9,7 +9,7 @@ export default function Index() {
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
     
-    api.getDayStatus(today)
+    getDayStatus(today)
       .then((status) => {
         if (status.hasTasks) {
           // User has tasks for today, go to list view
