@@ -24,9 +24,6 @@ type Config struct {
 	OpenAIAPIKey string
 	OpenAIModel  string
 
-	// Mastra (conversation agent server)
-	MastraURL string
-
 	// CORS
 	CORSAllowedOrigins string
 }
@@ -51,9 +48,6 @@ func Load() Config {
 		// OpenAI
 		OpenAIAPIKey: os.Getenv("OPENAI_API_KEY"),
 		OpenAIModel:  getEnv("OPENAI_MODEL", "gpt-4o-mini"),
-
-		// Mastra
-		MastraURL: os.Getenv("MASTRA_URL"),
 
 		// CORS
 		CORSAllowedOrigins: getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173"),

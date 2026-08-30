@@ -22,7 +22,7 @@ func NewDayHandler(store *db.Store) *DayHandler {
 	return &DayHandler{store: store}
 }
 
-// GetStatus returns whether the given day has any tasks or chat messages.
+// GetStatus returns whether the given day has any tasks.
 func (h *DayHandler) GetStatus(c *gin.Context) {
 	ctx := c.Request.Context()
 	userID, ok := middleware.GetUserID(c)
@@ -49,22 +49,10 @@ func (h *DayHandler) GetStatus(c *gin.Context) {
 		return
 	}
 
-	// Check for chat messages.
-	chatCount, err := h.store.Queries.CountChatMessagesByUserAndDate(ctx, generated.CountChatMessagesByUserAndDateParams{
-		UserID:      userID,
-		SessionDate: pgDate,
-	})
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
-		return
-	}
-
 	c.JSON(http.StatusOK, gin.H{
-		"date":              dateStr,
-		"hasTasks":          len(tasks) > 0,
-		"taskCount":         len(tasks),
-		"hasChatMessages":   chatCount > 0,
-		"chatMessageCount":  chatCount,
+		"date":      dateStr,
+		"hasTasks":  len(tasks) > 0,
+		"taskCount": len(tasks),
 	})
 }
 
