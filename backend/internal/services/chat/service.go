@@ -70,13 +70,17 @@ func (s *Service) Process(ctx context.Context, req ProcessRequest) (*ProcessResp
 		}
 	}
 
-	// 4. Call Mastra agent.
-	response, err := s.mastraClient.Chat(ctx, mastraMessages)
+	// 4. Build thread and resource IDs for Mastra memory.
+	threadID := fmt.Sprintf("%s:%s", req.UserID.String(), req.SessionDate.Time.Format("2006-01-02"))
+	resourceID := req.UserID.String()
+
+	// 5. Call Mastra agent.
+	response, err := s.mastraClient.Chat(ctx, mastraMessages, threadID, resourceID)
 	if err != nil {
 		return nil, fmt.Errorf("call mastra agent: %w", err)
 	}
 
-	// 5. Store the assistant message.
+	// 6. Store the assistant message.
 	assistantMsg, err := s.store.Queries.CreateChatMessage(ctx, generated.CreateChatMessageParams{
 		UserID:      req.UserID,
 		SessionDate: req.SessionDate,
