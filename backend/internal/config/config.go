@@ -24,6 +24,10 @@ type Config struct {
 	OpenAIAPIKey string
 	OpenAIModel  string
 
+	// Gemini (conversation assistant)
+	GeminiAPIKey string
+	GeminiModel  string
+
 	// CORS
 	CORSAllowedOrigins string
 }
@@ -48,6 +52,10 @@ func Load() Config {
 		// OpenAI
 		OpenAIAPIKey: os.Getenv("OPENAI_API_KEY"),
 		OpenAIModel:  getEnv("OPENAI_MODEL", "gpt-4o-mini"),
+
+		// Gemini
+		GeminiAPIKey: os.Getenv("GEMINI_API_KEY"),
+		GeminiModel:  getEnv("GEMINI_MODEL", "gemini-3.7-flash"),
 
 		// CORS
 		CORSAllowedOrigins: getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173"),
