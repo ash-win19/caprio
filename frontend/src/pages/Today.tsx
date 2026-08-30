@@ -7,6 +7,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { useAppStore } from '@/lib/store';
 import { useTasks, useToggleTask, useReorderTasks, useBootstrap } from '@/lib/queries';
 import { CATEGORY_COLORS } from '@/lib/types';
+import { Checkbox } from '@/components/motion/checkbox';
 import type { Task, TaskChange } from '@/lib/types';
 
 function TaskCard({ task, changes }: { task: Task; changes: TaskChange[] }) {
@@ -35,12 +36,12 @@ function TaskCard({ task, changes }: { task: Task; changes: TaskChange[] }) {
     >
       <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-lg" style={{ backgroundColor: task.completed ? 'hsl(var(--border))' : catColor }} />
 
-      <button onClick={handleToggle}
-        className="w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors"
-        style={{ borderColor: task.completed ? 'hsl(var(--brand))' : 'hsl(var(--border))', backgroundColor: task.completed ? 'hsl(var(--brand))' : 'transparent' }}
-      >
-        {task.completed && <span className="text-[10px] text-primary-foreground">✓</span>}
-      </button>
+      <Checkbox
+        checked={task.completed}
+        onCheckedChange={handleToggle}
+        disabled={toggleTaskMutation.isPending}
+        className="-ml-0.5"
+      />
 
       <div className="flex-1 min-w-0">
         <p className={`text-sm font-medium ${task.completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
