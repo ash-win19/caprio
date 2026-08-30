@@ -264,9 +264,7 @@ export function PromptInput({
                 {currentModel?.icon ? (
                   <span className="shrink-0">{currentModel.icon}</span>
                 ) : null}
-                <SelectValue>
-                  {currentModel?.label ?? "Choose model"}
-                </SelectValue>
+                <SelectValue placeholder="Choose model" />
               </span>
             </SelectTrigger>
             <SelectContent>
