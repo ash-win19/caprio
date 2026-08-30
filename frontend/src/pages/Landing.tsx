@@ -51,14 +51,14 @@ const weekDays = [
 
 function Logo({ footer = false }: { footer?: boolean }) {
   return (
-    <span className="inline-flex items-center gap-2.5">
+    <span className="inline-flex items-center gap-2">
       <svg
         xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 64 88"
         fill="none"
         role="img"
         aria-label="Caprio"
-        className={footer ? 'h-8 w-auto text-[#F5F5F3]' : 'h-9 w-auto text-[#F5F5F3]'}
+        className={footer ? 'h-[18px] w-auto text-[#F5F5F3]' : 'h-5 w-auto text-[#F5F5F3]'}
       >
         <g fill="currentColor" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
           <path

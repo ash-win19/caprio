@@ -20,7 +20,7 @@ function CaprioMark() {
       fill="none"
       role="img"
       aria-label="Caprio"
-      className="h-9 w-auto shrink-0 text-foreground"
+      className="h-5 w-auto shrink-0 text-foreground"
     >
       <g fill="currentColor" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
         <path
