@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@mastra/ai-sdk": "^1.10.0",
     "@mastra/core": "1.63.2"
   },
   "devDependencies": {

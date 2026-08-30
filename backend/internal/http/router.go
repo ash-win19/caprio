@@ -46,9 +46,13 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 
 	// Services
 	reprioritizeSvc := reprioritize.NewService(cfg.OpenAIAPIKey, cfg.OpenAIModel)
-	var chatSvc chat.Processor = chat.NewService(cfg.OpenAIAPIKey, cfg.OpenAIModel)
-	if cfg.GeminiAPIKey != "" {
+	var chatSvc chat.Processor
+	if cfg.MastraURL != "" {
+		chatSvc = chat.NewMastraService(cfg.MastraURL)
+	} else if cfg.GeminiAPIKey != "" {
 		chatSvc = chat.NewGeminiService(cfg.GeminiAPIKey, cfg.GeminiModel)
+	} else {
+		chatSvc = chat.NewService(cfg.OpenAIAPIKey, cfg.OpenAIModel)
 	}
 
 	// Handlers

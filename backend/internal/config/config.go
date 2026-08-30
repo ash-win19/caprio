@@ -28,6 +28,9 @@ type Config struct {
 	GeminiAPIKey string
 	GeminiModel  string
 
+	// Mastra (general conversation agent)
+	MastraURL string
+
 	// CORS
 	CORSAllowedOrigins string
 }
@@ -56,6 +59,9 @@ func Load() Config {
 		// Gemini
 		GeminiAPIKey: os.Getenv("GEMINI_API_KEY"),
 		GeminiModel:  getEnv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
+
+		// Mastra
+		MastraURL: getEnv("MASTRA_URL", "http://localhost:4111"),
 
 		// CORS
 		CORSAllowedOrigins: getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173"),
