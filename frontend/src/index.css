@@ -15,7 +15,7 @@
     --popover: 240 5% 12%;
     --popover-foreground: 40 7% 94%;
 
-    --primary: 142 69% 58%;
+    --primary: 40 7% 96%;
     --primary-foreground: 240 6% 6%;
 
     --secondary: 240 4% 13%;
@@ -33,7 +33,7 @@
     --border: 240 3% 18%;
     --border-subtle: 240 3% 14%;
     --input: 240 3% 18%;
-    --ring: 142 69% 58%;
+    --ring: 40 7% 96%;
 
     --radius: 10px;
 
@@ -46,8 +46,8 @@
     --text-secondary: 240 2% 55%;
     --text-muted: 240 3% 35%;
 
-    --brand: 142 69% 58%;
-    --brand-dim: 152 61% 24%;
+    --brand: 40 7% 96%;
+    --brand-dim: 40 5% 72%;
     --amber: 44 93% 56%;
     --red: 0 91% 71%;
     --blue: 217 91% 68%;
@@ -63,12 +63,12 @@
 
     --sidebar-background: 240 5% 9%;
     --sidebar-foreground: 240 3% 55%;
-    --sidebar-primary: 142 69% 58%;
+    --sidebar-primary: 40 7% 96%;
     --sidebar-primary-foreground: 240 6% 6%;
     --sidebar-accent: 240 4% 12%;
     --sidebar-accent-foreground: 40 7% 94%;
     --sidebar-border: 240 3% 18%;
-    --sidebar-ring: 142 69% 58%;
+    --sidebar-ring: 40 7% 96%;
   }
 }
 

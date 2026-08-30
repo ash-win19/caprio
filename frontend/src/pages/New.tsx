@@ -1,9 +1,9 @@
 import { useCallback, useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Send, Mic, Loader2 } from "lucide-react";
+import { Mic, Loader2 } from "lucide-react";
 import { api, type ChatMessage, type ProcessResponse } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { PromptInput } from "@/components/agents/prompt-input";
 import { ConversationSidebar } from "@/components/ConversationSidebar";
 import type { ChatSession } from "@/lib/api";
 
@@ -17,6 +17,7 @@ export default function New() {
   const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
+  const [inputKey, setInputKey] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [currentResponse, setCurrentResponse] =
@@ -27,7 +28,6 @@ export default function New() {
   );
   const [isHistoryLoading, setIsHistoryLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const selectedDateRef = useRef(selectedDate);
 
   const today = new Date().toISOString().split("T")[0];
@@ -75,12 +75,13 @@ export default function New() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
+  const handleSend = async (value: string) => {
+    if (!value.trim() || isLoading) return;
 
-    const userMessage = input.trim();
+    const userMessage = value.trim();
     const requestDate = selectedDate;
     setInput("");
+    setInputKey(prev => prev + 1);
     setIsLoading(true);
 
     setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
@@ -112,7 +113,6 @@ export default function New() {
       }
     } finally {
       setIsLoading(false);
-      if (selectedDateRef.current === requestDate) textareaRef.current?.focus();
     }
   };
 
@@ -135,13 +135,6 @@ export default function New() {
     selectedDateRef.current = date;
     setSelectedDate(date);
   }, []);
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
 
   const showConfirmButton =
     currentResponse?.type === "tasks" &&
@@ -230,41 +223,30 @@ export default function New() {
         )}
 
         <div className="border-t border-border bg-background px-4 py-4">
-          <div className="mx-auto flex max-w-2xl items-end gap-3">
-            <div className="relative flex-1">
-              <Textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={
-                  messages.length === 0
-                    ? 'e.g., "I need to finish the report, have a team meeting, and go for a run"'
-                    : "Type your message..."
-                }
-                className="min-h-[52px] resize-none pr-12"
-                rows={1}
-              />
-              <button
-                type="button"
-                className="absolute bottom-2 right-2 flex h-8 w-8 items-center justify-center rounded-full bg-muted text-muted-foreground opacity-50 transition hover:opacity-75"
-                title="Voice input (coming soon)"
-              >
-                <Mic className="h-4 w-4" />
-              </button>
-            </div>
-            <Button
-              onClick={handleSend}
-              disabled={!input.trim() || isLoading}
-              size="icon"
-              className="h-[52px] w-[52px] shrink-0"
-            >
-              {isLoading ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                <Send className="h-5 w-5" />
-              )}
-            </Button>
+          <div className="mx-auto max-w-2xl">
+            <PromptInput
+              key={inputKey}
+              value={input}
+              onValueChange={setInput}
+              onSubmit={handleSend}
+              loading={isLoading}
+              disabled={isLoading}
+              placeholder={
+                messages.length === 0
+                  ? 'e.g., "I need to finish the report, have a team meeting, and go for a run"'
+                  : "Type your message..."
+              }
+              leadingAction={
+                <button
+                  type="button"
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground opacity-50 transition hover:opacity-75"
+                  title="Voice input (coming soon)"
+                  disabled
+                >
+                  <Mic className="h-4 w-4" />
+                </button>
+              }
+            />
           </div>
         </div>
       </main>
