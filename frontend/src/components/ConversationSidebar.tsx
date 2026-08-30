@@ -15,8 +15,40 @@ interface ConversationSidebarProps {
 function CaprioMark() {
   return (
     <span className="relative grid h-9 w-9 shrink-0 place-items-center rounded-[10px] bg-foreground">
-      <span className="absolute h-[3px] w-4 -translate-y-1 rounded-full bg-background" />
-      <span className="absolute h-[3px] w-2.5 translate-x-[3px] translate-y-1 rounded-full bg-background" />
+      <svg
+        viewBox="0 0 24 32"
+        className="h-5.5 w-auto"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M3 3C3 1.89543 3.89543 1 5 1H19C20.1046 1 21 1.89543 21 3V3C21 4.10457 20.1046 5 19 5H5C3.89543 5 3 4.10457 3 3V3Z"
+          fill="currentColor"
+          className="text-background"
+        />
+        <path
+          d="M5 5C5 5 5 8 5 11C5 13 7.5 14.5 10 15.5C11 16 12 16 12 16C12 16 13 16 14 15.5C16.5 14.5 19 13 19 11C19 8 19 5 19 5"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          fill="none"
+          className="text-background"
+        />
+        <path
+          d="M5 27C5 27 5 24 5 21C5 19 7.5 17.5 10 16.5C11 16 12 16 12 16C12 16 13 16 14 16.5C16.5 17.5 19 19 19 21C19 24 19 27 19 27"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          fill="none"
+          className="text-background"
+        />
+        <path
+          d="M3 29C3 27.8954 3.89543 27 5 27H19C20.1046 27 21 27.8954 21 29V29C21 30.1046 20.1046 31 19 31H5C3.89543 31 3 30.1046 3 29V29Z"
+          fill="currentColor"
+          className="text-background"
+        />
+        <ellipse cx="12" cy="26" rx="4.5" ry="2.5" fill="currentColor" className="text-background" />
+      </svg>
     </span>
   );
 }

@@ -53,8 +53,36 @@ function Logo({ footer = false }: { footer?: boolean }) {
   return (
     <span className="inline-flex items-center gap-2.5">
       <span className={`relative grid place-items-center rounded-[10px] bg-[#F5F5F3] ${footer ? 'h-8 w-8' : 'h-9 w-9'}`}>
-        <span className="absolute h-[3px] w-4 -translate-y-[4px] rounded-full bg-[#090909]" />
-        <span className="absolute h-[3px] w-2.5 translate-x-[3px] translate-y-[4px] rounded-full bg-[#090909]" />
+        <svg
+          viewBox="0 0 24 32"
+          className={footer ? 'h-5 w-auto' : 'h-5.5 w-auto'}
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M3 3C3 1.89543 3.89543 1 5 1H19C20.1046 1 21 1.89543 21 3V3C21 4.10457 20.1046 5 19 5H5C3.89543 5 3 4.10457 3 3V3Z"
+            fill="#090909"
+          />
+          <path
+            d="M5 5C5 5 5 8 5 11C5 13 7.5 14.5 10 15.5C11 16 12 16 12 16C12 16 13 16 14 15.5C16.5 14.5 19 13 19 11C19 8 19 5 19 5"
+            stroke="#090909"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            fill="none"
+          />
+          <path
+            d="M5 27C5 27 5 24 5 21C5 19 7.5 17.5 10 16.5C11 16 12 16 12 16C12 16 13 16 14 16.5C16.5 17.5 19 19 19 21C19 24 19 27 19 27"
+            stroke="#090909"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            fill="none"
+          />
+          <path
+            d="M3 29C3 27.8954 3.89543 27 5 27H19C20.1046 27 21 27.8954 21 29V29C21 30.1046 20.1046 31 19 31H5C3.89543 31 3 30.1046 3 29V29Z"
+            fill="#090909"
+          />
+          <ellipse cx="12" cy="26" rx="4.5" ry="2.5" fill="#090909" />
+        </svg>
       </span>
       <span className={`${footer ? 'text-lg' : 'text-[17px]'} font-semibold tracking-[-0.04em] text-white`}>caprio</span>
     </span>
