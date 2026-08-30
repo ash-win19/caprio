@@ -14,10 +14,34 @@ interface ConversationSidebarProps {
 
 function CaprioMark() {
   return (
-    <span className="relative grid h-9 w-9 shrink-0 place-items-center rounded-[10px] bg-foreground">
-      <span className="absolute h-[3px] w-4 -translate-y-1 rounded-full bg-background" />
-      <span className="absolute h-[3px] w-2.5 translate-x-[3px] translate-y-1 rounded-full bg-background" />
-    </span>
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 64 88"
+      fill="none"
+      role="img"
+      aria-label="Caprio"
+      className="h-5 w-auto shrink-0 text-foreground"
+    >
+      <g fill="currentColor" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
+        <path
+          d="M16 6
+             H48
+             A6 6 0 0 1 54 12
+             C54 26 46 34 32 44
+             C46 54 54 62 54 76
+             A6 6 0 0 1 48 82
+             H16
+             A6 6 0 0 1 10 76
+             C10 62 18 54 32 44
+             C18 34 10 26 10 12
+             A6 6 0 0 1 16 6
+             Z"
+          fill="none"
+          strokeWidth="7"
+        />
+        <path d="M22 78 L32 62 L42 78 Z" stroke="none"/>
+      </g>
+    </svg>
   );
 }
 
