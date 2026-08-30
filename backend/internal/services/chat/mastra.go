@@ -89,9 +89,9 @@ type mastraChatRequest struct {
 	Messages []mastraChatMessage `json:"messages"`
 }
 
-// parseAISDKStream extracts the text content from an AI SDK stream response
+// parseAISDKStream extracts the text content from an AI SDK v7 stream response
 func parseAISDKStream(body []byte) string {
-	// AI SDK v7 streams newline-delimited JSON
+	// AI SDK v7 streams newline-delimited JSON with "data: " prefix
 	lines := bytes.Split(body, []byte("\n"))
 	var result string
 
@@ -99,6 +99,16 @@ func parseAISDKStream(body []byte) string {
 		line = bytes.TrimSpace(line)
 		if len(line) == 0 {
 			continue
+		}
+
+		// Skip [DONE] marker
+		if string(line) == "data: [DONE]" {
+			continue
+		}
+
+		// Remove "data: " prefix
+		if bytes.HasPrefix(line, []byte("data: ")) {
+			line = bytes.TrimPrefix(line, []byte("data: "))
 		}
 
 		var event map[string]interface{}
