@@ -349,7 +349,7 @@ export default function Landing() {
               initial={reduceMotion ? false : { opacity: 0, y: 18 }}
               animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
               transition={{ duration: 0.7, delay: 0.16, ease }}
-              className="mx-auto mt-7 max-w-xl text-[15px] leading-7 text-white/45 md:whitespace-nowrap md:text-[17px]"
+              className="mx-auto mt-7 text-[15px] leading-7 text-white/45 md:whitespace-nowrap md:text-[17px]"
             >
               Caprio turns everything you need to do into a realistic day plan. Then reshapes it when life inevitably changes.
             </motion.p>
