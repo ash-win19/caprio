@@ -1,120 +1,94 @@
 package chat
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/ashwinshanmugam/caprio/backend/internal/db"
+	generated "github.com/ashwinshanmugam/caprio/backend/internal/db/generated"
+	"github.com/ashwinshanmugam/caprio/backend/internal/mastra"
 )
 
-// Processor is an interface for processing chat messages.
-type Processor interface {
-	Process(ctx context.Context, req ProcessRequest) (*ProcessResponse, error)
-}
-
-// Service handles chat processing by calling the OpenAI API.
+// Service orchestrates chat: persist user message, call Mastra agent, persist assistant reply.
 type Service struct {
-	apiKey     string
-	model      string
-	httpClient *http.Client
+	store         *db.Store
+	mastraClient  *mastra.Client
 }
 
-// NewService creates a new chat service.
-func NewService(apiKey, model string) *Service {
+// NewService creates a chat orchestration service.
+func NewService(store *db.Store, mastraClient *mastra.Client) *Service {
 	return &Service{
-		apiKey:     apiKey,
-		model:      model,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		store:        store,
+		mastraClient: mastraClient,
 	}
 }
 
-// Process sends the conversation to the OpenAI API and returns the assistant's response.
+// ProcessRequest holds the input for processing a chat turn.
+type ProcessRequest struct {
+	UserID      uuid.UUID
+	SessionDate pgtype.Date
+	Content     string
+}
+
+// ProcessResponse holds the result of processing a chat turn.
+type ProcessResponse struct {
+	UserMessage      generated.ChatMessage
+	AssistantMessage generated.ChatMessage
+}
+
+// Process handles a chat turn: store user message, call Mastra, store assistant reply.
 func (s *Service) Process(ctx context.Context, req ProcessRequest) (*ProcessResponse, error) {
-	messages := []openAIMessage{{Role: "system", Content: systemPrompt}}
-	for _, msg := range req.Messages {
-		messages = append(messages, openAIMessage{
+	// 1. Store the user message.
+	userMsg, err := s.store.Queries.CreateChatMessage(ctx, generated.CreateChatMessageParams{
+		UserID:      req.UserID,
+		SessionDate: req.SessionDate,
+		Role:        "user",
+		Content:     req.Content,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("store user message: %w", err)
+	}
+
+	// 2. Fetch conversation history.
+	allMessages, err := s.store.Queries.ListChatMessagesByUserAndDate(ctx, generated.ListChatMessagesByUserAndDateParams{
+		UserID:      req.UserID,
+		SessionDate: req.SessionDate,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("fetch conversation history: %w", err)
+	}
+
+	// 3. Convert to Mastra format.
+	mastraMessages := make([]mastra.ChatMessage, len(allMessages))
+	for i, msg := range allMessages {
+		mastraMessages[i] = mastra.ChatMessage{
 			Role:    msg.Role,
 			Content: msg.Content,
-		})
+		}
 	}
 
-	reqBody := openAIChatRequest{
-		Model:       s.model,
-		Messages:    messages,
-		Temperature: 0.7,
-		ResponseFormat: &openAIResponseFormat{Type: "json_object"},
-	}
-
-	bodyBytes, err := json.Marshal(reqBody)
+	// 4. Call Mastra agent.
+	response, err := s.mastraClient.Chat(ctx, mastraMessages)
 	if err != nil {
-		return nil, fmt.Errorf("marshal request body: %w", err)
+		return nil, fmt.Errorf("call mastra agent: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.openai.com/v1/chat/completions", bytes.NewReader(bodyBytes))
+	// 5. Store the assistant message.
+	assistantMsg, err := s.store.Queries.CreateChatMessage(ctx, generated.CreateChatMessageParams{
+		UserID:      req.UserID,
+		SessionDate: req.SessionDate,
+		Role:        "assistant",
+		Content:     response.Message,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
+		return nil, fmt.Errorf("store assistant message: %w", err)
 	}
 
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+s.apiKey)
-
-	resp, err := s.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read response body: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("openai api returned status %d: %s", resp.StatusCode, string(respBody))
-	}
-
-	var chatResp openAIChatResponse
-	if err := json.Unmarshal(respBody, &chatResp); err != nil {
-		return nil, fmt.Errorf("unmarshal chat response: %w", err)
-	}
-
-	if len(chatResp.Choices) == 0 {
-		return nil, fmt.Errorf("openai api returned no choices")
-	}
-
-	content := chatResp.Choices[0].Message.Content
-
-	var result ProcessResponse
-	if err := json.Unmarshal([]byte(content), &result); err != nil {
-		return nil, fmt.Errorf("unmarshal result from content: %w", err)
-	}
-
-	return &result, nil
-}
-
-type openAIChatRequest struct {
-	Model          string                `json:"model"`
-	Messages       []openAIMessage       `json:"messages"`
-	ResponseFormat *openAIResponseFormat `json:"response_format,omitempty"`
-	Temperature    float64               `json:"temperature"`
-}
-
-type openAIMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type openAIResponseFormat struct {
-	Type string `json:"type"`
-}
-
-type openAIChatResponse struct {
-	Choices []openAIChoice `json:"choices"`
-}
-
-type openAIChoice struct {
-	Message openAIMessage `json:"message"`
+	return &ProcessResponse{
+		UserMessage:      userMsg,
+		AssistantMessage: assistantMsg,
+	}, nil
 }

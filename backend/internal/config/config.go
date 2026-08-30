@@ -20,15 +20,11 @@ type Config struct {
 	// Groq (Speech-to-Text)
 	GroqAPIKey string
 
-	// OpenAI (LLM extraction + prioritization)
+	// OpenAI (task reprioritization)
 	OpenAIAPIKey string
 	OpenAIModel  string
 
-	// Gemini (conversation assistant)
-	GeminiAPIKey string
-	GeminiModel  string
-
-	// Mastra (general conversation agent)
+	// Mastra (conversation agent server)
 	MastraURL string
 
 	// CORS
@@ -56,12 +52,8 @@ func Load() Config {
 		OpenAIAPIKey: os.Getenv("OPENAI_API_KEY"),
 		OpenAIModel:  getEnv("OPENAI_MODEL", "gpt-4o-mini"),
 
-		// Gemini
-		GeminiAPIKey: os.Getenv("GEMINI_API_KEY"),
-		GeminiModel:  getEnv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
-
 		// Mastra
-		MastraURL: getEnv("MASTRA_URL", "http://localhost:4111"),
+		MastraURL: os.Getenv("MASTRA_URL"),
 
 		// CORS
 		CORSAllowedOrigins: getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173"),

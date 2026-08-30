@@ -16,7 +16,7 @@ import (
 // ChatHandler handles chat-related endpoints.
 type ChatHandler struct {
 	store       *db.Store
-	chatService chat.Processor
+	chatService *chat.Service
 }
 
 // ListSessions returns the user's most recent conversation sessions.
@@ -39,7 +39,7 @@ func (h *ChatHandler) ListSessions(c *gin.Context) {
 }
 
 // NewChatHandler creates a new ChatHandler.
-func NewChatHandler(store *db.Store, chatService chat.Processor) *ChatHandler {
+func NewChatHandler(store *db.Store, chatService *chat.Service) *ChatHandler {
 	return &ChatHandler{
 		store:       store,
 		chatService: chatService,
@@ -110,62 +110,23 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 		return
 	}
 
-	// Store the user message.
-	userMsg, err := h.store.Queries.CreateChatMessage(ctx, generated.CreateChatMessageParams{
-		UserID:      userID,
-		SessionDate: sessionDate,
-		Role:        "user",
-		Content:     req.Content,
-	})
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to store user message"})
-		return
-	}
-
-	// Get all messages for this session to provide context.
-	allMessages, err := h.store.Queries.ListChatMessagesByUserAndDate(ctx, generated.ListChatMessagesByUserAndDateParams{
-		UserID:      userID,
-		SessionDate: sessionDate,
-	})
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load conversation history"})
-		return
-	}
-
-	// Convert to service format.
-	var chatMessages []chat.Message
-	for _, msg := range allMessages {
-		chatMessages = append(chatMessages, chat.Message{
-			Role:    msg.Role,
-			Content: msg.Content,
-		})
-	}
-
-	// Process with AI.
+	// Process: persist user message, call Mastra, persist assistant reply.
 	response, err := h.chatService.Process(ctx, chat.ProcessRequest{
-		Messages: chatMessages,
+		UserID:      userID,
+		SessionDate: sessionDate,
+		Content:     req.Content,
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to process message"})
 		return
 	}
 
-	// Store the assistant message.
-	assistantMsg, err := h.store.Queries.CreateChatMessage(ctx, generated.CreateChatMessageParams{
-		UserID:      userID,
-		SessionDate: sessionDate,
-		Role:        "assistant",
-		Content:     response.Message,
-	})
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to store assistant message"})
-		return
-	}
-
 	c.JSON(http.StatusOK, gin.H{
-		"userMessage":      userMsg,
-		"assistantMessage": assistantMsg,
-		"response":         response,
+		"userMessage":      response.UserMessage,
+		"assistantMessage": response.AssistantMessage,
+		"response": gin.H{
+			"message": response.AssistantMessage.Content,
+		},
 	})
 }
 
