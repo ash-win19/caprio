@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth0 } from '@auth0/auth0-react';
 import { activateAccount } from '@/lib/accountSession';
 import { useAppStore } from '@/lib/store';
-import { api } from '@/lib/api';
+import { getDayStatus } from '@/lib/api';
 
 const PUBLIC_ROUTES = ['/', '/login', '/signup', '/landing'];
 
@@ -54,7 +54,7 @@ export function AuthGuard({ children }: { children: ReactNode }) {
       if (!isCheckingDayStatus) {
         setIsCheckingDayStatus(true);
         const today = new Date().toISOString().split('T')[0];
-        api.getDayStatus(today)
+        getDayStatus(today)
           .then((status) => {
             if (status.hasTasks) {
               navigate('/today', { replace: true });

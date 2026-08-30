@@ -58,16 +58,7 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promi
   return response;
 }
 
-// Chat types
-export interface ChatMessage {
-  id: string;
-  userId: string;
-  sessionDate: string;
-  role: 'user' | 'assistant';
-  content: string;
-  createdAt: string;
-}
-
+// Chat types (preserved for type compatibility, not used)
 export interface ChatSession {
   sessionDate: string;
   title: string;
@@ -75,30 +66,10 @@ export interface ChatSession {
   updatedAt: string;
 }
 
-export interface ProcessResponse {
-  type: 'question' | 'confirmation' | 'tasks';
-  message: string;
-  proposedTasks?: Array<{
-    title: string;
-    description?: string;
-    duration?: number;
-    urgency?: string;
-    priorityReason?: string;
-  }>;
-}
-
-export interface SendMessageResponse {
-  userMessage: ChatMessage;
-  assistantMessage: ChatMessage;
-  response: ProcessResponse;
-}
-
 export interface DayStatus {
   date: string;
   hasTasks: boolean;
   taskCount: number;
-  hasChatMessages: boolean;
-  chatMessageCount: number;
 }
 
 // Task types
@@ -159,52 +130,16 @@ function mapBackendTaskToTask(backendTask: BackendTask): Task {
   };
 }
 
-// API object for chat methods (used by New.tsx)
-export const api = {
-  // Chat endpoints
-  async getChatSessions(): Promise<{ sessions: ChatSession[] }> {
-    const response = await fetchWithAuth('/api/chat/sessions');
-    return response.json();
-  },
+// Day endpoints
+export async function getDayStatus(date: string): Promise<DayStatus> {
+  const response = await fetchWithAuth(`/api/day/${date}/status`);
+  return response.json();
+}
 
-  async getChatMessages(date: string): Promise<{ messages: ChatMessage[] }> {
-    const response = await fetchWithAuth(`/api/chat/${date}`);
-    return response.json();
-  },
-
-  async sendChatMessage(date: string, content: string): Promise<SendMessageResponse> {
-    const response = await fetchWithAuth(`/api/chat/${date}`, {
-      method: 'POST',
-      body: JSON.stringify({ content }),
-    });
-    return response.json();
-  },
-
-  async confirmTasks(date: string, tasks: Array<{
-    title: string;
-    description?: string;
-    duration?: number;
-    urgency?: string;
-    priorityReason?: string;
-  }>): Promise<{ tasks: BackendTask[] }> {
-    const response = await fetchWithAuth(`/api/chat/${date}/confirm`, {
-      method: 'POST',
-      body: JSON.stringify({ tasks }),
-    });
-    return response.json();
-  },
-
-  // Day endpoints
-  async getDayStatus(date: string): Promise<DayStatus> {
-    const response = await fetchWithAuth(`/api/day/${date}/status`);
-    return response.json();
-  },
-
-  async getLeftovers(): Promise<{ leftovers: BackendTask[] }> {
-    const response = await fetchWithAuth(`/api/day/leftovers`);
-    return response.json();
-  },
-};
+export async function getLeftovers(): Promise<{ leftovers: BackendTask[] }> {
+  const response = await fetchWithAuth(`/api/day/leftovers`);
+  return response.json();
+}
 
 // Standalone functions for React Query hooks
 export async function bootstrap(): Promise<BootstrapResponse> {
