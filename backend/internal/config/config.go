@@ -55,7 +55,7 @@ func Load() Config {
 
 		// Gemini
 		GeminiAPIKey: os.Getenv("GEMINI_API_KEY"),
-		GeminiModel:  getEnv("GEMINI_MODEL", "gemini-3.7-flash"),
+		GeminiModel:  getEnv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
 
 		// CORS
 		CORSAllowedOrigins: getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173"),
