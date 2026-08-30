@@ -68,6 +68,13 @@ export interface ChatMessage {
   createdAt: string;
 }
 
+export interface ChatSession {
+  sessionDate: string;
+  title: string;
+  messageCount: number;
+  updatedAt: string;
+}
+
 export interface ProcessResponse {
   type: 'question' | 'confirmation' | 'tasks';
   message: string;
@@ -155,6 +162,11 @@ function mapBackendTaskToTask(backendTask: BackendTask): Task {
 // API object for chat methods (used by New.tsx)
 export const api = {
   // Chat endpoints
+  async getChatSessions(): Promise<{ sessions: ChatSession[] }> {
+    const response = await fetchWithAuth('/api/chat/sessions');
+    return response.json();
+  },
+
   async getChatMessages(date: string): Promise<{ messages: ChatMessage[] }> {
     const response = await fetchWithAuth(`/api/chat/${date}`);
     return response.json();

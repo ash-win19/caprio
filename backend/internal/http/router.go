@@ -46,7 +46,10 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 
 	// Services
 	reprioritizeSvc := reprioritize.NewService(cfg.OpenAIAPIKey, cfg.OpenAIModel)
-	chatSvc := chat.NewService(cfg.OpenAIAPIKey, cfg.OpenAIModel)
+	var chatSvc chat.Processor = chat.NewService(cfg.OpenAIAPIKey, cfg.OpenAIModel)
+	if cfg.GeminiAPIKey != "" {
+		chatSvc = chat.NewGeminiService(cfg.GeminiAPIKey, cfg.GeminiModel)
+	}
 
 	// Handlers
 	bootstrap := handlers.NewBootstrapHandler(store)
@@ -76,6 +79,7 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 		api.GET("/day/:date/status", dayH.GetStatus)
 		api.GET("/day/leftovers", dayH.GetLeftovers)
 
+		api.GET("/chat/sessions", chatH.ListSessions)
 		api.GET("/chat/:date", chatH.GetMessages)
 		api.POST("/chat/:date", chatH.SendMessage)
 		api.POST("/chat/:date/confirm", chatH.ConfirmTasks)
