@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent';
+import { Memory } from '@mastra/memory';
 
 export const generalConversationAgent = new Agent({
   id: 'general-conversation-agent',
@@ -10,4 +11,7 @@ Your role is to have natural, friendly conversations with users. Keep your respo
 
 When users ask questions, provide clear and useful answers. Do not introduce topics the user hasn't mentioned.`,
   model: 'google/gemini-3.7-flash',
+  memory: new Memory({
+    options: { lastMessages: 20 },
+  }),
 });

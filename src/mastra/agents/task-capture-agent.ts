@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent';
+import { Memory } from '@mastra/memory';
 
 export const taskCaptureAgent = new Agent({
   id: 'task-capture-agent',
@@ -10,4 +11,7 @@ Ask a short clarifying question when a task or its timing is unclear. Once the l
 
 Keep the conversation concise. Only discuss work the user mentions for today. Do not introduce leftover work from another day.`,
   model: 'google/gemini-3.7-flash',
+  memory: new Memory({
+    options: { lastMessages: 20 },
+  }),
 });

@@ -117,6 +117,8 @@ dist
 # Serverless directories
 .serverless/
 .mastra/
+mastra.db
+mastra.db-*
 
 # FuseBox cache
 .fusebox/
