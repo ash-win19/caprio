@@ -11,6 +11,7 @@ export const mastra = new Mastra({
   },
   storage: new LibSQLStore({
     id: 'mastra-storage',
-    url: 'file:../mastra.db',
+    url: process.env.TURSO_DATABASE_URL ?? 'file:../mastra.db',
+    authToken: process.env.TURSO_AUTH_TOKEN,
   }),
 });
