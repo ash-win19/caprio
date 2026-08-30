@@ -1,0 +1,23 @@
+{
+  "name": "caprio-mastra",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.22.0"
+  },
+  "scripts": {
+    "dev": "mastra dev",
+    "build": "mastra build",
+    "start": "mastra start",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mastra/core": "1.63.2"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "mastra": "1.27.2",
+    "typescript": "^6.0.3"
+  }
+}
