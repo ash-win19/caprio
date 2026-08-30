@@ -6,7 +6,6 @@ import {
   Check,
   ChevronRight,
   CircleDot,
-  Clock3,
   Inbox,
   Layers3,
   ListTodo,
@@ -519,7 +518,36 @@ export default function Landing() {
         <section className="relative px-5 py-28 md:px-8 md:py-40">
           <div className="pointer-events-none absolute inset-0 [background-image:radial-gradient(circle_at_center,rgba(255,255,255,0.1),transparent_40%)]" />
           <Reveal className="relative mx-auto max-w-3xl text-center">
-            <div className="mx-auto mb-7 grid h-14 w-14 place-items-center rounded-2xl bg-[#F5F5F3]"><Clock3 size={22} className="text-[#090909]" /></div>
+            <div className="mx-auto mb-7 grid h-14 w-14 place-items-center rounded-2xl bg-[#F5F5F3]">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 64 88"
+                fill="none"
+                role="img"
+                aria-label="Caprio"
+                className="h-7 w-auto text-[#090909]"
+              >
+                <g fill="currentColor" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
+                  <path
+                    d="M16 6
+                       H48
+                       A6 6 0 0 1 54 12
+                       C54 26 46 34 32 44
+                       C46 54 54 62 54 76
+                       A6 6 0 0 1 48 82
+                       H16
+                       A6 6 0 0 1 10 76
+                       C10 62 18 54 32 44
+                       C18 34 10 26 10 12
+                       A6 6 0 0 1 16 6
+                       Z"
+                    fill="none"
+                    strokeWidth="7"
+                  />
+                  <path d="M22 78 L32 62 L42 78 Z" stroke="none"/>
+                </g>
+              </svg>
+            </div>
             <h2 className="text-4xl font-medium leading-[1.02] tracking-[-0.06em] md:text-6xl">Give your day a brain.</h2>
             <p className="mx-auto mt-6 max-w-lg text-[15px] leading-7 text-white/40">Bring your calendar and priorities together. Start each morning clear, and stay clear when the day changes.</p>
             <Link to="/signup" className="group mx-auto mt-8 flex h-12 w-fit items-center gap-2 rounded-full bg-[#F5F5F3] px-6 text-[13px] font-semibold text-[#090909] transition hover:bg-white">
