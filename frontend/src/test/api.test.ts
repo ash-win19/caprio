@@ -75,6 +75,37 @@ describe('API Client', () => {
     });
   });
 
+  describe('Chat Operations', () => {
+    it('should send a chat message and receive response', async () => {
+      vi.mocked(localStorage.getItem).mockReturnValue('test-token');
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ text: 'Hello! How can I help you?' }),
+      } as Response);
+
+      const result = await api.sendChatMessage('Hello');
+
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/chat'),
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ content: 'Hello' }),
+        })
+      );
+      expect(result.text).toBe('Hello! How can I help you?');
+    });
+
+    it('should handle chat errors', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: false,
+        status: 500,
+      } as Response);
+
+      await expect(api.sendChatMessage('Hello')).rejects.toThrow('Internal server error');
+    });
+  });
+
   describe('Task Operations', () => {
     it('should create a task', async () => {
       const mockTask: api.BackendTask = {

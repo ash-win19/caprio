@@ -267,3 +267,11 @@ export async function updateSettings(prefs: Partial<UserPrefs>): Promise<void> {
   // TODO: Implement backend endpoint for updating user preferences
   console.warn('updateSettings not yet implemented on backend');
 }
+
+export async function sendChatMessage(content: string): Promise<{ text: string }> {
+  const response = await fetchWithAuth('/api/chat', {
+    method: 'POST',
+    body: JSON.stringify({ content }),
+  });
+  return response.json();
+}
