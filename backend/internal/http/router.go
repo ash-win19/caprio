@@ -10,6 +10,8 @@ import (
 	"github.com/ashwinshanmugam/caprio/backend/internal/db"
 	"github.com/ashwinshanmugam/caprio/backend/internal/http/handlers"
 	"github.com/ashwinshanmugam/caprio/backend/internal/http/middleware"
+	"github.com/ashwinshanmugam/caprio/backend/internal/mastra"
+	"github.com/ashwinshanmugam/caprio/backend/internal/services/chat"
 	"github.com/ashwinshanmugam/caprio/backend/internal/services/reprioritize"
 )
 
@@ -46,6 +48,13 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 	// Services
 	reprioritizeSvc := reprioritize.NewService(cfg.OpenAIAPIKey, cfg.OpenAIModel)
 
+	var chatH *handlers.ChatHandler
+	if cfg.MastraURL != "" {
+		mastraClient := mastra.NewClient(cfg.MastraURL)
+		chatSvc := chat.NewService(store, mastraClient)
+		chatH = handlers.NewChatHandler(store, chatSvc)
+	}
+
 	// Handlers
 	bootstrap := handlers.NewBootstrapHandler(store)
 	onboarding := handlers.NewOnboardingHandler(store)
@@ -72,6 +81,10 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 		api.POST("/day/close", dayClose.Close)
 		api.GET("/day/:date/status", dayH.GetStatus)
 		api.GET("/day/leftovers", dayH.GetLeftovers)
+
+		if chatH != nil {
+			api.POST("/chat", chatH.SendMessage)
+		}
 	}
 
 	return r

@@ -2,9 +2,10 @@ import { useState, useEffect, useRef } from "react";
 import { Mic } from "lucide-react";
 import { PromptInput } from "@/components/agents/prompt-input";
 import { ConversationSidebar } from "@/components/ConversationSidebar";
+import { sendChatMessage } from "@/lib/api";
 
 interface Message {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "error";
   content: string;
 }
 
@@ -12,20 +13,32 @@ export default function New() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [inputKey, setInputKey] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleSend = (value: string) => {
-    if (!value.trim()) return;
+  const handleSend = async (value: string) => {
+    if (!value.trim() || isLoading) return;
 
     const userMessage = value.trim();
     setInput("");
     setInputKey((prev) => prev + 1);
 
     setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
+    setIsLoading(true);
+
+    try {
+      const response = await sendChatMessage(userMessage);
+      setMessages((prev) => [...prev, { role: "assistant", content: response.text }]);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to get response";
+      setMessages((prev) => [...prev, { role: "error", content: `Error: ${errorMessage}` }]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -62,7 +75,9 @@ export default function New() {
                       className={`max-w-[85%] rounded-2xl px-4 py-3 ${
                         msg.role === "user"
                           ? "bg-primary text-primary-foreground"
-                          : "bg-muted text-foreground"
+                          : msg.role === "error"
+                            ? "bg-destructive/10 text-destructive border border-destructive/20"
+                            : "bg-muted text-foreground"
                       }`}
                     >
                       <div className="whitespace-pre-wrap text-sm leading-relaxed">
@@ -71,6 +86,15 @@ export default function New() {
                     </div>
                   </div>
                 ))}
+                {isLoading && (
+                  <div className="flex justify-start">
+                    <div className="max-w-[85%] rounded-2xl px-4 py-3 bg-muted text-foreground">
+                      <div className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+                        Thinking...
+                      </div>
+                    </div>
+                  </div>
+                )}
               </>
             )}
             <div ref={messagesEndRef} />
@@ -84,8 +108,8 @@ export default function New() {
               value={input}
               onValueChange={setInput}
               onSubmit={handleSend}
-              loading={false}
-              disabled={false}
+              loading={isLoading}
+              disabled={isLoading}
               placeholder={
                 messages.length === 0
                   ? 'e.g., "I need to finish the report, have a team meeting, and go for a run"'
