@@ -232,18 +232,25 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
 
   return (
     <>
-      {desktopOpen ? (
-        <aside
-          id="conversation-sidebar"
-          className="hidden h-screen w-[280px] shrink-0 border-r border-border md:block"
+      <aside
+        id="conversation-sidebar"
+        className={`relative hidden h-screen shrink-0 overflow-hidden border-r border-border bg-card transition-[width] duration-300 ease-in-out motion-reduce:transition-none md:block ${desktopOpen ? "w-[280px]" : "w-16"}`}
+      >
+        <div
+          aria-hidden={!desktopOpen}
+          {...(!desktopOpen ? { inert: "" } : {})}
+          className={`absolute inset-y-0 left-0 w-[279px] transition-opacity duration-200 ease-in-out motion-reduce:transition-none ${desktopOpen ? "opacity-100" : "pointer-events-none opacity-0"}`}
         >
           <SidebarContent
             {...props}
             onCollapse={() => setDesktopOpen(false)}
           />
-        </aside>
-      ) : (
-        <aside className="hidden h-screen w-16 shrink-0 flex-col items-center border-r border-border bg-card py-4 md:flex">
+        </div>
+        <div
+          aria-hidden={desktopOpen}
+          {...(desktopOpen ? { inert: "" } : {})}
+          className={`absolute inset-y-0 left-0 flex w-[63px] flex-col items-center py-4 transition-opacity duration-200 ease-in-out motion-reduce:transition-none ${desktopOpen ? "pointer-events-none opacity-0" : "opacity-100"}`}
+        >
           <Link to="/today" aria-label="Go to today" className="p-2">
             <CaprioMark />
           </Link>
@@ -266,8 +273,8 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
           >
             {initial}
           </Link>
-        </aside>
-      )}
+        </div>
+      </aside>
 
       <div className="absolute left-4 top-4 z-30 md:hidden">
         <button

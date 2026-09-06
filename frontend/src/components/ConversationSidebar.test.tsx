@@ -30,13 +30,17 @@ describe("ConversationSidebar", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByPlaceholderText("Search conversations")).toBeInTheDocument();
+    const search = screen.getByRole("textbox");
+    fireEvent.change(search, { target: { value: "planning" } });
 
     fireEvent.click(screen.getByRole("button", { name: "Collapse sidebar" }));
 
-    expect(screen.queryByPlaceholderText("Search conversations")).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(search.closest("[inert]")).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Expand sidebar" }));
 
-    expect(screen.getByPlaceholderText("Search conversations")).toBeInTheDocument();
+    expect(screen.getByRole("textbox")).toBe(search);
+    expect(search).toHaveValue("planning");
+    expect(search.closest("[inert]")).toBeNull();
   });
 });

@@ -101,7 +101,7 @@ export default function New() {
           </div>
         </div>
 
-        <div className="border-t border-border bg-background px-4 py-4">
+        <div className="bg-background px-4 py-4">
           <div className="mx-auto max-w-2xl">
             <PromptInput
               key={inputKey}
