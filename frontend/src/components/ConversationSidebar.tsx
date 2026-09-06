@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import type { ChatSession } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
+import { UserAvatar } from "@/components/UserAvatar";
 
 interface ConversationSidebarProps {
   sessions: ChatSession[];
@@ -82,7 +83,6 @@ function SidebarContent({
       session.title.toLowerCase().includes(normalizedQuery),
     );
   }, [query, sessions]);
-  const initial = user?.name?.trim().charAt(0).toUpperCase() || "C";
 
   const chooseSession = (date: string) => {
     onSelect(date);
@@ -208,9 +208,7 @@ function SidebarContent({
         to="/settings"
         className="flex items-center gap-3 border-t border-border px-4 py-4 transition hover:bg-accent/60"
       >
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-          {initial}
-        </span>
+        <UserAvatar user={user} className="h-9 w-9" />
         <span className="min-w-0">
           <span className="block truncate text-sm font-medium text-foreground">
             {user?.name || "Caprio user"}
@@ -228,7 +226,6 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [desktopOpen, setDesktopOpen] = useState(true);
   const user = useAppStore((state) => state.user);
-  const initial = user?.name?.trim().charAt(0).toUpperCase() || "C";
 
   return (
     <>
@@ -271,7 +268,7 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
             className="mt-auto grid h-10 w-10 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground"
             title={user?.name || "Caprio user"}
           >
-            {initial}
+            <UserAvatar user={user} />
           </Link>
         </div>
       </aside>

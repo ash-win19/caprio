@@ -1,6 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { LayoutGrid, Plus, CheckSquare, TrendingUp, Settings, User } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
+import { UserAvatar } from '@/components/UserAvatar';
 
 const NAV_ITEMS = [
   { label: 'Today', path: '/today', icon: LayoutGrid },
@@ -53,9 +54,7 @@ export function AppSidebar() {
       </div>
 
       <div className="border-t border-border px-5 py-3 flex items-center gap-3">
-        <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-xs font-medium text-foreground">
-          {user?.name?.[0] || 'D'}
-        </div>
+        <UserAvatar user={user} className="h-8 w-8" fallbackClassName="bg-accent text-xs font-medium text-foreground" />
         <span className="text-xs text-muted-foreground truncate">{user?.name || 'Demo User'}</span>
       </div>
     </aside>

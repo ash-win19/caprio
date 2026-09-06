@@ -3,6 +3,7 @@ import { ChevronRight, LogOut } from 'lucide-react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { clearActiveAccount } from '@/lib/accountSession';
 import { useAppStore } from '@/lib/store';
+import { UserAvatar } from '@/components/UserAvatar';
 
 export default function SettingsPage() {
   const { user, setUser, resetAccountState } = useAppStore();
@@ -36,9 +37,7 @@ export default function SettingsPage() {
         <p className="text-caption uppercase tracking-wider mb-2">Account</p>
         <div className="bg-card border border-border rounded-lg overflow-hidden">
           <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
-            <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-xs font-medium text-foreground">
-              {user?.name?.[0] || 'D'}
-            </div>
+            <UserAvatar user={user} className="h-8 w-8" fallbackClassName="bg-accent text-xs font-medium text-foreground" />
             <div className="flex-1">
               <p className="text-sm text-foreground">{user?.name || 'Demo User'}</p>
               <p className="text-xs text-muted-foreground">{user?.email || 'demo@caprio.app'}</p>

@@ -21,7 +21,7 @@ const DEFAULT_PREFS: UserPrefs = {
 };
 
 interface AppState {
-  user: { name: string; email: string; categories: string[] } | null;
+  user: { name: string; email: string; picture?: string; categories: string[] } | null;
   tasks: Task[];
   capturePool: Task[];
   carriedOver: Task[];
