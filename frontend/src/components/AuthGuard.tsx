@@ -27,10 +27,15 @@ export function AuthGuard({ children }: { children: ReactNode }) {
     const nextUser = {
       name: user.name || user.nickname || user.email || 'Caprio user',
       email: user.email || '',
+      picture: user.picture,
       categories: currentUser?.categories || [],
     };
 
-    if (currentUser?.name !== nextUser.name || currentUser?.email !== nextUser.email) {
+    if (
+      currentUser?.name !== nextUser.name ||
+      currentUser?.email !== nextUser.email ||
+      currentUser?.picture !== nextUser.picture
+    ) {
       setUser(nextUser);
     }
     initializeMockData();
