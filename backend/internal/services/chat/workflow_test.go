@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 
@@ -98,6 +99,31 @@ func (f *fakeAgent) Chat(_ context.Context, m []mastra.ChatMessage, _, _, model 
 	f.last = m
 	f.lastModel = model
 	return &mastra.ChatResponse{Message: f.response}, nil
+}
+
+// StreamChat delivers the canned reply in small fragments, like a model would.
+func (f *fakeAgent) StreamChat(ctx context.Context, m []mastra.ChatMessage, thread, resource, model string, onDelta func(string)) (*mastra.ChatResponse, error) {
+	resp, err := f.Chat(ctx, m, thread, resource, model)
+	if err != nil {
+		return nil, err
+	}
+	for i := 0; i < len(resp.Message); i += 7 {
+		onDelta(resp.Message[i:min(i+7, len(resp.Message))])
+	}
+	return resp, nil
+}
+
+func TestProcessStreamForwardsOnlyTheMessageText(t *testing.T) {
+	s, a, user, date := testService(t)
+	a.response = `{"message":"Start with the report, then rest.","phase":"clarifying","availableMinutes":null,"tasks":[]}`
+	var streamed strings.Builder
+	r, err := s.ProcessStream(context.Background(), ProcessRequest{UserID: user, SessionDate: date, Content: "Plan my day", RequestID: uuid.New(), Model: "groq/openai/gpt-oss-20b"}, func(text string) { streamed.WriteString(text) })
+	require.NoError(t, err)
+	require.Equal(t, "Start with the report, then rest.", streamed.String())
+	require.Equal(t, r.Text, streamed.String())
+	require.Len(t, r.Workflow.Messages, 2)
+	require.Equal(t, 1, a.calls)
+	require.Equal(t, "groq/openai/gpt-oss-20b", a.lastModel)
 }
 func testService(t *testing.T) (*Service, *fakeAgent, uuid.UUID, pgtype.Date) {
 	t.Helper()

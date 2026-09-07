@@ -14,6 +14,7 @@ import {
 import type { ChatSession } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
 import { UserAvatar } from "@/components/UserAvatar";
+import { CaprioMark, Logo } from "@/components/Logo";
 
 interface ConversationSidebarProps {
   sessions: ChatSession[];
@@ -21,39 +22,6 @@ interface ConversationSidebarProps {
   isLoading: boolean;
   onSelect: (date: string) => void;
   onToday: () => void;
-}
-
-function CaprioMark() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 64 88"
-      fill="none"
-      role="img"
-      aria-label="Caprio"
-      className="h-5 w-auto shrink-0 text-foreground"
-    >
-      <g fill="currentColor" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
-        <path
-          d="M16 6
-             H48
-             A6 6 0 0 1 54 12
-             C54 26 46 34 32 44
-             C46 54 54 62 54 76
-             A6 6 0 0 1 48 82
-             H16
-             A6 6 0 0 1 10 76
-             C10 62 18 54 32 44
-             C18 34 10 26 10 12
-             A6 6 0 0 1 16 6
-             Z"
-          fill="none"
-          strokeWidth="7"
-        />
-        <path d="M22 78 L32 62 L42 78 Z" stroke="none"/>
-      </g>
-    </svg>
-  );
 }
 
 function formatSessionDate(value: string) {
@@ -99,15 +67,8 @@ function SidebarContent({
   return (
     <div className="flex h-full flex-col bg-card">
       <div className="flex items-center justify-between px-4 pb-3 pt-4">
-        <Link
-          to="/today"
-          className="flex items-center gap-2.5"
-          aria-label="Go to today"
-        >
-          <CaprioMark />
-          <span className="text-base font-semibold tracking-tight text-foreground">
-            caprio
-          </span>
+        <Link to="/today" className="inline-flex" aria-label="Go to today">
+          <Logo />
         </Link>
         <div className="flex items-center gap-1">
           {onCollapse && (

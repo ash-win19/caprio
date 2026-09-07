@@ -104,6 +104,66 @@ describe('API Client', () => {
     });
   });
 
+  describe('Chat Streaming', () => {
+    const encoder = new TextEncoder();
+    const streamed = (...parts: string[]) => ({
+      ok: true,
+      status: 200,
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          parts.forEach((part) => controller.enqueue(encoder.encode(part)));
+          controller.close();
+        },
+      }),
+    } as unknown as Response);
+
+    it('forwards deltas and resolves with the committed reply', async () => {
+      vi.mocked(fetch).mockResolvedValue(streamed(
+        'event: delta\ndata: {"text":"How much"}\n\n',
+        'event: delta\ndata: {"te',
+        'xt":" time?"}\n\nevent: done\ndata: {"text":"How much time?","workflow":{"date":"2026-09-06"}}\n\n',
+      ));
+      const deltas: string[] = [];
+
+      const result = await api.streamChatMessage({ content: 'Hello', date: '2026-09-06', requestId: '92fc090b-0111-42cc-9a34-a8c0052205e9', onDelta: (text) => deltas.push(text) });
+
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/chat/stream'),
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ content: 'Hello', date: '2026-09-06', requestId: '92fc090b-0111-42cc-9a34-a8c0052205e9' }),
+        }),
+      );
+      expect(deltas).toEqual(['How much', ' time?']);
+      expect(result).toEqual({ text: 'How much time?', workflow: { date: '2026-09-06' } });
+    });
+
+    it('reads the whole body when the response cannot be streamed', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        status: 200,
+        body: null,
+        text: async () => 'event: done\ndata: {"text":"Done","workflow":{}}\n\n',
+      } as unknown as Response);
+
+      const result = await api.streamChatMessage({ content: 'Hello' });
+
+      expect(result.text).toBe('Done');
+    });
+
+    it('surfaces an error event with its status', async () => {
+      vi.mocked(fetch).mockResolvedValue(streamed('event: delta\ndata: {"text":"partial"}\n\n', 'event: error\ndata: {"error":"the plan changed","status":409}\n\n'));
+
+      await expect(api.streamChatMessage({ content: 'Hello' })).rejects.toMatchObject({ status: 409, message: 'the plan changed' });
+    });
+
+    it('rejects when the stream ends without a result', async () => {
+      vi.mocked(fetch).mockResolvedValue(streamed('event: delta\ndata: {"text":"partial"}\n\n'));
+
+      await expect(api.streamChatMessage({ content: 'Hello' })).rejects.toThrow('The connection dropped before the reply finished.');
+    });
+  });
+
   describe('Task Operations', () => {
     it('should create a task', async () => {
       const mockTask: api.BackendTask = {

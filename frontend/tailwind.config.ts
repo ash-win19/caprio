@@ -62,11 +62,16 @@ export default {
           "0%": { transform: "scale(1)", opacity: "0.5" },
           "100%": { transform: "scale(1.6)", opacity: "0" },
         },
+        "typing-dot": {
+          "0%, 60%, 100%": { opacity: "0.3", transform: "translateY(0)" },
+          "30%": { opacity: "1", transform: "translateY(-2px)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "pulse-ring": "pulse-ring 3s ease-out infinite",
+        "typing-dot": "typing-dot 1.2s ease-in-out infinite",
       },
     },
   },

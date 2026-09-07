@@ -339,14 +339,112 @@ export async function getChatSessions(): Promise<ChatSession[]> {
   return data.sessions || [];
 }
 
-export async function sendChatMessage(content: string, date = localDate(), requestId: string = crypto.randomUUID(), model?: string): Promise<{ text: string; workflow: Workflow }> {
+export interface ChatReply {
+  text: string;
+  workflow: Workflow;
+}
+
+function chatMessageBody(content: string, date: string, requestId: string, model?: string) {
   const body: { content: string; date: string; requestId: string; model?: string } = { content, date, requestId };
   if (model) body.model = model;
+  return JSON.stringify(body);
+}
+
+export async function sendChatMessage(
+  content: string,
+  date = localDate(),
+  requestId: string = crypto.randomUUID(),
+  model?: string,
+): Promise<ChatReply> {
   const response = await fetchWithAuth('/api/chat', {
     method: 'POST',
-    body: JSON.stringify(body),
+    body: chatMessageBody(content, date, requestId, model),
   });
   return response.json();
+}
+
+export interface ChatStreamInput {
+  content: string;
+  date?: string;
+  requestId?: string;
+  model?: string;
+  signal?: AbortSignal;
+  onDelta?: (text: string) => void;
+}
+
+// Incremental server-sent events parser. Events are separated by a blank line;
+// a chunk boundary can fall anywhere, including inside a line.
+function createEventParser(onEvent: (event: string, data: Record<string, unknown>) => void) {
+  let buffer = '';
+  const dispatch = (block: string) => {
+    let event = 'message';
+    const data: string[] = [];
+    for (const line of block.split('\n')) {
+      if (line.startsWith('event:')) event = line.slice(6).trim();
+      else if (line.startsWith('data:')) data.push(line.slice(5).replace(/^ /, ''));
+    }
+    if (data.length) onEvent(event, JSON.parse(data.join('\n')));
+  };
+  return {
+    push(chunk: string) {
+      buffer += chunk.replace(/\r\n/g, '\n');
+      let end = buffer.indexOf('\n\n');
+      while (end >= 0) {
+        dispatch(buffer.slice(0, end));
+        buffer = buffer.slice(end + 2);
+        end = buffer.indexOf('\n\n');
+      }
+    },
+    flush() {
+      if (buffer.trim()) dispatch(buffer);
+      buffer = '';
+    },
+  };
+}
+
+// Streams the assistant's reply. "delta" events carry text as it is generated,
+// "done" carries the committed reply and workflow, and "error" reports a
+// failure after streaming began. Errors before the first delta arrive as
+// ordinary HTTP status codes and are thrown by fetchWithAuth.
+export async function streamChatMessage({
+  content,
+  date = localDate(),
+  requestId = crypto.randomUUID(),
+  model,
+  signal,
+  onDelta,
+}: ChatStreamInput): Promise<ChatReply> {
+  const response = await fetchWithAuth('/api/chat/stream', {
+    method: 'POST',
+    headers: { Accept: 'text/event-stream' },
+    body: chatMessageBody(content, date, requestId, model),
+    signal,
+  });
+  const result: { reply: ChatReply | null } = { reply: null };
+  const parser = createEventParser((event, data) => {
+    if (event === 'delta') {
+      if (typeof data.text === 'string' && data.text) onDelta?.(data.text);
+    } else if (event === 'done') {
+      result.reply = data as unknown as ChatReply;
+    } else if (event === 'error') {
+      throw new ApiError(typeof data.status === 'number' ? data.status : 500, typeof data.error === 'string' ? data.error : 'Request failed');
+    }
+  });
+  if (response.body) {
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      parser.push(decoder.decode(value, { stream: true }));
+    }
+    parser.push(decoder.decode());
+  } else {
+    parser.push(await response.text());
+  }
+  parser.flush();
+  if (!result.reply) throw new ApiError(0, 'The connection dropped before the reply finished. Please try again.');
+  return result.reply;
 }
 
 export async function confirmDayPlan(input: { date: string; proposalId: string; version: number }): Promise<Workflow> {

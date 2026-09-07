@@ -103,6 +103,13 @@ func (s *Service) Get(ctx context.Context, userID uuid.UUID, date pgtype.Date) (
 // Process persists both sides of a turn and its proposal atomically. No task is
 // written here. A retry with the same request ID cannot call the model twice.
 func (s *Service) Process(ctx context.Context, req ProcessRequest) (*ProcessResponse, error) {
+	return s.ProcessStream(ctx, req, nil)
+}
+
+// ProcessStream is Process with live delivery: when the agent can stream and
+// onDelta is set, the assistant's message text is forwarded as it is generated.
+// Deltas are provisional; only the validated reply in the result is committed.
+func (s *Service) ProcessStream(ctx context.Context, req ProcessRequest, onDelta func(string)) (*ProcessResponse, error) {
 	req.Content = strings.TrimSpace(req.Content)
 	if len(req.Content) == 0 || len(req.Content) > 12000 || req.RequestID == uuid.Nil {
 		return nil, invalid("content must contain 1 to 12000 characters and requestId must be a UUID")
@@ -149,7 +156,7 @@ func (s *Service) Process(ctx context.Context, req ProcessRequest) (*ProcessResp
 			messages = append(messages, mastra.ChatMessage{Role: m.Role, Content: m.Content})
 		}
 		messages = append(messages, mastra.ChatMessage{Role: "user", Content: req.Content})
-		response, err := s.agent.Chat(ctx, messages, req.UserID.String()+":"+w.Date, req.UserID.String(), model)
+		response, err := s.callAgent(ctx, messages, req.UserID.String()+":"+w.Date, req.UserID.String(), model, onDelta)
 		if err != nil {
 			return fmt.Errorf("call planning assistant: %w", err)
 		}

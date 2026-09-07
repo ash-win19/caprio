@@ -17,6 +17,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { Logo } from '@/components/Logo';
 
 const ease = [0.22, 1, 0.36, 1] as const;
 
@@ -47,42 +48,6 @@ const weekDays = [
   { day: 'THU', date: '7', active: true },
   { day: 'FRI', date: '8' },
 ];
-
-function Logo({ footer = false }: { footer?: boolean }) {
-  return (
-    <span className="inline-flex items-center gap-2">
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 64 88"
-        fill="none"
-        role="img"
-        aria-label="Caprio"
-        className={footer ? 'h-[18px] w-auto text-[#F5F5F3]' : 'h-5 w-auto text-[#F5F5F3]'}
-      >
-        <g fill="currentColor" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
-          <path
-            d="M16 6
-               H48
-               A6 6 0 0 1 54 12
-               C54 26 46 34 32 44
-               C46 54 54 62 54 76
-               A6 6 0 0 1 48 82
-               H16
-               A6 6 0 0 1 10 76
-               C10 62 18 54 32 44
-               C18 34 10 26 10 12
-               A6 6 0 0 1 16 6
-               Z"
-            fill="none"
-            strokeWidth="7"
-          />
-          <path d="M22 78 L32 62 L42 78 Z" stroke="none"/>
-        </g>
-      </svg>
-      <span className={`${footer ? 'text-lg' : 'text-[17px]'} font-semibold tracking-[-0.04em] text-white`}>caprio</span>
-    </span>
-  );
-}
 
 function Reveal({ children, delay = 0, className = '' }: { children: React.ReactNode; delay?: number; className?: string }) {
   const reduceMotion = useReducedMotion();
@@ -559,7 +524,7 @@ export default function Landing() {
 
       <footer className="border-t border-white/[0.07] px-5 py-8 md:px-8">
         <div className="mx-auto flex max-w-[1180px] flex-col items-center justify-between gap-5 sm:flex-row">
-          <Logo footer />
+          <Logo markClassName="h-[18px]" wordmarkClassName="text-lg" />
           <p className="text-[10px] tracking-[0.08em] text-white/20">CALENDAR + PRIORITIZATION, IN ONE CALM PLACE.</p>
           <div className="flex items-center gap-5 text-[11px] text-white/35">
             <Link to="/login" className="transition hover:text-white">Sign in</Link>
