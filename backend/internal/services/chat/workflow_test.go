@@ -84,17 +84,19 @@ func TestCloseRequiresEveryOutcomeOnce(t *testing.T) {
 }
 
 type fakeAgent struct {
-	mu       sync.Mutex
-	response string
-	calls    int
-	last     []mastra.ChatMessage
+	mu        sync.Mutex
+	response  string
+	calls     int
+	last      []mastra.ChatMessage
+	lastModel string
 }
 
-func (f *fakeAgent) Chat(_ context.Context, m []mastra.ChatMessage, _, _ string) (*mastra.ChatResponse, error) {
+func (f *fakeAgent) Chat(_ context.Context, m []mastra.ChatMessage, _, _, model string) (*mastra.ChatResponse, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++
 	f.last = m
+	f.lastModel = model
 	return &mastra.ChatResponse{Message: f.response}, nil
 }
 func testService(t *testing.T) (*Service, *fakeAgent, uuid.UUID, pgtype.Date) {

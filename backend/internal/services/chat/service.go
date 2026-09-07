@@ -17,7 +17,7 @@ import (
 )
 
 type Agent interface {
-	Chat(context.Context, []mastra.ChatMessage, string, string) (*mastra.ChatResponse, error)
+	Chat(context.Context, []mastra.ChatMessage, string, string, string) (*mastra.ChatResponse, error)
 }
 type Service struct {
 	store *db.Store
@@ -31,6 +31,7 @@ type ProcessRequest struct {
 	SessionDate pgtype.Date
 	Content     string
 	RequestID   uuid.UUID
+	Model       string
 }
 type ProcessResponse struct {
 	Text     string    `json:"text"`
@@ -106,8 +107,12 @@ func (s *Service) Process(ctx context.Context, req ProcessRequest) (*ProcessResp
 	if len(req.Content) == 0 || len(req.Content) > 12000 || req.RequestID == uuid.Nil {
 		return nil, invalid("content must contain 1 to 12000 characters and requestId must be a UUID")
 	}
+	model, err := ResolveChatModel(req.Model)
+	if err != nil {
+		return nil, err
+	}
 	result := &ProcessResponse{}
-	err := s.store.WithUserTx(ctx, req.UserID, func(tx pgx.Tx, q *generated.Queries) error {
+	err = s.store.WithUserTx(ctx, req.UserID, func(tx pgx.Tx, q *generated.Queries) error {
 		var oldDate pgtype.Date
 		var oldContent string
 		err := tx.QueryRow(ctx, `SELECT session_date,content,assistant_text FROM chat_requests WHERE user_id=$1 AND request_id=$2`, req.UserID, req.RequestID).Scan(&oldDate, &oldContent, &result.Text)
@@ -144,7 +149,7 @@ func (s *Service) Process(ctx context.Context, req ProcessRequest) (*ProcessResp
 			messages = append(messages, mastra.ChatMessage{Role: m.Role, Content: m.Content})
 		}
 		messages = append(messages, mastra.ChatMessage{Role: "user", Content: req.Content})
-		response, err := s.agent.Chat(ctx, messages, req.UserID.String()+":"+w.Date, req.UserID.String())
+		response, err := s.agent.Chat(ctx, messages, req.UserID.String()+":"+w.Date, req.UserID.String(), model)
 		if err != nil {
 			return fmt.Errorf("call planning assistant: %w", err)
 		}

@@ -62,7 +62,7 @@ func TestChat_Success(t *testing.T) {
 	client := NewClient(server.URL)
 	messages := []ChatMessage{{Role: "user", Content: "hello"}}
 
-	resp, err := client.Chat(context.Background(), messages, "user-123:2024-01-15", "user-123")
+	resp, err := client.Chat(context.Background(), messages, "user-123:2024-01-15", "user-123", "")
 	if err != nil {
 		t.Fatalf("Chat failed: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestChat_NonOKStatus(t *testing.T) {
 	client := NewClient(server.URL)
 	messages := []ChatMessage{{Role: "user", Content: "hello"}}
 
-	_, err := client.Chat(context.Background(), messages, "thread-1", "resource-1")
+	_, err := client.Chat(context.Background(), messages, "thread-1", "resource-1", "")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -106,7 +106,7 @@ func TestChat_EmptyText(t *testing.T) {
 	client := NewClient(server.URL)
 	messages := []ChatMessage{{Role: "user", Content: "hello"}}
 
-	_, err := client.Chat(context.Background(), messages, "thread-1", "resource-1")
+	_, err := client.Chat(context.Background(), messages, "thread-1", "resource-1", "")
 	if err == nil {
 		t.Fatal("expected error for empty text, got nil")
 	}
@@ -127,12 +127,48 @@ func TestChat_InvalidJSON(t *testing.T) {
 	client := NewClient(server.URL)
 	messages := []ChatMessage{{Role: "user", Content: "hello"}}
 
-	_, err := client.Chat(context.Background(), messages, "thread-1", "resource-1")
+	_, err := client.Chat(context.Background(), messages, "thread-1", "resource-1", "")
 	if err == nil {
 		t.Fatal("expected error for invalid JSON, got nil")
 	}
 
 	if !strings.Contains(err.Error(), "decode response") {
 		t.Errorf("expected decode error, got: %v", err)
+	}
+}
+
+func TestChat_IncludesModel(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		bodyBytes, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("failed to read request body: %v", err)
+		}
+
+		var req GenerateRequest
+		if err := json.Unmarshal(bodyBytes, &req); err != nil {
+			t.Fatalf("failed to unmarshal request: %v", err)
+		}
+		if req.Model != "groq/openai/gpt-oss-20b" {
+			t.Errorf("expected model 'groq/openai/gpt-oss-20b', got %q", req.Model)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(GenerateResponse{
+			Text:         "ok",
+			FinishReason: "stop",
+		})
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	messages := []ChatMessage{{Role: "user", Content: "hello"}}
+
+	resp, err := client.Chat(context.Background(), messages, "thread-1", "resource-1", "groq/openai/gpt-oss-20b")
+	if err != nil {
+		t.Fatalf("Chat failed: %v", err)
+	}
+	if resp.Message != "ok" {
+		t.Errorf("expected 'ok', got %s", resp.Message)
 	}
 }

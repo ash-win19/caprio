@@ -339,10 +339,12 @@ export async function getChatSessions(): Promise<ChatSession[]> {
   return data.sessions || [];
 }
 
-export async function sendChatMessage(content: string, date = localDate(), requestId: string = crypto.randomUUID()): Promise<{ text: string; workflow: Workflow }> {
+export async function sendChatMessage(content: string, date = localDate(), requestId: string = crypto.randomUUID(), model?: string): Promise<{ text: string; workflow: Workflow }> {
+  const body: { content: string; date: string; requestId: string; model?: string } = { content, date, requestId };
+  if (model) body.model = model;
   const response = await fetchWithAuth('/api/chat', {
     method: 'POST',
-    body: JSON.stringify({ content, date, requestId }),
+    body: JSON.stringify(body),
   });
   return response.json();
 }
