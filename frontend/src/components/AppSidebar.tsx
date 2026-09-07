@@ -1,7 +1,8 @@
-import { NavLink, useLocation } from 'react-router-dom';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import { LayoutGrid, Inbox, CheckSquare, History, Settings, MessageSquare } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { UserAvatar } from '@/components/UserAvatar';
+import { Logo } from '@/components/Logo';
 
 const NAV_ITEMS = [
   { label: 'Today', path: '/today', icon: LayoutGrid },
@@ -16,9 +17,10 @@ export function AppSidebar() {
 
   return (
     <aside className="hidden md:flex flex-col w-[240px] h-screen fixed left-0 top-0 bg-card border-r border-border z-40">
-      <div className="px-5 py-5 flex items-center gap-2">
-        <span className="text-[18px] font-semibold text-foreground tracking-tight">Caprio</span>
-        <span className="w-2 h-2 rounded-full bg-primary" />
+      <div className="px-5 py-5">
+        <Link to="/today" aria-label="Go to today" className="inline-flex">
+          <Logo />
+        </Link>
       </div>
 
       <nav className="flex-1 px-3 py-2 space-y-1">

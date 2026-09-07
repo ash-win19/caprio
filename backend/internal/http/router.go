@@ -84,6 +84,7 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 		api.GET("/day/leftovers", dayH.GetLeftovers)
 
 		api.POST("/chat", chatH.SendMessage)
+		api.POST("/chat/stream", chatH.StreamMessage)
 	}
 
 	return r

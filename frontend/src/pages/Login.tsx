@@ -1,5 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { Logo } from '@/components/Logo';
 import { useAuth0 } from '@auth0/auth0-react';
 import { activateAccount } from '@/lib/accountSession';
 import { useAppStore } from '@/lib/store';
@@ -30,7 +31,7 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 bg-background">
-      <span className="text-xl font-semibold text-foreground mb-8">Caprio</span>
+      <Link to="/" aria-label="Caprio home" className="mb-8 inline-flex"><Logo /></Link>
 
       <div className="w-full max-w-[380px] bg-card border border-border rounded-lg p-6">
         <h1 className="text-heading text-foreground mb-1">Welcome back</h1>

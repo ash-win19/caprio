@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -54,19 +54,77 @@ describe('Daily planning workflow', () => {
     expect(api.confirmDayPlan).toHaveBeenCalledWith({ date: today, proposalId: 'proposal-1', version: 2 });
   });
 
-  it('retains an unsuccessful message and reuses its request ID when retried', async () => {
-    vi.mocked(api.sendChatMessage).mockRejectedValueOnce(new Error('Connection interrupted')).mockResolvedValueOnce({ text: 'How much time do you have?', workflow: { ...workflow, messages: [{ id: 'reply', role: 'assistant', content: 'How much time do you have?' }] } });
+  it('keeps a failed message in the thread and reuses its request ID when retried', async () => {
+    vi.mocked(api.streamChatMessage)
+      .mockRejectedValueOnce(new Error('Connection interrupted'))
+      .mockImplementationOnce(async ({ onDelta }) => {
+        onDelta?.('How much time');
+        onDelta?.(' do you have?');
+        workflow = { ...workflow, messages: [{ id: 'sent', role: 'user', content: 'Finish my report' }, { id: 'reply', role: 'assistant', content: 'How much time do you have?' }] };
+        return { text: 'How much time do you have?', workflow };
+      });
     mount(<New />, '/new');
     const input = await screen.findByRole('textbox', { name: 'Message about your day' });
     await waitFor(() => expect(input).toBeEnabled());
     fireEvent.change(input, { target: { value: 'Finish my report' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send prompt' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Connection interrupted');
-    expect(input).toHaveValue('Finish my report');
+    expect(screen.getByText('Finish my report')).toBeInTheDocument();
+    expect(input).toHaveValue('');
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    await waitFor(() => expect(api.sendChatMessage).toHaveBeenCalledTimes(2));
-    expect(vi.mocked(api.sendChatMessage).mock.calls[1]).toEqual(vi.mocked(api.sendChatMessage).mock.calls[0]);
-    await waitFor(() => expect(input).toHaveValue(''));
+    await waitFor(() => expect(api.streamChatMessage).toHaveBeenCalledTimes(2));
+    const [first, second] = vi.mocked(api.streamChatMessage).mock.calls.map(([call]) => call);
+    expect(second.requestId).toBe(first.requestId);
+    expect(second.content).toBe('Finish my report');
+    expect(second.date).toBe(today);
+    await waitFor(() => expect(screen.getByText('How much time do you have?')).toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    expect(screen.getAllByText('Finish my report')).toHaveLength(1);
+  });
+
+  it('shows a thinking state, streams the reply, then shows the saved message', async () => {
+    let deliver!: (text: string) => void;
+    let finish!: (reply: api.ChatReply) => void;
+    vi.mocked(api.streamChatMessage).mockImplementationOnce(({ onDelta }) => new Promise((resolve) => {
+      deliver = (text) => onDelta?.(text);
+      finish = resolve;
+    }));
+    mount(<New />, '/new');
+    const input = await screen.findByRole('textbox', { name: 'Message about your day' });
+    await waitFor(() => expect(input).toBeEnabled());
+    fireEvent.change(input, { target: { value: 'Plan my day' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send prompt' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('Thinking…');
+    expect(screen.getByText('Plan my day')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Stop generating' })).toBeInTheDocument();
+    act(() => deliver('Start with'));
+    await waitFor(() => expect(screen.getByText('Start with')).toBeInTheDocument());
+    expect(screen.queryByText('Thinking…')).not.toBeInTheDocument();
+    act(() => deliver(' the report.'));
+    await waitFor(() => expect(screen.getByText('Start with the report.')).toBeInTheDocument());
+    workflow = { ...workflow, messages: [{ id: 'sent', role: 'user', content: 'Plan my day' }, { id: 'reply', role: 'assistant', content: 'Start with the report.' }] };
+    await act(async () => finish({ text: 'Start with the report.', workflow }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Stop generating' })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Start with the report.')).toBeInTheDocument());
+    expect(screen.getAllByText('Plan my day')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Send prompt' })).toBeInTheDocument();
+  });
+
+  it('stops a reply on request and keeps the message ready to retry', async () => {
+    vi.mocked(api.streamChatMessage).mockImplementationOnce(({ signal }) => new Promise((_, reject) => {
+      signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+    }));
+    mount(<New />, '/new');
+    const input = await screen.findByRole('textbox', { name: 'Message about your day' });
+    await waitFor(() => expect(input).toBeEnabled());
+    fireEvent.change(input, { target: { value: 'Plan my day' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send prompt' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Stop generating' }));
+    expect(await screen.findByText('Reply stopped. Nothing was saved.')).toBeInTheDocument();
+    expect(screen.getByText('Plan my day')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send prompt' })).toBeInTheDocument();
   });
 
   it('discards a proposal through the server without confirming tasks', async () => {
