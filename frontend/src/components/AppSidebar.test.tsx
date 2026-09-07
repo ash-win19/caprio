@@ -24,7 +24,9 @@ describe('AppSidebar', () => {
     expect(screen.getByRole('link', { name: 'Today' })).toHaveTextContent('Today');
     expect(screen.queryByRole('button', { name: 'Expand sidebar' })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+    const collapseButton = screen.getByRole('button', { name: 'Collapse sidebar' });
+    collapseButton.focus();
+    fireEvent.click(collapseButton);
 
     const expand = screen.getByRole('button', { name: 'Expand sidebar' });
     expect(expand).toHaveFocus();
@@ -46,13 +48,23 @@ describe('AppSidebar', () => {
     expect(stored()).toBe(false);
   });
 
-  it('toggles with Cmd or Ctrl+B without moving focus', () => {
-    mountSidebar();
+  it('toggles with Cmd or Ctrl+B, moving focus only when it was inside the sidebar', () => {
+    render(<MemoryRouter initialEntries={['/today']}><AppSidebar /><input aria-label="Message" /></MemoryRouter>);
+    const input = screen.getByRole('textbox', { name: 'Message' });
+    input.focus();
     fireEvent.keyDown(window, { key: 'b', metaKey: true });
     expect(useSidebarStore.getState().collapsed).toBe(true);
-    expect(screen.getByRole('button', { name: 'Expand sidebar' })).not.toHaveFocus();
+    expect(input).toHaveFocus();
     fireEvent.keyDown(window, { key: 'B', ctrlKey: true });
     expect(useSidebarStore.getState().collapsed).toBe(false);
+    expect(input).toHaveFocus();
+
+    screen.getByRole('link', { name: 'Inbox' }).focus();
+    fireEvent.keyDown(window, { key: 'b', metaKey: true });
+    expect(screen.getByRole('button', { name: 'Expand sidebar' })).toHaveFocus();
+    fireEvent.keyDown(window, { key: 'b', metaKey: true });
+    expect(screen.getByRole('button', { name: 'Collapse sidebar' })).toHaveFocus();
+
     fireEvent.keyDown(window, { key: 'b', metaKey: true, shiftKey: true });
     fireEvent.keyDown(window, { key: 'b' });
     expect(useSidebarStore.getState().collapsed).toBe(false);

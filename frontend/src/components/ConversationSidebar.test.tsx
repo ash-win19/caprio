@@ -1,8 +1,9 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ConversationSidebar } from "./ConversationSidebar";
+import { useSidebarStore } from "@/lib/sidebar";
 
 vi.mock("@/lib/store", () => ({
   useAppStore: vi.fn((selector) =>
@@ -16,31 +17,60 @@ vi.mock("@/lib/store", () => ({
   ),
 }));
 
-describe("ConversationSidebar", () => {
-  it("collapses to a compact rail and expands again", () => {
-    render(
-      <MemoryRouter>
-        <ConversationSidebar
-          sessions={[]}
-          selectedDate="2026-08-30"
-          isLoading={false}
-          onSelect={vi.fn()}
-          onToday={vi.fn()}
-        />
-      </MemoryRouter>,
-    );
+const mount = () =>
+  render(
+    <MemoryRouter>
+      <ConversationSidebar
+        sessions={[]}
+        selectedDate="2026-08-30"
+        isLoading={false}
+        onSelect={vi.fn()}
+        onToday={vi.fn()}
+      />
+      <textarea aria-label="Message about your day" />
+    </MemoryRouter>,
+  );
 
-    const search = screen.getByRole("textbox");
+beforeEach(() => {
+  useSidebarStore.setState({ collapsed: false });
+});
+
+describe("ConversationSidebar", () => {
+  it("collapses to a compact rail and expands again, handing focus to the visible toggle", () => {
+    mount();
+
+    const search = screen.getByRole("textbox", { name: "Search conversations" });
     fireEvent.change(search, { target: { value: "planning" } });
 
-    fireEvent.click(screen.getByRole("button", { name: "Collapse sidebar" }));
+    const collapse = screen.getByRole("button", { name: "Collapse sidebar" });
+    collapse.focus();
+    fireEvent.click(collapse);
 
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Search conversations" })).not.toBeInTheDocument();
     expect(search.closest("[inert]")).not.toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Expand sidebar" }));
+    const expand = screen.getByRole("button", { name: "Expand sidebar" });
+    expect(expand).toHaveFocus();
+    fireEvent.click(expand);
 
-    expect(screen.getByRole("textbox")).toBe(search);
+    expect(screen.getByRole("textbox", { name: "Search conversations" })).toBe(search);
     expect(search).toHaveValue("planning");
     expect(search.closest("[inert]")).toBeNull();
+    expect(screen.getByRole("button", { name: "Collapse sidebar" })).toHaveFocus();
+  });
+
+  it("keeps focus in the message box when the shortcut toggles it, but rescues focus from inside the panel", () => {
+    mount();
+    const message = screen.getByRole("textbox", { name: "Message about your day" });
+    message.focus();
+
+    fireEvent.keyDown(window, { key: "b", metaKey: true });
+    expect(useSidebarStore.getState().collapsed).toBe(true);
+    expect(message).toHaveFocus();
+    fireEvent.keyDown(window, { key: "b", metaKey: true });
+    expect(useSidebarStore.getState().collapsed).toBe(false);
+
+    screen.getByRole("textbox", { name: "Search conversations" }).focus();
+    fireEvent.keyDown(window, { key: "b", ctrlKey: true });
+    expect(screen.getByRole("button", { name: "Expand sidebar" })).toHaveFocus();
   });
 });

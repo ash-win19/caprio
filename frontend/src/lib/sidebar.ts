@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useLayoutEffect, type RefObject } from 'react';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
@@ -32,7 +32,8 @@ export function sidebarShortcutLabel() {
 }
 
 // Cmd/Ctrl+B toggles the sidebar from anywhere, the convention editors and
-// most sidebar UIs share. Focus stays where it was.
+// most sidebar UIs share. Focus outside the sidebar is left alone; focus inside
+// it is handled by useSidebarFocus in the sidebar itself.
 export function useSidebarShortcut() {
   const toggle = useSidebarStore((state) => state.toggle);
   useEffect(() => {
@@ -44,4 +45,20 @@ export function useSidebarShortcut() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [toggle]);
+}
+
+// However the sidebar toggles (its own buttons or the shortcut), focus that
+// was inside it must not be stranded in the layer that just became inert. Hand
+// it to the toggle that is now visible; focus anywhere else is left untouched.
+// Runs before paint, while the old element is still the active one.
+export function useSidebarFocus(
+  collapsed: boolean,
+  container: RefObject<HTMLElement>,
+  collapseButton: RefObject<HTMLButtonElement>,
+  expandButton: RefObject<HTMLButtonElement>,
+) {
+  useLayoutEffect(() => {
+    if (!container.current?.contains(document.activeElement)) return;
+    (collapsed ? expandButton : collapseButton).current?.focus();
+  }, [collapsed, container, collapseButton, expandButton]);
 }
