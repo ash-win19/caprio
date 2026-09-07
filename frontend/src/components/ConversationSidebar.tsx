@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type RefObject } from "react";
 import { Link } from "react-router-dom";
 import {
   CalendarDays,
@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import type { ChatSession } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
-import { sidebarShortcutLabel, useSidebarShortcut, useSidebarStore } from "@/lib/sidebar";
+import { sidebarShortcutLabel, useSidebarFocus, useSidebarShortcut, useSidebarStore } from "@/lib/sidebar";
 import { UserAvatar } from "@/components/UserAvatar";
 import { CaprioMark, Logo } from "@/components/Logo";
 
@@ -41,9 +41,11 @@ function SidebarContent({
   onToday,
   onClose,
   onCollapse,
+  collapseButtonRef,
 }: ConversationSidebarProps & {
   onClose?: () => void;
   onCollapse?: () => void;
+  collapseButtonRef?: RefObject<HTMLButtonElement>;
 }) {
   const user = useAppStore((state) => state.user);
   const [query, setQuery] = useState("");
@@ -74,6 +76,7 @@ function SidebarContent({
         <div className="flex items-center gap-1">
           {onCollapse && (
             <button
+              ref={collapseButtonRef}
               type="button"
               onClick={onCollapse}
               className="rounded-md p-2 text-muted-foreground transition hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -120,6 +123,7 @@ function SidebarContent({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search conversations"
+            aria-label="Search conversations"
             className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:border-primary"
           />
         </label>
@@ -199,22 +203,18 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
   const collapsed = useSidebarStore((state) => state.collapsed);
   const setCollapsed = useSidebarStore((state) => state.setCollapsed);
   const desktopOpen = !collapsed;
+  const asideRef = useRef<HTMLElement>(null);
+  const collapseRef = useRef<HTMLButtonElement>(null);
   const expandRef = useRef<HTMLButtonElement>(null);
-  const focusExpand = useRef(false);
   const user = useAppStore((state) => state.user);
   const shortcut = sidebarShortcutLabel();
   useSidebarShortcut();
-
-  // Collapsing from the header button must not strand focus in the inert panel.
-  useEffect(() => {
-    if (!focusExpand.current) return;
-    focusExpand.current = false;
-    if (collapsed) expandRef.current?.focus();
-  }, [collapsed]);
+  useSidebarFocus(collapsed, asideRef, collapseRef, expandRef);
 
   return (
     <>
       <aside
+        ref={asideRef}
         id="conversation-sidebar"
         className={`relative hidden h-screen shrink-0 overflow-hidden border-r border-border bg-card transition-[width] duration-300 ease-in-out motion-reduce:transition-none md:block ${desktopOpen ? "w-[280px]" : "w-16"}`}
       >
@@ -225,10 +225,8 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
         >
           <SidebarContent
             {...props}
-            onCollapse={() => {
-              focusExpand.current = true;
-              setCollapsed(true);
-            }}
+            collapseButtonRef={collapseRef}
+            onCollapse={() => setCollapsed(true)}
           />
         </div>
         <div

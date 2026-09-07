@@ -1,8 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { LayoutGrid, Inbox, CheckSquare, History, Settings, MessageSquare, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
-import { SIDEBAR_WIDTH_CLASS, sidebarShortcutLabel, useSidebarShortcut, useSidebarStore } from '@/lib/sidebar';
+import { SIDEBAR_WIDTH_CLASS, sidebarShortcutLabel, useSidebarFocus, useSidebarShortcut, useSidebarStore } from '@/lib/sidebar';
 import { UserAvatar } from '@/components/UserAvatar';
 import { CaprioMark, Logo } from '@/components/Logo';
 
@@ -25,27 +25,16 @@ export function AppSidebar() {
   const user = useAppStore((s) => s.user);
   const collapsed = useSidebarStore((s) => s.collapsed);
   const toggle = useSidebarStore((s) => s.toggle);
+  const asideRef = useRef<HTMLElement>(null);
   const collapseRef = useRef<HTMLButtonElement>(null);
   const expandRef = useRef<HTMLButtonElement>(null);
-  const focusAfterToggle = useRef(false);
   const shortcut = sidebarShortcutLabel();
   useSidebarShortcut();
-
-  // A toggle activated in the sidebar must not strand keyboard focus inside
-  // the layer that just became inert; hand it to the opposite control.
-  useEffect(() => {
-    if (!focusAfterToggle.current) return;
-    focusAfterToggle.current = false;
-    (collapsed ? expandRef : collapseRef).current?.focus();
-  }, [collapsed]);
-
-  const onToggle = () => {
-    focusAfterToggle.current = true;
-    toggle();
-  };
+  useSidebarFocus(collapsed, asideRef, collapseRef, expandRef);
 
   return (
     <aside
+      ref={asideRef}
       id="app-sidebar"
       className={`fixed left-0 top-0 z-40 hidden h-screen overflow-hidden border-r border-border bg-card transition-[width] duration-300 ease-in-out motion-reduce:transition-none md:block ${collapsed ? SIDEBAR_WIDTH_CLASS.collapsed : SIDEBAR_WIDTH_CLASS.expanded}`}
     >
@@ -61,7 +50,7 @@ export function AppSidebar() {
           <button
             ref={collapseRef}
             type="button"
-            onClick={onToggle}
+            onClick={toggle}
             aria-label="Collapse sidebar"
             aria-expanded={true}
             aria-controls="app-sidebar"
@@ -123,7 +112,7 @@ export function AppSidebar() {
         <button
           ref={expandRef}
           type="button"
-          onClick={onToggle}
+          onClick={toggle}
           aria-label="Expand sidebar"
           aria-expanded={false}
           aria-controls="app-sidebar"
