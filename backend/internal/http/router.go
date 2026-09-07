@@ -12,7 +12,6 @@ import (
 	"github.com/ashwinshanmugam/caprio/backend/internal/http/middleware"
 	"github.com/ashwinshanmugam/caprio/backend/internal/mastra"
 	"github.com/ashwinshanmugam/caprio/backend/internal/services/chat"
-	"github.com/ashwinshanmugam/caprio/backend/internal/services/reprioritize"
 )
 
 // NewRouter creates the Gin engine and mounts all routes.
@@ -45,28 +44,28 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 		api.Use(middleware.DevBypass(store.Queries))
 	}
 
-	// Services
-	reprioritizeSvc := reprioritize.NewService(cfg.OpenAIAPIKey, cfg.OpenAIModel)
-
-	var chatH *handlers.ChatHandler
+	var agent chat.Agent
 	if cfg.MastraURL != "" {
-		mastraClient := mastra.NewClient(cfg.MastraURL)
-		chatSvc := chat.NewService(store, mastraClient)
-		chatH = handlers.NewChatHandler(store, chatSvc)
+		agent = mastra.NewClient(cfg.MastraURL)
 	}
+	chatH := handlers.NewChatHandler(store, chat.NewService(store, agent))
 
 	// Handlers
 	bootstrap := handlers.NewBootstrapHandler(store)
 	onboarding := handlers.NewOnboardingHandler(store)
 	tasks := handlers.NewTaskHandler(store)
 	voiceEntries := handlers.NewVoiceEntryHandler(store)
-	reprioritizeH := handlers.NewReprioritizeHandler(store, reprioritizeSvc)
 	dayClose := handlers.NewDayCloseHandler(store)
 	dayH := handlers.NewDayHandler(store)
 
 	{
 		api.GET("/bootstrap", bootstrap.Get)
 		api.POST("/onboarding", onboarding.Complete)
+		api.PATCH("/settings", onboarding.UpdateSettings)
+		api.GET("/workflow", chatH.GetWorkflow)
+		api.GET("/chat/sessions", chatH.Sessions)
+		api.POST("/day/plan/confirm", chatH.Confirm)
+		api.POST("/day/plan/discard", chatH.Discard)
 
 		api.GET("/tasks", tasks.List)
 		api.POST("/tasks", tasks.Create)
@@ -76,15 +75,15 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 		api.POST("/tasks/:id/defer", tasks.Defer)
 
 		api.POST("/voice-entries", voiceEntries.Create)
-		api.POST("/tasks/reprioritize", reprioritizeH.Reprioritize)
+		api.POST("/tasks/reprioritize", func(c *gin.Context) {
+			c.JSON(409, gin.H{"error": "Review and confirm plan changes in the planning conversation."})
+		})
 
 		api.POST("/day/close", dayClose.Close)
 		api.GET("/day/:date/status", dayH.GetStatus)
 		api.GET("/day/leftovers", dayH.GetLeftovers)
 
-		if chatH != nil {
-			api.POST("/chat", chatH.SendMessage)
-		}
+		api.POST("/chat", chatH.SendMessage)
 	}
 
 	return r

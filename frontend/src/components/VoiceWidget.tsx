@@ -1,61 +1,19 @@
-import { useEffect, useState, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Mic, Loader2, X } from 'lucide-react';
-import { useAppStore } from '@/lib/store';
+import { useEffect } from 'react';
+import { MessageSquare } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useToast } from '@/hooks/use-toast';
 
 export function VoiceWidget() {
-  const { voiceState, setVoiceState } = useAppStore();
-  const [input, setInput] = useState('');
-  const inputRef = useRef<HTMLInputElement>(null);
-  const { toast } = useToast();
   const navigate = useNavigate();
-
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.code === 'Space') {
-        e.preventDefault();
-        if (voiceState === 'idle') {
-          navigate('/new');
-        }
-      }
-      if (e.key === 'Escape' && voiceState === 'listening') {
-        setVoiceState('idle');
-        setInput('');
+    const handler = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.code === 'Space') {
+        event.preventDefault();
+        navigate('/new');
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [voiceState, setVoiceState, navigate]);
+  }, [navigate]);
 
-  useEffect(() => {
-    if (voiceState === 'listening') inputRef.current?.focus();
-  }, [voiceState]);
-
-  const handleClick = () => {
-    navigate('/new');
-  };
-
-  const spring = { stiffness: 400, damping: 30 };
-
-  return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
-      <motion.button
-        layout
-        transition={spring}
-        onClick={handleClick}
-        className="relative flex items-center justify-center border border-border overflow-hidden"
-        style={{
-          width: 48,
-          height: 48,
-          borderRadius: 24,
-          backgroundColor: 'hsl(var(--bg-elevated))',
-        }}
-      >
-        <Mic size={20} className="text-primary" />
-        <span className="absolute inset-0 rounded-full border-2 border-primary/30 animate-pulse-ring" />
-      </motion.button>
-    </div>
-  );
+  return <button type="button" onClick={() => navigate('/new')} className="fixed bottom-24 right-4 z-30 flex items-center gap-2 rounded-full border border-border bg-card px-4 py-3 text-sm font-medium text-foreground shadow-lg transition-colors hover:bg-accent md:bottom-6 md:right-6" title="Plan my day (⌘/Ctrl + Shift + Space)"><MessageSquare size={17} className="text-primary" /><span>Plan my day</span></button>;
 }

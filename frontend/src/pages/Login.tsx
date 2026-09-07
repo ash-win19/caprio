@@ -8,6 +8,7 @@ export default function Login() {
   const navigate = useNavigate();
   const { loginWithRedirect, error, isLoading } = useAuth0();
   const { setUser, initializeMockData } = useAppStore();
+  const demoEnabled = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO === 'true';
 
   const signIn = (connection?: string) => {
     localStorage.removeItem('caprio_session');
@@ -62,9 +63,9 @@ export default function Login() {
         </Button>
       </div>
 
-      <p className="mt-6 text-sm text-muted-foreground">
+      {demoEnabled && <p className="mt-6 text-sm text-muted-foreground">
         Just exploring? <button onClick={handleDemo} className="text-primary hover:underline">Continue as demo user →</button>
-      </p>
+      </p>}
       <p className="mt-2 text-sm text-muted-foreground">
         No account? <Link to="/signup" className="text-primary hover:underline">Sign up →</Link>
       </p>

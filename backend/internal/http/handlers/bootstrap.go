@@ -2,10 +2,8 @@ package handlers
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/ashwinshanmugam/caprio/backend/internal/db"
 	generated "github.com/ashwinshanmugam/caprio/backend/internal/db/generated"
@@ -45,7 +43,16 @@ func (h *BootstrapHandler) Get(c *gin.Context) {
 		return
 	}
 
-	todayPgDate := pgtype.Date{Time: time.Now().Truncate(24 * time.Hour), Valid: true}
+	todayPgDate, err := queryDate(c)
+	if err != nil {
+		workflowError(c, err)
+		return
+	}
+	var onboardingComplete bool
+	if err := h.store.Pool.QueryRow(ctx, `SELECT onboarding_complete FROM users WHERE id=$1`, userID).Scan(&onboardingComplete); err != nil {
+		workflowError(c, err)
+		return
+	}
 	todayTasks, err := h.store.Queries.ListTodayTasksByUser(ctx, generated.ListTodayTasksByUserParams{
 		UserID:         userID,
 		PlannedForDate: todayPgDate,
@@ -77,9 +84,10 @@ func (h *BootstrapHandler) Get(c *gin.Context) {
 			"language":                  user.Language,
 			"saveTranscripts":           user.SaveTranscripts,
 		},
-		"categories": categories,
-		"todayTasks": todayTasks,
-		"backlog":    backlog,
-		"streak":     user.Streak,
+		"onboardingComplete": onboardingComplete,
+		"categories":         categories,
+		"todayTasks":         todayTasks,
+		"backlog":            backlog,
+		"streak":             user.Streak,
 	})
 }

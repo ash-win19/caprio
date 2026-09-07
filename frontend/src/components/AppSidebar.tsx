@@ -1,13 +1,14 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { LayoutGrid, Plus, CheckSquare, TrendingUp, Settings, User } from 'lucide-react';
+import { LayoutGrid, Inbox, CheckSquare, History, Settings, MessageSquare } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { UserAvatar } from '@/components/UserAvatar';
 
 const NAV_ITEMS = [
   { label: 'Today', path: '/today', icon: LayoutGrid },
-  { label: 'Capture', path: '/capture', icon: Plus },
+  { label: 'Plan', path: '/new', icon: MessageSquare },
+  { label: 'Inbox', path: '/capture', icon: Inbox },
   { label: 'Review', path: '/review', icon: CheckSquare },
-  { label: 'Momentum', path: '/momentum', icon: TrendingUp },
+  { label: 'History', path: '/momentum', icon: History },
 ];
 
 export function AppSidebar() {
@@ -55,7 +56,7 @@ export function AppSidebar() {
 
       <div className="border-t border-border px-5 py-3 flex items-center gap-3">
         <UserAvatar user={user} className="h-8 w-8" fallbackClassName="bg-accent text-xs font-medium text-foreground" />
-        <span className="text-xs text-muted-foreground truncate">{user?.name || 'Demo User'}</span>
+        <span className="text-xs text-muted-foreground truncate">{user?.name || 'Caprio user'}</span>
       </div>
     </aside>
   );

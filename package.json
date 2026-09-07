@@ -7,10 +7,14 @@
     "node": ">=22.22.0"
   },
   "scripts": {
+    "predev": "node scripts/generate-planner-instructions.mjs",
     "dev": "mastra dev",
+    "prebuild": "node scripts/generate-planner-instructions.mjs",
     "build": "mastra build",
     "start": "mastra start",
-    "typecheck": "tsc --noEmit"
+    "pretypecheck": "node scripts/generate-planner-instructions.mjs",
+    "typecheck": "tsc --noEmit",
+    "verify:planner": "node scripts/verify-planner-build.mjs"
   },
   "dependencies": {
     "@mastra/ai-sdk": "^1.10.0",

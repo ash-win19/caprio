@@ -22,6 +22,15 @@ const createWrapper = () => {
 describe('React Query Hooks', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(api.bootstrap).mockResolvedValue({
+      user: { id: 'user-1', name: 'Test user', email: 'test@example.com' },
+      onboardingComplete: true,
+      preferences: {} as api.BootstrapResponse['preferences'],
+      categories: [],
+      todayTasks: [],
+      backlog: [],
+      streak: 0,
+    });
   });
 
   describe('useTasks', () => {

@@ -14,11 +14,12 @@ global.localStorage = {
 describe('API Client', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    api.setAccessTokenProvider(null);
   });
 
   describe('Authentication', () => {
     it('should include auth token in requests when available', async () => {
-      vi.mocked(localStorage.getItem).mockReturnValue('test-token');
+      api.setAccessTokenProvider(async () => 'test-token');
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
         status: 200,
@@ -37,24 +38,18 @@ describe('API Client', () => {
       );
     });
 
-    it('should handle 401 errors by redirecting to login', async () => {
-      vi.mocked(localStorage.getItem).mockReturnValue('expired-token');
+    it('should report an expired session without deleting the Auth0 session', async () => {
+      const expired = vi.fn();
+      window.addEventListener('caprio:session-expired', expired, { once: true });
+      api.setAccessTokenProvider(async () => 'expired-token');
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
         status: 401,
       } as Response);
 
-      // Mock window.location.href setter
-      const hrefSpy = vi.fn();
-      Object.defineProperty(window, 'location', {
-        value: { href: hrefSpy },
-        writable: true,
-      });
-
-      await expect(api.getTodayTasks()).rejects.toThrow('Unauthorized');
-      expect(localStorage.removeItem).toHaveBeenCalledWith('caprio_session');
-      expect(localStorage.removeItem).toHaveBeenCalledWith('auth_token');
-      expect(localStorage.removeItem).toHaveBeenCalledWith('onboarding_complete');
+      await expect(api.getTodayTasks()).rejects.toThrow('Your session expired');
+      expect(expired).toHaveBeenCalledOnce();
+      expect(localStorage.removeItem).not.toHaveBeenCalled();
     });
   });
 
@@ -77,20 +72,23 @@ describe('API Client', () => {
 
   describe('Chat Operations', () => {
     it('should send a chat message and receive response', async () => {
-      vi.mocked(localStorage.getItem).mockReturnValue('test-token');
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
         status: 200,
         json: async () => ({ text: 'Hello! How can I help you?' }),
       } as Response);
 
-      const result = await api.sendChatMessage('Hello');
+      const result = await api.sendChatMessage('Hello', '2026-09-06', '92fc090b-0111-42cc-9a34-a8c0052205e9');
 
       expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining('/api/chat'),
         expect.objectContaining({
           method: 'POST',
-          body: JSON.stringify({ content: 'Hello' }),
+          body: JSON.stringify({
+            content: 'Hello',
+            date: '2026-09-06',
+            requestId: '92fc090b-0111-42cc-9a34-a8c0052205e9',
+          }),
         })
       );
       expect(result.text).toBe('Hello! How can I help you?');
@@ -111,16 +109,16 @@ describe('API Client', () => {
       const mockTask: api.BackendTask = {
         id: '1',
         title: 'Test task',
-        user_id: 'user1',
+        userId: 'user1',
         urgency: 'medium' as const,
         source: 'manual',
         completed: false,
-        sort_order: 0,
-        planned_for_date: '2024-01-01',
+        sortOrder: 0,
+        plannedForDate: '2024-01-01',
         status: 'planned',
-        defer_count: 0,
-        created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z',
+        deferCount: 0,
+        createdAt: '2024-01-01T00:00:00Z',
+        updatedAt: '2024-01-01T00:00:00Z',
       };
 
       vi.mocked(fetch).mockResolvedValue({

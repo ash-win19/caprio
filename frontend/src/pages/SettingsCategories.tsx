@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { GripVertical, Trash2, Plus } from 'lucide-react';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
@@ -8,6 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAppStore } from '@/lib/store';
 import type { Category } from '@/lib/types';
+import { updateSettings } from '@/lib/api';
+import { invalidatePlanningQueries } from '@/lib/queries';
 
 const SWATCH_COLORS = ['#4A7CFF', '#F97316', '#A855F7', '#EF4444', '#EAB308', '#EC4899', '#06B6D4', '#84CC16'];
 
@@ -37,13 +40,16 @@ function CategoryRow({ cat, onUpdate, onDelete }: { cat: Category; onUpdate: (c:
 }
 
 export default function SettingsCategories() {
-  const { categories, setCategories } = useAppStore();
+  const { categories } = useAppStore();
+  const client = useQueryClient();
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
   const [cats, setCats] = useState(categories);
   const sensors = useSensors(useSensor(PointerSensor));
 
   const handleDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
-    if (active.id !== over?.id) {
+    if (over && active.id !== over.id) {
       const oldIdx = cats.findIndex((c) => c.id === active.id);
       const newIdx = cats.findIndex((c) => c.id === over.id);
       setCats(arrayMove(cats, oldIdx, newIdx));
@@ -51,7 +57,19 @@ export default function SettingsCategories() {
   };
 
   const addCategory = () => {
-    setCats([...cats, { id: Date.now().toString(), name: 'New Category', color: SWATCH_COLORS[cats.length % 8], hoursPerWeek: 0 }]);
+    setCats([...cats, { id: crypto.randomUUID(), name: 'New Category', color: SWATCH_COLORS[cats.length % 8], hoursPerWeek: 0 }]);
+  };
+
+  const save = async () => {
+    setSaving(true);
+    setMessage('');
+    try {
+      await updateSettings({}, cats);
+      await invalidatePlanningQueries(client);
+      setMessage('Categories saved.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to save categories.');
+    } finally { setSaving(false); }
   };
 
   return (
@@ -75,7 +93,8 @@ export default function SettingsCategories() {
         <Plus size={14} /> Add category
       </button>
 
-      <Button onClick={() => setCategories(cats)} className="w-full mt-6 bg-primary text-primary-foreground">Save changes</Button>
+      <p role="status" className="text-sm mt-4">{message}</p>
+      <Button disabled={saving || cats.some(cat => !cat.name.trim())} onClick={save} className="w-full mt-6 bg-primary text-primary-foreground">{saving ? 'Saving...' : 'Save changes'}</Button>
     </div>
   );
 }

@@ -1,87 +1,46 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/lib/store';
-import type { UserPrefs } from '@/lib/types';
-
-const TIMES = ['6 AM', '7 AM', '8 AM', '9 AM', 'Custom'];
-const FREQUENCIES = [
-  { id: 'light', title: 'Morning only', desc: 'One daily brief, no interruptions during the day' },
-  { id: 'regular', title: 'Morning + mid-day', desc: 'A brief check-in around noon if your tasks shift' },
-  { id: 'focused', title: 'Morning only, minimal mode', desc: 'AI suggestions only when you explicitly ask' },
-] as const;
+import { completeOnboarding } from '@/lib/api';
+import { DEFAULT_CATEGORIES } from '@/lib/types';
+import { invalidatePlanningQueries } from '@/lib/queries';
 
 export default function OnboardingPrefs() {
-  const [selectedTime, setSelectedTime] = useState('8 AM');
-  const [frequency, setFrequency] = useState<string>('regular');
+  const [briefTime, setBriefTime] = useState('08:00');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
   const navigate = useNavigate();
-  const { setPrefs, initializeMockData } = useAppStore();
+  const client = useQueryClient();
+  const { user, categories } = useAppStore();
 
-  const handleStart = () => {
-    setPrefs({ nudgeFrequency: frequency as UserPrefs['nudgeFrequency'], briefTime: selectedTime });
-    localStorage.setItem('onboarding_complete', 'true');
-    initializeMockData();
-    navigate('/today');
+  const handleStart = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      const selectedCategories = (categories.length ? categories : DEFAULT_CATEGORIES).filter(category => user?.categories.includes(category.name));
+      await completeOnboarding({ briefTime, proactiveReprioritization: false }, selectedCategories);
+      await invalidatePlanningQueries(client);
+      navigate('/new');
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Unable to save. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 bg-background">
-      <div className="w-full max-w-[540px]">
-        <div className="flex flex-col items-center mb-8">
-          <span className="text-caption mb-2">Setting up Caprio</span>
-          <div className="flex gap-2">
-            <span className="w-2 h-2 rounded-full bg-primary" />
-            <span className="w-2 h-2 rounded-full bg-primary" />
-          </div>
-        </div>
-
-        <h1 className="text-heading text-foreground text-center mb-2">Customize your daily brief</h1>
-        <p className="text-sm text-muted-foreground text-center mb-8">
-          Caprio prepares your prioritized list each morning. Tell it when and how.
-        </p>
-
-        <div className="mb-8">
-          <label className="text-sm font-medium text-foreground mb-3 block">When should your day be ready?</label>
-          <div className="flex flex-wrap gap-2">
-            {TIMES.map((t) => (
-              <button
-                key={t}
-                onClick={() => setSelectedTime(t)}
-                className="px-4 py-2 rounded-md text-sm border transition-colors"
-                style={{
-                  backgroundColor: selectedTime === t ? 'rgba(74,222,128,0.08)' : 'hsl(var(--bg-elevated))',
-                  borderColor: selectedTime === t ? 'hsl(var(--brand))' : 'hsl(var(--border))',
-                }}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="mb-8">
-          <label className="text-sm font-medium text-foreground mb-3 block">How often should Caprio check in?</label>
-          <div className="space-y-3">
-            {FREQUENCIES.map((f) => (
-              <button
-                key={f.id}
-                onClick={() => setFrequency(f.id)}
-                className="w-full text-left p-4 rounded-lg border transition-colors"
-                style={{
-                  backgroundColor: frequency === f.id ? 'rgba(74,222,128,0.05)' : 'hsl(var(--bg-elevated))',
-                  borderColor: frequency === f.id ? 'hsl(var(--brand))' : 'hsl(var(--border))',
-                }}
-              >
-                <p className="text-sm font-medium text-foreground">{f.title}</p>
-                <p className="text-xs text-muted-foreground mt-1">{f.desc}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <Button onClick={handleStart} className="w-full bg-primary text-primary-foreground">
-          Start using Caprio →
-        </Button>
+    <div className="min-h-screen flex items-center justify-center px-4 bg-background">
+      <div className="w-full max-w-[460px]">
+        <p className="text-caption mb-4">Setting up Caprio · 2 of 2</p>
+        <h1 className="text-heading text-foreground mb-3">Make room for your day</h1>
+        <p className="text-sm text-muted-foreground mb-8">Tell Caprio what needs doing and how much time you have. Review its suggestions before they become your plan.</p>
+        <label className="block text-sm text-foreground mb-2" htmlFor="brief-time">When do you usually plan your day?</label>
+        <input id="brief-time" type="time" value={briefTime} onChange={event => setBriefTime(event.target.value)} className="rounded-lg border border-border bg-card px-3 py-2 mb-3 text-foreground" />
+        <p className="text-xs text-muted-foreground mb-8">This saves your preference. Automatic reminders are not part of this version.</p>
+        {error && <p role="alert" className="text-sm text-destructive mb-4">{error}</p>}
+        <Button onClick={handleStart} disabled={saving || !briefTime} className="w-full">{saving ? 'Saving...' : 'Plan my day'}</Button>
       </div>
     </div>
   );

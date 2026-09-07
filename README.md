@@ -1,5 +1,6 @@
-# caprio
-AI-powered daily task reprioritization app with voice input and category progress tracking.
+# Caprio
+
+Caprio turns a conversation about today's work and constraints into a realistic daily plan that the user reviews before saving. See [the daily workflow](docs/daily-workflow.md) for the page map, state transitions, and agent boundary.
 
 ## Mastra
 

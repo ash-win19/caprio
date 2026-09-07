@@ -35,7 +35,7 @@ func setupDayCloseTest(t *testing.T) (*httptest.Server, *db.Store, uuid.UUID) {
 
 	dbURL := os.Getenv("TEST_DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "postgres://caprio:caprio@localhost:5432/caprio"
+		t.Skip("set TEST_DATABASE_URL to an isolated database to run integration tests")
 	}
 
 	pool, err := pgxpool.New(context.Background(), dbURL)
@@ -89,7 +89,7 @@ func setupDayCloseTestNoAuth(t *testing.T) *httptest.Server {
 
 	dbURL := os.Getenv("TEST_DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "postgres://caprio:caprio@localhost:5432/caprio"
+		t.Skip("set TEST_DATABASE_URL to an isolated database to run integration tests")
 	}
 
 	pool, err := pgxpool.New(context.Background(), dbURL)

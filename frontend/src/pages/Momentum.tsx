@@ -1,102 +1,14 @@
-import { motion } from 'framer-motion';
-import { useAppStore } from '@/lib/store';
-import { CATEGORY_COLORS } from '@/lib/types';
-
-interface WeeklyData {
-  today: number[];
-  week: number[];
-  streak: number;
-  needsAttention?: boolean;
-}
-
-const MOCK_WEEKLY: Record<string, WeeklyData> = {
-  Work: { today: [3, 3], week: [3, 2, 3, 3, 2, 3, 3], streak: 6 },
-  Gym: { today: [0, 1], week: [1, 1, 0, 1, 0, 0, 0], streak: 0, needsAttention: true },
-  'Personal Growth': { today: [1, 2], week: [1, 2, 1, 0, 1, 2, 1], streak: 2 },
-  Health: { today: [1, 1], week: [1, 1, 0, 1, 1, 1, 1], streak: 3 },
-  Finance: { today: [0, 1], week: [0, 1, 0, 0, 0, 1, 0], streak: 0 },
-};
+import { Link } from 'react-router-dom';
+import { ArrowRight, CalendarDays } from 'lucide-react';
+import { useChatSessions } from '@/lib/queries';
+import { Button } from '@/components/ui/button';
+import { WorkflowError } from '@/components/workflow/WorkflowUI';
+import { dateLabel } from '@/components/workflow/dates';
 
 export default function Momentum() {
-  const { categories } = useAppStore();
-
-  return (
-    <div className="max-w-4xl mx-auto">
-      <h1 className="text-heading text-foreground mb-1">Momentum</h1>
-      <p className="text-sm text-muted-foreground mb-6">Progress across every area of your life.</p>
-
-      {/* Summary strip */}
-      <div className="bg-accent border border-border rounded-lg px-6 py-4 flex items-center justify-around mb-8">
-        {[
-          { value: '18', label: 'tasks this week' },
-          { value: '5', label: 'categories active' },
-          { value: 'Work', label: 'best streak · 6 days', color: CATEGORY_COLORS.Work },
-        ].map((s, i) => (
-          <div key={i} className="flex flex-col items-center">
-            <span className="text-display" style={{ color: s.color || 'hsl(var(--foreground))' }}>{s.value}</span>
-            <span className="text-xs text-muted-foreground mt-1">{s.label}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* Category grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {Object.entries(MOCK_WEEKLY).map(([cat, data]) => {
-          const color = CATEGORY_COLORS[cat] || '#888';
-          const pct = data.today[1] > 0 ? (data.today[0] / data.today[1]) * 100 : 0;
-          return (
-            <div key={cat} className="bg-card border border-border rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
-                <span className="text-sm font-medium text-foreground">{cat}</span>
-                {data.needsAttention && (
-                  <span className="text-[11px] px-2 py-0.5 rounded border"
-                    style={{ backgroundColor: 'rgba(251,191,36,0.1)', color: 'hsl(var(--amber))', borderColor: 'rgba(251,191,36,0.3)' }}>
-                    Needs attention
-                  </span>
-                )}
-              </div>
-
-              <div className="mb-3">
-                <div className="flex justify-between text-xs mb-1">
-                  <span className="text-muted-foreground">Today</span>
-                  <span className="text-foreground">{data.today[0]} / {data.today[1]} tasks</span>
-                </div>
-                <div className="h-1 bg-accent rounded-full overflow-hidden">
-                  <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }}
-                    transition={{ duration: 0.6 }} className="h-full rounded-full" style={{ backgroundColor: color }} />
-                </div>
-              </div>
-
-              <p className="text-caption mb-2">7-day view</p>
-              <div className="flex items-end gap-[3px] h-8">
-                {data.week.map((v, i) => {
-                  const maxVal = Math.max(...data.week, 1);
-                  return (
-                    <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                      {i === data.week.length - 1 && <span className="w-[3px] h-[3px] rounded-full" style={{ backgroundColor: color }} />}
-                      <div className="w-full rounded-sm" style={{
-                        height: `${(v / maxVal) * 32}px`,
-                        backgroundColor: color,
-                        opacity: i === data.week.length - 1 ? 1 : 0.5,
-                        minHeight: 2,
-                      }} />
-                    </div>
-                  );
-                })}
-              </div>
-
-              <p className="text-xs mt-3">
-                {data.streak > 0 ? (
-                  <span>🔥 {data.streak} day streak</span>
-                ) : (
-                  <span className="text-muted-foreground">— no streak</span>
-                )}
-              </p>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+  const history = useChatSessions();
+  return <div className="mx-auto max-w-3xl">
+    <header className="mb-7"><h1 className="text-2xl font-medium">History</h1><p className="mt-2 text-sm text-muted-foreground">Return to your conversations, plans, and saved reviews.</p></header>
+    {history.isLoading ? <p role="status" className="py-12 text-sm text-muted-foreground">Loading your history…</p> : history.error ? <WorkflowError error={history.error} retry={() => void history.refetch()} /> : !history.data?.length ? <section className="rounded-2xl border border-dashed border-border p-12 text-center"><CalendarDays className="mx-auto mb-4 h-8 w-8 text-muted-foreground" /><h2 className="text-lg font-medium">Your days will appear here</h2><p className="mt-2 text-sm text-muted-foreground">Start a conversation to build your first daily plan.</p><Button asChild className="mt-5"><Link to="/new">Plan my day</Link></Button></section> : <div className="space-y-3">{history.data.map((day) => <article key={day.sessionDate} className="rounded-xl border border-border bg-card p-5"><p className="text-xs text-muted-foreground">{dateLabel(day.sessionDate)}</p><h2 className="mt-2 text-base font-medium">{day.title}</h2><p className="mt-1 text-xs text-muted-foreground">{day.messageCount} {day.messageCount === 1 ? 'message' : 'messages'}</p><div className="mt-4 flex flex-wrap gap-5"><Link to={`/new?date=${day.sessionDate}`} className="flex items-center gap-1.5 text-sm text-primary hover:underline">Conversation<ArrowRight size={13} /></Link><Link to={`/today?date=${day.sessionDate}`} className="text-sm text-muted-foreground hover:text-foreground">Plan and review</Link></div></article>)}</div>}
+  </div>;
 }
