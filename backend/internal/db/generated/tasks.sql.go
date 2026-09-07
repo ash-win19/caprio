@@ -508,7 +508,7 @@ const listTodayTasksByUser = `-- name: ListTodayTasksByUser :many
 SELECT id, user_id, title, description, category_id, urgency, duration, source, completed, added_today, carried_over, sort_order, due_date, defer_count, created_at, updated_at, planned_for_date, status, priority_reason, completed_at FROM tasks
 WHERE user_id = $1
     AND planned_for_date = $2
-    AND status = 'planned'
+    AND status IN ('planned', 'completed')
 ORDER BY sort_order ASC
 `
 

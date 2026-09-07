@@ -30,8 +30,8 @@ func (q *Queries) CountChatMessagesByUserAndDate(ctx context.Context, arg CountC
 }
 
 const createChatMessage = `-- name: CreateChatMessage :one
-INSERT INTO chat_messages (user_id, session_date, role, content)
-VALUES ($1, $2, $3, $4)
+INSERT INTO chat_messages (user_id, session_date, role, content, created_at)
+VALUES ($1, $2, $3, $4, clock_timestamp())
 RETURNING id, user_id, session_date, role, content, created_at
 `
 
@@ -115,19 +115,25 @@ func (q *Queries) ListChatMessagesByUserAndDate(ctx context.Context, arg ListCha
 }
 
 const listChatSessionsByUser = `-- name: ListChatSessionsByUser :many
+WITH dates AS (
+    SELECT plan_date AS session_date FROM daily_plans WHERE user_id = $1
+    UNION
+    SELECT session_date FROM chat_messages WHERE user_id = $1
+)
 SELECT
-    session_date,
+    dates.session_date,
     COALESCE(
-        (ARRAY_AGG(content ORDER BY created_at) FILTER (WHERE role = 'user'))[1],
-        'Untitled conversation'
+        (ARRAY_AGG(m.content ORDER BY m.created_at) FILTER (WHERE m.role = 'user'))[1],
+        'Daily plan'
     )::text AS title,
-    COUNT(*) AS message_count,
-    MAX(created_at)::timestamptz AS updated_at
-FROM chat_messages
-WHERE user_id = $1
-GROUP BY session_date
+    COUNT(m.id) AS message_count,
+    GREATEST(MAX(m.created_at), MAX(p.updated_at))::timestamptz AS updated_at
+FROM dates
+LEFT JOIN daily_plans p ON p.user_id = $1 AND p.plan_date = dates.session_date
+LEFT JOIN chat_messages m ON m.user_id = $1 AND m.session_date = dates.session_date
+GROUP BY dates.session_date
 ORDER BY updated_at DESC
-LIMIT 30
+LIMIT 90
 `
 
 type ListChatSessionsByUserRow struct {

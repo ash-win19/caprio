@@ -5,6 +5,7 @@ export interface Task {
   id: string;
   title: string;
   category: string;
+  categoryId?: string;
   urgency: Urgency;
   duration?: number;
   source?: string;
@@ -12,6 +13,9 @@ export interface Task {
   addedToday: boolean;
   carriedOver: boolean;
   order: number;
+  plannedForDate?: string;
+  priorityReason?: string;
+  status?: string;
 }
 
 export interface TaskChange {

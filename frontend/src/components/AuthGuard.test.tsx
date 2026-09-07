@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthGuard } from './AuthGuard';
 import { useAuth0 } from '@auth0/auth0-react';
 import type { Auth0ContextInterface } from '@auth0/auth0-react';
@@ -12,7 +13,8 @@ vi.mock('@auth0/auth0-react', () => ({
 
 // Mock the API
 vi.mock('@/lib/api', () => ({
-  getDayStatus: vi.fn(),
+  bootstrap: vi.fn(),
+  setAccessTokenProvider: vi.fn(() => vi.fn()),
 }));
 
 // Mock the store
@@ -49,8 +51,6 @@ describe('AuthGuard', () => {
       user: undefined,
     } as Auth0ContextInterface);
 
-    const mockNavigate = vi.fn();
-    
     // Create a test component that tracks navigation
     const currentPath = '/';
     const TestComponent = () => {
@@ -58,14 +58,14 @@ describe('AuthGuard', () => {
     };
 
     render(
-      <BrowserRouter>
+      <QueryClientProvider client={new QueryClient()}><BrowserRouter>
         <AuthGuard>
           <Routes>
             <Route path="/" element={<TestComponent />} />
             <Route path="/login" element={<div data-testid="login-page">Login Page</div>} />
           </Routes>
         </AuthGuard>
-      </BrowserRouter>
+      </BrowserRouter></QueryClientProvider>
     );
 
     // Wait for any potential redirects
@@ -86,14 +86,14 @@ describe('AuthGuard', () => {
     } as Auth0ContextInterface);
 
     render(
-      <BrowserRouter>
+      <QueryClientProvider client={new QueryClient()}><BrowserRouter>
         <AuthGuard>
           <Routes>
             <Route path="/" element={<div data-testid="landing-page">Landing</div>} />
             <Route path="/login" element={<div data-testid="login-page">Login</div>} />
           </Routes>
         </AuthGuard>
-      </BrowserRouter>
+      </BrowserRouter></QueryClientProvider>
     );
 
     await waitFor(() => {
@@ -109,14 +109,14 @@ describe('AuthGuard', () => {
     } as Auth0ContextInterface);
 
     render(
-      <BrowserRouter>
+      <QueryClientProvider client={new QueryClient()}><BrowserRouter>
         <AuthGuard>
           <Routes>
             <Route path="/" element={<div data-testid="landing-page">Landing</div>} />
             <Route path="/signup" element={<div data-testid="signup-page">Signup</div>} />
           </Routes>
         </AuthGuard>
-      </BrowserRouter>
+      </BrowserRouter></QueryClientProvider>
     );
 
     await waitFor(() => {

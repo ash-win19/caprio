@@ -1,152 +1,67 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Check, ArrowRight, X, CheckCircle } from 'lucide-react';
+import { useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, ArrowRight, Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { useAppStore } from '@/lib/store';
+import { useWorkflow } from '@/lib/queries';
+import { localDate } from '@/lib/date';
+import * as api from '@/lib/api';
+import { DaySummary, WorkflowError } from '@/components/workflow/WorkflowUI';
+import { dateLabel, selectedDate } from '@/components/workflow/dates';
 
 type TaskAction = 'done' | 'tomorrow' | 'drop';
+const ENERGY = ['Drained', 'Low', 'Steady', 'High', 'Energized'];
+const OUTCOMES = [{ action: 'done', label: 'Done', icon: Check }, { action: 'tomorrow', label: 'Tomorrow', icon: ArrowRight }, { action: 'drop', label: 'Drop', icon: X }] as const;
 
-const ENERGY = [
-  { emoji: '😴', label: 'Drained' },
-  { emoji: '😐', label: 'Low' },
-  { emoji: '🙂', label: 'Solid' },
-  { emoji: '⚡', label: 'High' },
-  { emoji: '🔥', label: 'Peak' },
-];
-
-const slideVariants = {
-  enter: { opacity: 0, x: 40 },
-  center: { opacity: 1, x: 0 },
-  exit: { opacity: 0, x: -40 },
-};
-
-export default function Review() {
-  const { tasks } = useAppStore();
-  const navigate = useNavigate();
+function DayReview({ date }: { date: string }) {
+  const workflowQuery = useWorkflow(date);
+  const queryClient = useQueryClient();
   const [step, setStep] = useState(0);
   const [actions, setActions] = useState<Record<string, TaskAction>>({});
   const [energy, setEnergy] = useState<number | null>(null);
-  const [redirectTimer, setRedirectTimer] = useState<number | null>(null);
+  const [notes, setNotes] = useState('');
+  const [saved, setSaved] = useState(false);
+  const workflow = workflowQuery.data;
+  const tasks = workflow?.tasks || [];
+  const actionFor = (task: api.BackendTask) => task.completed ? 'done' : actions[task.id];
+  const allMarked = tasks.every((task) => actionFor(task));
+  const close = useMutation({
+    mutationFn: () => api.closeDay({ date, taskActions: tasks.map((task) => ({ taskId: task.id, action: actionFor(task)! })), notes: notes.trim() || undefined, energyLevel: energy ?? undefined }),
+    onSuccess: async () => {
+      setSaved(true);
+      await Promise.all(['workflow', 'tasks', 'inbox', 'bootstrap', 'chat-sessions'].map((key) => queryClient.invalidateQueries({ queryKey: [key] })));
+    },
+    onError: () => { void workflowQuery.refetch(); },
+  });
 
-  const todayTasks = tasks.filter((t) => t.addedToday);
-  const allMarked = todayTasks.every((t) => actions[t.id]);
-  const doneCount = Object.values(actions).filter((a) => a === 'done').length;
+  if (workflowQuery.isLoading) return <p role="status" className="py-12 text-sm text-muted-foreground">Loading your day…</p>;
+  if (workflowQuery.error) return <WorkflowError error={workflowQuery.error} retry={() => void workflowQuery.refetch()} />;
+  if (!workflow) return null;
+  if (workflow.state === 'closed') return <DaySummary workflow={workflow} />;
+  if (date !== localDate()) return <section className="rounded-2xl border border-border bg-card p-6"><h2 className="text-lg font-medium">{date > localDate() ? 'This day hasn’t started yet' : 'This day is in your history'}</h2><p className="mt-2 text-sm text-muted-foreground">You can review and close the current day. Saved days remain available in your history.</p><Button asChild className="mt-5"><Link to="/review">Review today</Link></Button></section>;
+  if (saved) return <div role="status" className="rounded-xl border border-border p-6"><h2 className="text-xl font-medium">Your review is saved</h2><p className="mt-2 text-sm text-muted-foreground">Loading your day summary…</p><Button variant="outline" className="mt-4" onClick={() => void workflowQuery.refetch()}>Load summary</Button></div>;
+  if (workflow.state !== 'active') return <section className="rounded-2xl border border-border bg-card p-6"><h2 className="text-lg font-medium">Start with a daily plan</h2><p className="mt-2 text-sm leading-6 text-muted-foreground">Once your plan is confirmed, come here to save what you finished and what should move forward.</p><Button asChild className="mt-5"><Link to={`/new?date=${date}`}>Plan this day</Link></Button></section>;
 
-  useEffect(() => {
-    if (step === 3) {
-      const timer = setTimeout(() => navigate('/momentum'), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [step, navigate]);
+  return <>
+    <div className="mb-5 flex items-center justify-between gap-4"><p className="text-sm text-muted-foreground">{step === 0 ? 'Choose what happens to each task.' : 'A little context for tomorrow.'}</p><span className="text-xs text-muted-foreground">{step + 1} of 2</span></div>
+    {step === 0 ? <>
+      <div className="space-y-3">{tasks.map((task) => <fieldset key={task.id} className="rounded-xl border border-border bg-card p-4"><legend className="sr-only">Outcome for {task.title}</legend><p className="mb-3 text-sm font-medium">{task.title}</p><div className="flex flex-wrap gap-2">{OUTCOMES.map(({ action, label, icon: Icon }) => <button key={action} type="button" aria-pressed={actionFor(task) === action} disabled={task.completed && action !== 'done'} aria-label={`${label}: ${task.title}`} onClick={() => setActions((previous) => ({ ...previous, [task.id]: action }))} className={`flex items-center gap-1.5 rounded-md border px-3 py-2 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${actionFor(task) === action ? 'border-primary/50 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-accent'}`}><Icon size={13} />{label}</button>)}</div></fieldset>)}</div>
+      <p className="mt-4 text-xs leading-5 text-muted-foreground">Tomorrow moves the task to the next day. Drop removes it from your plan. Your choices save together when you close the day.</p>
+      <Button onClick={() => setStep(1)} disabled={!allMarked} className="mt-6">Continue<ArrowRight className="ml-2 h-4 w-4" /></Button>
+    </> : <div className="space-y-6">
+      <div><label htmlFor="review-notes" className="mb-2 block text-sm font-medium">Notes for tomorrow <span className="font-normal text-muted-foreground">(optional)</span></label><Textarea id="review-notes" value={notes} maxLength={8000} onChange={(event) => setNotes(event.target.value)} placeholder="What helped, what got in the way, or what should you remember?" className="min-h-[120px] bg-card" /><p className="mt-2 text-xs text-muted-foreground">These notes are saved with your review.</p></div>
+      <fieldset><legend className="mb-3 text-sm font-medium">How was your energy? <span className="font-normal text-muted-foreground">(optional)</span></legend><div className="flex flex-wrap gap-2">{ENERGY.map((label, index) => <button key={label} type="button" aria-pressed={energy === index + 1} onClick={() => setEnergy(energy === index + 1 ? null : index + 1)} className={`rounded-lg border px-3 py-2.5 text-xs ${energy === index + 1 ? 'border-primary/50 bg-primary/10 text-primary' : 'border-border bg-card text-muted-foreground'}`}>{label}</button>)}</div></fieldset>
+      <div className="rounded-xl bg-muted p-4 text-sm leading-6">{tasks.filter((task) => actionFor(task) === 'done').length} completed · {tasks.filter((task) => actionFor(task) === 'tomorrow').length} moving to tomorrow · {tasks.filter((task) => actionFor(task) === 'drop').length} dropped</div>
+      <p className="text-xs leading-5 text-muted-foreground">Closing saves your outcomes and finishes this day. You can return to the summary anytime.</p>
+      {close.error && <WorkflowError error={close.error} />}
+      <div className="flex flex-wrap gap-3"><Button variant="outline" onClick={() => setStep(0)} disabled={close.isPending}><ArrowLeft size={15} className="mr-2" />Back</Button><Button onClick={() => close.mutate()} disabled={close.isPending || !allMarked}>{close.isPending ? 'Saving review…' : 'Close day'}</Button></div>
+    </div>}
+  </>;
+}
 
-  const markTask = (id: string, action: TaskAction) => {
-    setActions((a) => ({ ...a, [id]: a[id] === action ? undefined! : action }));
-  };
-
-  return (
-    <div className="max-w-xl mx-auto">
-      <h1 className="text-heading text-foreground mb-1">End of day</h1>
-      <p className="text-mono text-xs mb-6">
-        {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-      </p>
-
-      <AnimatePresence mode="wait">
-        {step === 0 && (
-          <motion.div key="s0" variants={slideVariants} initial="enter" animate="center" exit="exit">
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-sm text-muted-foreground">Mark each task — no judgment.</p>
-              <span className="text-mono text-[11px]">1 / 3</span>
-            </div>
-            <div className="space-y-2">
-              {todayTasks.map((task) => (
-                <div key={task.id} className="flex items-center justify-between bg-card border border-border rounded-lg px-4 py-3">
-                  <span className="text-sm text-foreground">{task.title}</span>
-                  <div className="flex gap-1">
-                    {[
-                      { action: 'done' as TaskAction, icon: <Check size={14} />, color: 'hsl(var(--brand))' },
-                      { action: 'tomorrow' as TaskAction, icon: <ArrowRight size={14} />, color: 'hsl(var(--blue))' },
-                      { action: 'drop' as TaskAction, icon: <X size={14} />, color: 'hsl(var(--red))' },
-                    ].map(({ action, icon, color }) => (
-                      <button key={action} onClick={() => markTask(task.id, action)}
-                        className="w-8 h-8 rounded-md flex items-center justify-center border transition-colors"
-                        style={{
-                          backgroundColor: actions[task.id] === action ? `${color}20` : 'transparent',
-                          borderColor: actions[task.id] === action ? color : 'hsl(var(--border))',
-                          color: actions[task.id] === action ? color : 'hsl(var(--text-muted))',
-                        }}
-                      >{icon}</button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <Button onClick={() => setStep(1)} disabled={!allMarked} className="mt-6 bg-primary text-primary-foreground">Continue →</Button>
-          </motion.div>
-        )}
-
-        {step === 1 && (
-          <motion.div key="s1" variants={slideVariants} initial="enter" animate="center" exit="exit">
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-sm text-muted-foreground">New tasks, blockers, tomorrow's priorities.</p>
-              <span className="text-mono text-[11px]">2 / 3</span>
-            </div>
-            <Textarea placeholder="Brain dump here — Caprio will add anything actionable to your capture pool."
-              className="min-h-[120px] bg-accent border-border" />
-            <div className="flex gap-3 mt-6">
-              <Button onClick={() => setStep(2)} className="bg-primary text-primary-foreground">Continue →</Button>
-              <button onClick={() => setStep(2)} className="text-sm text-muted-foreground hover:text-foreground">Skip</button>
-            </div>
-          </motion.div>
-        )}
-
-        {step === 2 && (
-          <motion.div key="s2" variants={slideVariants} initial="enter" animate="center" exit="exit">
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-sm text-muted-foreground">This helps Caprio learn your patterns.</p>
-              <span className="text-mono text-[11px]">3 / 3</span>
-            </div>
-            <div className="flex gap-3 justify-center mb-6">
-              {ENERGY.map((e, i) => (
-                <motion.button key={e.label} whileTap={{ scale: 0.95 }}
-                  onClick={() => setEnergy(i)}
-                  className="flex flex-col items-center gap-1 w-14 h-14 rounded-lg border justify-center transition-colors"
-                  style={{
-                    backgroundColor: energy === i ? 'rgba(74,222,128,0.08)' : 'hsl(var(--bg-elevated))',
-                    borderColor: energy === i ? 'hsl(var(--brand))' : 'hsl(var(--border))',
-                  }}
-                >
-                  <motion.span animate={{ scale: energy === i ? 1.2 : 1 }} className="text-lg">{e.emoji}</motion.span>
-                  <span className="text-[9px] text-muted-foreground">{e.label}</span>
-                </motion.button>
-              ))}
-            </div>
-            <Button onClick={() => setStep(3)} disabled={energy === null} className="w-full bg-primary text-primary-foreground">
-              Wrap up today →
-            </Button>
-          </motion.div>
-        )}
-
-        {step === 3 && (
-          <motion.div key="s3" variants={slideVariants} initial="enter" animate="center" exit="exit"
-            className="flex flex-col items-center text-center py-12"
-          >
-            <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring' }}
-              className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-              <CheckCircle size={32} className="text-primary" />
-            </motion.div>
-            <h2 className="text-2xl font-medium text-foreground">Nice work.</h2>
-            <p className="text-sm text-muted-foreground mt-2">
-              You completed {doneCount} of {todayTasks.length} tasks today.
-            </p>
-            <div className="w-48 h-[3px] bg-accent rounded-full mt-6 overflow-hidden">
-              <motion.div initial={{ width: '100%' }} animate={{ width: '0%' }} transition={{ duration: 3, ease: 'linear' }}
-                className="h-full bg-primary rounded-full" />
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
+export default function Review() {
+  const [params] = useSearchParams();
+  const date = selectedDate(params.get('date'), localDate());
+  return <div className="mx-auto max-w-2xl"><header className="mb-7"><h1 className="text-2xl font-medium">Review your day</h1><p className="mt-2 text-sm text-muted-foreground">{dateLabel(date)}</p></header><DayReview key={date} date={date} /></div>;
 }

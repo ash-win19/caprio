@@ -7,7 +7,7 @@ ORDER BY sort_order ASC;
 SELECT * FROM tasks
 WHERE user_id = $1
     AND planned_for_date = $2
-    AND status = 'planned'
+    AND status IN ('planned', 'completed')
 ORDER BY sort_order ASC;
 
 -- name: ListBacklogTasks :many

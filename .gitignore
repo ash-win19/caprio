@@ -117,6 +117,7 @@ dist
 # Serverless directories
 .serverless/
 .mastra/
+src/mastra/agents/generated/
 mastra.db
 mastra.db-*
 

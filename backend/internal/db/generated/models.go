@@ -223,6 +223,27 @@ type ChatMessage struct {
 	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
 }
 
+type ChatRequest struct {
+	UserID        uuid.UUID   `json:"userId"`
+	RequestID     uuid.UUID   `json:"requestId"`
+	SessionDate   pgtype.Date `json:"sessionDate"`
+	Content       string      `json:"content"`
+	AssistantText string      `json:"assistantText"`
+}
+
+type DailyPlan struct {
+	UserID              uuid.UUID          `json:"userId"`
+	PlanDate            pgtype.Date        `json:"planDate"`
+	State               string             `json:"state"`
+	Version             int32              `json:"version"`
+	Proposal            []byte             `json:"proposal"`
+	ProposalSnapshot    *string            `json:"proposalSnapshot"`
+	ConfirmedProposalID *uuid.UUID         `json:"confirmedProposalId"`
+	Review              []byte             `json:"review"`
+	ClosedTasks         []byte             `json:"closedTasks"`
+	UpdatedAt           pgtype.Timestamptz `json:"updatedAt"`
+}
+
 type StandupSession struct {
 	ID             uuid.UUID          `json:"id"`
 	UserID         uuid.UUID          `json:"userId"`
@@ -274,6 +295,7 @@ type User struct {
 	Streak                    int32              `json:"streak"`
 	CreatedAt                 pgtype.Timestamptz `json:"createdAt"`
 	UpdatedAt                 pgtype.Timestamptz `json:"updatedAt"`
+	OnboardingComplete        bool               `json:"onboardingComplete"`
 }
 
 type VoiceEntry struct {

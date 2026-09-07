@@ -16,7 +16,11 @@ createRoot(document.getElementById("root")!).render(
     <Auth0Provider
       domain={auth0Domain}
       clientId={auth0ClientId}
-      authorizationParams={{ redirect_uri: window.location.origin }}
+      authorizationParams={{
+        redirect_uri: window.location.origin,
+        audience: import.meta.env.VITE_AUTH0_AUDIENCE,
+        scope: "openid profile email",
+      }}
     >
       <App />
     </Auth0Provider>

@@ -56,8 +56,8 @@ export default function SettingsPage() {
         <div className="bg-card border border-border rounded-lg overflow-hidden">
           {[
             { label: 'Categories', path: '/settings/categories' },
-            { label: 'Notifications', path: '/settings/notifications' },
-            { label: 'Voice & shortcuts', path: '/settings/voice' },
+            { label: 'Planning preferences', path: '/settings/notifications' },
+            { label: 'Shortcuts and input', path: '/settings/voice' },
           ].map((item, i, arr) => (
             <Link key={item.path} to={item.path}
               className={`flex items-center justify-between px-4 py-3 text-sm text-foreground hover:bg-accent transition-colors ${

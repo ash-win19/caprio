@@ -15,7 +15,7 @@ import (
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, name, password_hash)
 VALUES ($1, $2, $3)
-RETURNING id, email, name, password_hash, brief_time, nudge_frequency, proactive_reprioritization, eod_reminder, eod_time, mic_sensitivity, language, save_transcripts, last_standup_date, streak, created_at, updated_at
+RETURNING id, email, name, password_hash, brief_time, nudge_frequency, proactive_reprioritization, eod_reminder, eod_time, mic_sensitivity, language, save_transcripts, last_standup_date, streak, created_at, updated_at, onboarding_complete
 `
 
 type CreateUserParams struct {
@@ -44,12 +44,13 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Streak,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OnboardingComplete,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, name, password_hash, brief_time, nudge_frequency, proactive_reprioritization, eod_reminder, eod_time, mic_sensitivity, language, save_transcripts, last_standup_date, streak, created_at, updated_at FROM users WHERE email = $1
+SELECT id, email, name, password_hash, brief_time, nudge_frequency, proactive_reprioritization, eod_reminder, eod_time, mic_sensitivity, language, save_transcripts, last_standup_date, streak, created_at, updated_at, onboarding_complete FROM users WHERE email = $1
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -72,12 +73,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.Streak,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OnboardingComplete,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, name, password_hash, brief_time, nudge_frequency, proactive_reprioritization, eod_reminder, eod_time, mic_sensitivity, language, save_transcripts, last_standup_date, streak, created_at, updated_at FROM users WHERE id = $1
+SELECT id, email, name, password_hash, brief_time, nudge_frequency, proactive_reprioritization, eod_reminder, eod_time, mic_sensitivity, language, save_transcripts, last_standup_date, streak, created_at, updated_at, onboarding_complete FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
@@ -100,6 +102,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.Streak,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OnboardingComplete,
 	)
 	return i, err
 }
@@ -144,7 +147,7 @@ UPDATE users SET
     save_transcripts = COALESCE($8, save_transcripts),
     updated_at = now()
 WHERE id = $9
-RETURNING id, email, name, password_hash, brief_time, nudge_frequency, proactive_reprioritization, eod_reminder, eod_time, mic_sensitivity, language, save_transcripts, last_standup_date, streak, created_at, updated_at
+RETURNING id, email, name, password_hash, brief_time, nudge_frequency, proactive_reprioritization, eod_reminder, eod_time, mic_sensitivity, language, save_transcripts, last_standup_date, streak, created_at, updated_at, onboarding_complete
 `
 
 type UpdateUserPrefsParams struct {
@@ -189,6 +192,7 @@ func (q *Queries) UpdateUserPrefs(ctx context.Context, arg UpdateUserPrefsParams
 		&i.Streak,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OnboardingComplete,
 	)
 	return i, err
 }

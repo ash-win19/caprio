@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   CalendarDays,
+  Inbox,
+  History,
   Menu,
   MessageSquare,
   PanelLeftClose,
@@ -133,6 +135,11 @@ function SidebarContent({
       </div>
 
       <div className="px-3">
+        <nav aria-label="Workspace" className="mb-3 flex flex-wrap gap-1">
+          <Link to="/today" className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"><CalendarDays className="h-3.5 w-3.5" />Today</Link>
+          <Link to="/capture" className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"><Inbox className="h-3.5 w-3.5" />Inbox</Link>
+          <Link to="/momentum" className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"><History className="h-3.5 w-3.5" />History</Link>
+        </nav>
         <button
           type="button"
           onClick={showToday}
@@ -155,7 +162,7 @@ function SidebarContent({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 pt-6">
         <p className="px-2 text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-          Previous conversations
+          Your conversations
         </p>
         <div className="mt-2 space-y-1">
           {isLoading ? (
@@ -262,6 +269,9 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
           >
             <PanelLeftOpen className="h-5 w-5" />
           </button>
+          <Link to="/today" aria-label="Today's plan" title="Today's plan" className="mt-3 grid h-10 w-10 place-items-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"><CalendarDays className="h-5 w-5" /></Link>
+          <button type="button" onClick={props.onToday} aria-label="Today's conversation" title="Today's conversation" className="grid h-10 w-10 place-items-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"><MessageSquare className="h-5 w-5" /></button>
+          <Link to="/capture" aria-label="Inbox" title="Inbox" className="grid h-10 w-10 place-items-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"><Inbox className="h-5 w-5" /></Link>
           <Link
             to="/settings"
             aria-label={user?.name ? `Open ${user.name}'s profile` : "Open profile"}

@@ -1,165 +1,102 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Task, TaskChange } from './types';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import type { Task } from './types';
 import * as api from './api';
-import { useAppStore } from './store';
+import { localDate } from './date';
 
 export const QUERY_KEYS = {
   bootstrap: ['bootstrap'],
   tasks: ['tasks'],
   categories: ['categories'],
+  workflow: ['workflow'],
+  inbox: ['inbox'],
+  sessions: ['chat-sessions'],
 } as const;
 
-export function useBootstrap() {
+export async function invalidatePlanningQueries(client: QueryClient) {
+  await Promise.all(Object.values(QUERY_KEYS).map(queryKey => client.invalidateQueries({ queryKey })));
+}
+
+export function useBootstrap(date = localDate()) {
+  return useQuery({ queryKey: [...QUERY_KEYS.bootstrap, date], queryFn: () => api.bootstrap(date), staleTime: 60_000 });
+}
+
+export function useWorkflow(date = localDate()) {
+  return useQuery({ queryKey: [...QUERY_KEYS.workflow, date], queryFn: () => api.getWorkflow(date), staleTime: 0 });
+}
+
+export function useChatSessions() {
+  return useQuery({ queryKey: QUERY_KEYS.sessions, queryFn: api.getChatSessions, staleTime: 30_000 });
+}
+
+export function useTasks(date = localDate()) {
+  const { data: account } = useBootstrap(date);
   return useQuery({
-    queryKey: QUERY_KEYS.bootstrap,
-    queryFn: api.bootstrap,
-    staleTime: 1000 * 60 * 5,
+    queryKey: [...QUERY_KEYS.tasks, date],
+    queryFn: () => api.getTodayTasks(date),
+    staleTime: 30_000,
+    select: tasks => tasks.map(task => ({ ...task, category: account?.categories.find(category => category.id === task.categoryId)?.name || task.category })),
   });
 }
 
-export function useTasks() {
+export function useInboxTasks() {
+  const { data: account } = useBootstrap();
   return useQuery({
-    queryKey: QUERY_KEYS.tasks,
-    queryFn: api.getTodayTasks,
-    staleTime: 1000 * 30,
+    queryKey: QUERY_KEYS.inbox,
+    queryFn: api.getInboxTasks,
+    select: tasks => tasks.map(task => ({ ...task, category: account?.categories.find(category => category.id === task.categoryId)?.name || task.category })),
   });
 }
 
 export function useToggleTask() {
-  const queryClient = useQueryClient();
-  
+  const client = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, completed }: { id: string; completed: boolean }) => {
-      return api.updateTask(id, { completed });
-    },
+    mutationFn: ({ id, completed }: { id: string; completed: boolean }) => api.updateTask(id, { completed }),
     onMutate: async ({ id, completed }) => {
-      await queryClient.cancelQueries({ queryKey: QUERY_KEYS.tasks });
-      
-      const previousTasks = queryClient.getQueryData<Task[]>(QUERY_KEYS.tasks);
-      
-      queryClient.setQueryData<Task[]>(QUERY_KEYS.tasks, (old) => 
-        old?.map((t) => (t.id === id ? { ...t, completed } : t)) || []
-      );
-      
-      return { previousTasks };
+      await client.cancelQueries({ queryKey: QUERY_KEYS.tasks });
+      const previous = client.getQueriesData<Task[]>({ queryKey: QUERY_KEYS.tasks });
+      client.setQueriesData<Task[]>({ queryKey: QUERY_KEYS.tasks }, tasks => tasks?.map(task => task.id === id ? { ...task, completed } : task));
+      return { previous };
     },
-    onError: (_err, _variables, context) => {
-      if (context?.previousTasks) {
-        queryClient.setQueryData(QUERY_KEYS.tasks, context.previousTasks);
-      }
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.tasks });
-    },
+    onError: (_error, _variables, context) => context?.previous.forEach(([key, tasks]) => client.setQueryData(key, tasks)),
+    onSettled: () => invalidatePlanningQueries(client),
   });
 }
 
 export function useCreateTask() {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: api.createTask,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.tasks });
-    },
-  });
+  const client = useQueryClient();
+  return useMutation({ mutationFn: api.createTask, onSuccess: () => invalidatePlanningQueries(client) });
 }
 
 export function useUpdateTask() {
-  const queryClient = useQueryClient();
-  
+  const client = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, updates }: { id: string; updates: Parameters<typeof api.updateTask>[1] }) => {
-      return api.updateTask(id, updates);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.tasks });
-    },
+    mutationFn: ({ id, updates }: { id: string; updates: Parameters<typeof api.updateTask>[1] }) => api.updateTask(id, updates),
+    onSuccess: () => invalidatePlanningQueries(client),
   });
 }
 
 export function useDeleteTask() {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: api.deleteTask,
-    onMutate: async (id) => {
-      await queryClient.cancelQueries({ queryKey: QUERY_KEYS.tasks });
-      
-      const previousTasks = queryClient.getQueryData<Task[]>(QUERY_KEYS.tasks);
-      
-      queryClient.setQueryData<Task[]>(QUERY_KEYS.tasks, (old) => 
-        old?.filter((t) => t.id !== id) || []
-      );
-      
-      return { previousTasks };
-    },
-    onError: (_err, _variables, context) => {
-      if (context?.previousTasks) {
-        queryClient.setQueryData(QUERY_KEYS.tasks, context.previousTasks);
-      }
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.tasks });
-    },
-  });
+  const client = useQueryClient();
+  return useMutation({ mutationFn: api.deleteTask, onSuccess: () => invalidatePlanningQueries(client) });
 }
 
 export function useReorderTasks() {
-  const queryClient = useQueryClient();
-  
+  const client = useQueryClient();
   return useMutation({
     mutationFn: api.reorderTasks,
     onMutate: async (reorderedTasks) => {
-      await queryClient.cancelQueries({ queryKey: QUERY_KEYS.tasks });
-      
-      const previousTasks = queryClient.getQueryData<Task[]>(QUERY_KEYS.tasks);
-      
-      queryClient.setQueryData<Task[]>(QUERY_KEYS.tasks, (old) => {
-        if (!old) return [];
-        
-        const taskMap = new Map(reorderedTasks.map((t) => [t.id, t.sortOrder]));
-        return old
-          .map((t) => ({
-            ...t,
-            order: taskMap.get(t.id) ?? t.order,
-          }))
-          .sort((a, b) => a.order - b.order);
-      });
-      
-      return { previousTasks };
+      await client.cancelQueries({ queryKey: QUERY_KEYS.tasks });
+      const previous = client.getQueriesData<Task[]>({ queryKey: QUERY_KEYS.tasks });
+      const order = new Map(reorderedTasks.map(task => [task.id, task.sortOrder]));
+      client.setQueriesData<Task[]>({ queryKey: QUERY_KEYS.tasks }, tasks => tasks?.map(task => ({ ...task, order: order.get(task.id) ?? task.order })).sort((a, b) => a.order - b.order));
+      return { previous };
     },
-    onError: (_err, _variables, context) => {
-      if (context?.previousTasks) {
-        queryClient.setQueryData(QUERY_KEYS.tasks, context.previousTasks);
-      }
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.tasks });
-    },
-  });
-}
-
-export function useReprioritizeTasks() {
-  const queryClient = useQueryClient();
-  const { applyPrioritization } = useAppStore();
-  
-  return useMutation({
-    mutationFn: ({ voiceTranscript, voiceEntryId }: { voiceTranscript?: string; voiceEntryId?: string }) => {
-      return api.prioritizeTasks(voiceTranscript, voiceEntryId);
-    },
-    onSuccess: (data: { tasks: Task[]; changes: TaskChange[] }) => {
-      applyPrioritization(data.tasks, data.changes);
-      queryClient.setQueryData(QUERY_KEYS.tasks, data.tasks);
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.tasks });
-    },
+    onError: (_error, _variables, context) => context?.previous.forEach(([key, tasks]) => client.setQueryData(key, tasks)),
+    onSettled: () => invalidatePlanningQueries(client),
   });
 }
 
 export function useCategories() {
-  return useQuery({
-    queryKey: QUERY_KEYS.categories,
-    queryFn: api.getCategories,
-    staleTime: 1000 * 60 * 60,
-  });
+  const query = useBootstrap();
+  return { ...query, data: query.data?.categories };
 }

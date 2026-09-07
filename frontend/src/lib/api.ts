@@ -1,9 +1,10 @@
 import type { Task, TaskChange, Category, UserPrefs } from './types';
 import { toast } from '@/hooks/use-toast';
+import { localDate } from './date';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
-class ApiError extends Error {
+export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
@@ -13,12 +14,18 @@ class ApiError extends Error {
   }
 }
 
-function getAuthToken(): string | null {
-  return localStorage.getItem('caprio_session') || localStorage.getItem('auth_token');
+let accessTokenProvider: (() => Promise<string>) | null = null;
+
+// Auth0 owns token storage and refresh. Keep the API client independent of React.
+export function setAccessTokenProvider(provider: (() => Promise<string>) | null) {
+  accessTokenProvider = provider;
+  return () => {
+    if (accessTokenProvider === provider) accessTokenProvider = null;
+  };
 }
 
 async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promise<Response> {
-  const token = getAuthToken();
+  const token = accessTokenProvider ? await accessTokenProvider() : null;
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
     ...options.headers,
@@ -34,11 +41,8 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promi
   });
 
   if (response.status === 401) {
-    localStorage.removeItem('caprio_session');
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('onboarding_complete');
-    window.location.href = '/login';
-    throw new ApiError(401, 'Unauthorized');
+    window.dispatchEvent(new Event('caprio:session-expired'));
+    throw new ApiError(401, 'Your session expired. Sign in again to continue.');
   }
 
   if (response.status >= 500) {
@@ -58,7 +62,7 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promi
   return response;
 }
 
-// Chat types (preserved for type compatibility, not used)
+// Persisted daily conversations and proposals
 export interface ChatSession {
   sessionDate: string;
   title: string;
@@ -75,31 +79,31 @@ export interface DayStatus {
 // Task types
 export interface BackendTask {
   id: string;
-  user_id: string;
+  userId: string;
   title: string;
   description?: string | null;
-  category_id?: string | null;
+  categoryId?: string | null;
   urgency: 'low' | 'medium' | 'high';
   duration?: number | null;
   source: string;
   completed: boolean;
-  sort_order: number;
-  planned_for_date: string;
+  sortOrder: number;
+  plannedForDate: string;
   status: string;
-  priority_reason?: string | null;
-  defer_count: number;
-  due_date?: string | null;
-  created_at: string;
-  updated_at: string;
+  priorityReason?: string | null;
+  deferCount: number;
+  dueDate?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface BackendCategory {
   id: string;
-  user_id: string;
+  userId: string;
   name: string;
   color: string;
-  hours_per_week?: number | null;
-  created_at: string;
+  hoursPerWeek?: number | null;
+  createdAt: string;
 }
 
 export interface BootstrapResponse {
@@ -108,6 +112,7 @@ export interface BootstrapResponse {
     email: string;
     name: string;
   };
+  onboardingComplete: boolean;
   preferences: UserPrefs;
   categories: Category[];
   todayTasks: BackendTask[];
@@ -115,18 +120,22 @@ export interface BootstrapResponse {
   streak: number;
 }
 
-function mapBackendTaskToTask(backendTask: BackendTask): Task {
+export function mapBackendTaskToTask(backendTask: BackendTask, categories: Category[] = []): Task {
   return {
     id: backendTask.id,
     title: backendTask.title,
-    category: 'Work', // TODO: map category_id to category name
+    categoryId: backendTask.categoryId || undefined,
+    category: categories.find((category) => category.id === backendTask.categoryId)?.name || 'Uncategorized',
     urgency: backendTask.urgency,
     duration: backendTask.duration || undefined,
     source: backendTask.source,
-    completed: backendTask.completed,
+    completed: backendTask.completed || backendTask.status === 'completed',
+    plannedForDate: backendTask.plannedForDate,
+    status: backendTask.status,
+    priorityReason: backendTask.priorityReason || undefined,
     addedToday: backendTask.status === 'planned',
-    carriedOver: backendTask.defer_count > 0,
-    order: backendTask.sort_order,
+    carriedOver: backendTask.deferCount > 0,
+    order: backendTask.sortOrder,
   };
 }
 
@@ -142,15 +151,16 @@ export async function getLeftovers(): Promise<{ leftovers: BackendTask[] }> {
 }
 
 // Standalone functions for React Query hooks
-export async function bootstrap(): Promise<BootstrapResponse> {
-  const response = await fetchWithAuth('/api/bootstrap');
-  return response.json();
+export async function bootstrap(date = localDate()): Promise<BootstrapResponse> {
+  const response = await fetchWithAuth(`/api/bootstrap?date=${date}`);
+  const data = await response.json();
+  return { ...data, categories: (data.categories || []).map(mapBackendCategory) };
 }
 
-export async function getTodayTasks(): Promise<Task[]> {
-  const response = await fetchWithAuth('/api/tasks');
+export async function getTodayTasks(date = localDate()): Promise<Task[]> {
+  const response = await fetchWithAuth(`/api/tasks?date=${date}`);
   const data = await response.json();
-  return (data.tasks || []).map(mapBackendTaskToTask);
+  return (data.tasks || []).map((task: BackendTask) => mapBackendTaskToTask(task));
 }
 
 export async function createTask(task: {
@@ -160,6 +170,8 @@ export async function createTask(task: {
   urgency?: 'low' | 'medium' | 'high';
   duration?: number;
   sortOrder: number;
+  status?: 'planned' | 'backlog';
+  plannedForDate?: string;
 }): Promise<BackendTask> {
   const response = await fetchWithAuth('/api/tasks', {
     method: 'POST',
@@ -171,7 +183,8 @@ export async function createTask(task: {
       duration: task.duration,
       source: 'manual',
       sortOrder: task.sortOrder,
-      status: 'planned',
+      status: task.status || 'planned',
+      plannedForDate: task.plannedForDate || localDate(),
     }),
   });
   return response.json();
@@ -188,6 +201,7 @@ export async function updateTask(
     completed?: boolean;
     sortOrder?: number;
     status?: string;
+    plannedForDate?: string;
   },
 ): Promise<BackendTask> {
   const response = await fetchWithAuth(`/api/tasks/${id}`, {
@@ -236,7 +250,7 @@ export async function prioritizeTasks(
   const data: ReprioritizeResponse = await response.json();
 
   return {
-    tasks: data.tasks.map(mapBackendTaskToTask),
+    tasks: data.tasks.map((task) => mapBackendTaskToTask(task)),
     changes: data.changes.map((c) => ({
       taskId: c.task_id,
       direction: 'up',
@@ -253,25 +267,112 @@ export async function createVoiceEntry(transcript: string): Promise<{ id: string
   return response.json();
 }
 
+function mapBackendCategory(category: BackendCategory | Category): Category {
+  return {
+    id: category.id,
+    name: category.name,
+    color: category.color,
+    hoursPerWeek: category.hoursPerWeek || undefined,
+  };
+}
+
 export async function getCategories(): Promise<Category[]> {
-  const bootstrapData = await bootstrap();
-  return bootstrapData.categories.map((c: BackendCategory) => ({
-    id: c.id,
-    name: c.name,
-    color: c.color,
-    hoursPerWeek: c.hours_per_week || undefined,
-  }));
+  return (await bootstrap()).categories;
 }
 
-export async function updateSettings(prefs: Partial<UserPrefs>): Promise<void> {
-  // TODO: Implement backend endpoint for updating user preferences
-  console.warn('updateSettings not yet implemented on backend');
+export async function updateSettings(preferences: Partial<UserPrefs>, categories?: Category[]): Promise<void> {
+  await fetchWithAuth('/api/settings', {
+    method: 'PATCH',
+    body: JSON.stringify({ preferences, categories }),
+  });
 }
 
-export async function sendChatMessage(content: string): Promise<{ text: string }> {
+export async function completeOnboarding(preferences: Partial<UserPrefs>, categories: Category[]): Promise<void> {
+  await fetchWithAuth('/api/onboarding', {
+    method: 'POST',
+    body: JSON.stringify({ preferences, categories }),
+  });
+}
+
+export interface PlanTask {
+  id?: string;
+  title: string;
+  duration: number;
+  urgency: 'low' | 'medium' | 'high';
+  categoryId?: string;
+  disposition: 'today' | 'backlog';
+  reason: string;
+}
+
+export interface PlanProposal {
+  id: string;
+  summary: string;
+  availableMinutes: number | null;
+  tasks: PlanTask[];
+}
+
+export interface DayReview {
+  completedCount: number;
+  carriedToTomorrowCount: number;
+  droppedCount: number;
+  notes: string | null;
+  energyLevel: number | null;
+}
+
+export interface Workflow {
+  date: string;
+  state: 'planning' | 'active' | 'closed';
+  version: number;
+  messages: Array<{ id: string; role: 'user' | 'assistant'; content: string }>;
+  proposal: PlanProposal | null;
+  tasks: BackendTask[];
+  backlog: BackendTask[];
+  review: DayReview | null;
+}
+
+export async function getWorkflow(date = localDate()): Promise<Workflow> {
+  return (await fetchWithAuth(`/api/workflow?date=${date}`)).json();
+}
+
+export async function getChatSessions(): Promise<ChatSession[]> {
+  const data = await (await fetchWithAuth('/api/chat/sessions')).json();
+  return data.sessions || [];
+}
+
+export async function sendChatMessage(content: string, date = localDate(), requestId: string = crypto.randomUUID()): Promise<{ text: string; workflow: Workflow }> {
   const response = await fetchWithAuth('/api/chat', {
     method: 'POST',
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, date, requestId }),
   });
   return response.json();
+}
+
+export async function confirmDayPlan(input: { date: string; proposalId: string; version: number }): Promise<Workflow> {
+  return (await fetchWithAuth('/api/day/plan/confirm', {
+    method: 'POST', body: JSON.stringify(input),
+  })).json();
+}
+
+export async function discardDayPlan(input: { date: string; proposalId: string; version: number }): Promise<Workflow> {
+  return (await fetchWithAuth('/api/day/plan/discard', {
+    method: 'POST', body: JSON.stringify(input),
+  })).json();
+}
+
+export interface CloseDayInput {
+  date: string;
+  taskActions: Array<{ taskId: string; action: 'done' | 'tomorrow' | 'drop' }>;
+  notes?: string;
+  energyLevel?: number;
+}
+
+export async function closeDay(input: CloseDayInput): Promise<DayReview & { nextDate: string }> {
+  return (await fetchWithAuth('/api/day/close', {
+    method: 'POST', body: JSON.stringify(input),
+  })).json();
+}
+
+export async function getInboxTasks(): Promise<Task[]> {
+  const data = await (await fetchWithAuth('/api/tasks?status=backlog')).json();
+  return (data.tasks || []).map((task: BackendTask) => mapBackendTaskToTask(task));
 }
