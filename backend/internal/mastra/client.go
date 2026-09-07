@@ -35,6 +35,7 @@ type GenerateRequest struct {
 	Messages   []ChatMessage `json:"messages"`
 	ThreadID   string        `json:"threadId"`
 	ResourceID string        `json:"resourceId"`
+	Model      string        `json:"model,omitempty"`
 }
 
 // GenerateResponse is the response from the Mastra generate endpoint.
@@ -49,11 +50,12 @@ type ChatResponse struct {
 }
 
 // Chat sends messages to the Mastra agent and returns the assistant's reply.
-func (c *Client) Chat(ctx context.Context, messages []ChatMessage, threadID, resourceID string) (*ChatResponse, error) {
+func (c *Client) Chat(ctx context.Context, messages []ChatMessage, threadID, resourceID, model string) (*ChatResponse, error) {
 	reqBody := GenerateRequest{
 		Messages:   messages,
 		ThreadID:   threadID,
 		ResourceID: resourceID,
+		Model:      model,
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)

@@ -367,6 +367,7 @@ export interface SelectItemProps {
   value: string;
   disabled?: boolean;
   className?: string;
+  description?: ReactNode;
   children: ReactNode;
 }
 
@@ -374,6 +375,7 @@ export function SelectItem({
   value,
   disabled = false,
   className,
+  description,
   children,
 }: SelectItemProps) {
   const ctx = useSelectContext("SelectItem");
@@ -402,7 +404,14 @@ export function SelectItem({
           className,
         )}
       >
-        {children}
+        <span className="min-w-0 flex-1">
+          <span className="block">{children}</span>
+          {description ? (
+            <span className="mt-0.5 block text-xs text-muted-foreground">
+              {description}
+            </span>
+          ) : null}
+        </span>
         {selected ? <Check className="h-4 w-4" /> : null}
       </button>
     </motion.li>

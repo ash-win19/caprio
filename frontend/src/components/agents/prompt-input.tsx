@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 export interface PromptModel {
   value: string;
   label: ReactNode;
+  description?: ReactNode;
   icon?: ReactNode;
   disabled?: boolean;
 }
@@ -273,14 +274,19 @@ export function PromptInput({
                   key={option.value}
                   value={option.value}
                   disabled={option.disabled}
+                  description={option.description}
                   className="py-2"
                 >
-                  <span className="flex items-center gap-1.5">
-                    {option.icon ? (
-                      <span className="shrink-0">{option.icon}</span>
-                    ) : null}
-                    <span>{option.label}</span>
-                  </span>
+                  {typeof option.label === "string" && !option.icon ? (
+                    option.label
+                  ) : (
+                    <span className="flex items-center gap-1.5">
+                      {option.icon ? (
+                        <span className="shrink-0">{option.icon}</span>
+                      ) : null}
+                      <span>{option.label}</span>
+                    </span>
+                  )}
                 </SelectItem>
               ))}
             </SelectContent>

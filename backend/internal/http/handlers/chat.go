@@ -83,6 +83,7 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 		Content   string    `json:"content" binding:"required"`
 		Date      string    `json:"date" binding:"required"`
 		RequestID uuid.UUID `json:"requestId" binding:"required"`
+		Model     string    `json:"model"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
@@ -93,7 +94,7 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 		workflowError(c, err)
 		return
 	}
-	result, err := h.chatService.Process(c.Request.Context(), chat.ProcessRequest{UserID: userID, SessionDate: date, Content: req.Content, RequestID: req.RequestID})
+	result, err := h.chatService.Process(c.Request.Context(), chat.ProcessRequest{UserID: userID, SessionDate: date, Content: req.Content, RequestID: req.RequestID, Model: req.Model})
 	if err != nil {
 		workflowError(c, err)
 		return

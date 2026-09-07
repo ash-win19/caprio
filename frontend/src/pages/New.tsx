@@ -7,6 +7,7 @@ import { ConversationSidebar } from '@/components/ConversationSidebar';
 import { Button } from '@/components/ui/button';
 import { DaySummary, WorkflowError } from '@/components/workflow/WorkflowUI';
 import { dateLabel, selectedDate } from '@/components/workflow/dates';
+import { CHAT_MODELS, DEFAULT_CHAT_MODEL } from '@/lib/chat-models';
 import { useChatSessions, useWorkflow } from '@/lib/queries';
 import { localDate } from '@/lib/date';
 import * as api from '@/lib/api';
@@ -17,7 +18,8 @@ function ConversationDay({ date }: { date: string }) {
   const workflowQuery = useWorkflow(date);
   const workflow = workflowQuery.data;
   const [input, setInput] = useState('');
-  const [lastRequest, setLastRequest] = useState<{ content: string; requestId: string } | null>(null);
+  const [model, setModel] = useState(DEFAULT_CHAT_MODEL);
+  const [lastRequest, setLastRequest] = useState<{ content: string; requestId: string; model?: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const past = date < localDate();
   const readOnly = past || workflow?.state === 'closed';
@@ -26,7 +28,7 @@ function ConversationDay({ date }: { date: string }) {
     for (const key of ['workflow', 'tasks', 'inbox', 'bootstrap', 'chat-sessions']) void queryClient.invalidateQueries({ queryKey: [key] });
   };
   const chat = useMutation({
-    mutationFn: ({ content, requestId }: { content: string; requestId: string }) => api.sendChatMessage(content, date, requestId),
+    mutationFn: ({ content, requestId, model: selectedModel }: { content: string; requestId: string; model?: string }) => api.sendChatMessage(content, date, requestId, selectedModel),
     onSuccess: (response) => {
       queryClient.setQueryData(['workflow', date], response.workflow);
       setInput('');
@@ -58,10 +60,11 @@ function ConversationDay({ date }: { date: string }) {
     messagesEndRef.current?.scrollIntoView?.({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
   }, [workflow?.messages.length, workflow?.proposal?.id, chat.isPending]);
 
-  const handleSend = (value: string) => {
+  const handleSend = (value: string, selectedModel?: string) => {
     const content = value.trim();
     if (!content || chat.isPending || confirm.isPending || discard.isPending || readOnly) return;
-    const request = lastRequest?.content === content ? lastRequest : { content, requestId: crypto.randomUUID() };
+    const modelId = selectedModel || model;
+    const request = lastRequest?.content === content ? lastRequest : { content, requestId: crypto.randomUUID(), model: modelId };
     setLastRequest(request);
     confirm.reset();
     discard.reset();
@@ -110,7 +113,7 @@ function ConversationDay({ date }: { date: string }) {
     </div></div>
     <div className="bg-background px-4 pb-4 pt-2 md:px-8"><div className="mx-auto max-w-2xl">
       {readOnly ? <div className="flex items-center justify-between gap-3 rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground"><span>{past ? 'Past conversations are read-only.' : 'This day is closed.'}</span><Link to="/new" className="shrink-0 text-primary hover:underline">Go to today</Link></div> : <>
-        <PromptInput id="day-message" value={input} onValueChange={setInput} onSubmit={handleSend} loading={chat.isPending} disabled={workflowQuery.isLoading || !!workflowQuery.error || chat.isPending || confirm.isPending || discard.isPending} aria-label="Message about your day" maxLength={8000} placeholder={workflow?.state === 'active' ? 'What changed? For example, a meeting took an extra hour…' : 'Finish a report, meet the team at 2, and go for a run. I have 4 hours…'} />
+        <PromptInput id="day-message" value={input} onValueChange={setInput} models={CHAT_MODELS} model={model} defaultModel={DEFAULT_CHAT_MODEL} onModelChange={setModel} onSubmit={handleSend} loading={chat.isPending} disabled={workflowQuery.isLoading || !!workflowQuery.error || chat.isPending || confirm.isPending || discard.isPending} aria-label="Message about your day" maxLength={8000} placeholder={workflow?.state === 'active' ? 'What changed? For example, a meeting took an extra hour…' : 'Finish a report, meet the team at 2, and go for a run. I have 4 hours…'} />
         <p className="mt-2 text-center text-[11px] text-muted-foreground">Your tasks and constraints guide the plan. You confirm changes before they’re saved.</p>
       </>}
     </div></div>
