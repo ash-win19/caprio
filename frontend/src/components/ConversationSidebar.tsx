@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   CalendarDays,
@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type { ChatSession } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
+import { sidebarShortcutLabel, useSidebarShortcut, useSidebarStore } from "@/lib/sidebar";
 import { UserAvatar } from "@/components/UserAvatar";
 import { CaprioMark, Logo } from "@/components/Logo";
 
@@ -75,9 +76,12 @@ function SidebarContent({
             <button
               type="button"
               onClick={onCollapse}
-              className="rounded-md p-2 text-muted-foreground transition hover:bg-accent hover:text-foreground"
+              className="rounded-md p-2 text-muted-foreground transition hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               aria-label="Collapse sidebar"
-              title="Collapse sidebar"
+              aria-controls="conversation-sidebar"
+              aria-expanded={true}
+              aria-keyshortcuts="Meta+B Control+B"
+              title={`Collapse sidebar (${sidebarShortcutLabel()})`}
             >
               <PanelLeftClose className="h-4 w-4" />
             </button>
@@ -192,8 +196,21 @@ function SidebarContent({
 
 export function ConversationSidebar(props: ConversationSidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [desktopOpen, setDesktopOpen] = useState(true);
+  const collapsed = useSidebarStore((state) => state.collapsed);
+  const setCollapsed = useSidebarStore((state) => state.setCollapsed);
+  const desktopOpen = !collapsed;
+  const expandRef = useRef<HTMLButtonElement>(null);
+  const focusExpand = useRef(false);
   const user = useAppStore((state) => state.user);
+  const shortcut = sidebarShortcutLabel();
+  useSidebarShortcut();
+
+  // Collapsing from the header button must not strand focus in the inert panel.
+  useEffect(() => {
+    if (!focusExpand.current) return;
+    focusExpand.current = false;
+    if (collapsed) expandRef.current?.focus();
+  }, [collapsed]);
 
   return (
     <>
@@ -208,7 +225,10 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
         >
           <SidebarContent
             {...props}
-            onCollapse={() => setDesktopOpen(false)}
+            onCollapse={() => {
+              focusExpand.current = true;
+              setCollapsed(true);
+            }}
           />
         </div>
         <div
@@ -220,13 +240,15 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
             <CaprioMark />
           </Link>
           <button
+            ref={expandRef}
             type="button"
-            onClick={() => setDesktopOpen(true)}
-            className="mt-3 grid h-10 w-10 place-items-center rounded-lg text-muted-foreground transition hover:bg-accent hover:text-foreground"
+            onClick={() => setCollapsed(false)}
+            className="mt-3 grid h-10 w-10 place-items-center rounded-lg text-muted-foreground transition hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             aria-label="Expand sidebar"
             aria-controls="conversation-sidebar"
-            aria-expanded="false"
-            title="Expand sidebar"
+            aria-expanded={false}
+            aria-keyshortcuts="Meta+B Control+B"
+            title={`Expand sidebar (${shortcut})`}
           >
             <PanelLeftOpen className="h-5 w-5" />
           </button>
