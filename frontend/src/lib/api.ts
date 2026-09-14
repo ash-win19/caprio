@@ -82,6 +82,12 @@ export interface ChatSession {
   title: string;
   messageCount: number;
   updatedAt: string;
+  /** planning | active | closed — empty when only chat exists without a plan */
+  state?: string;
+  completedCount?: number;
+  carriedCount?: number;
+  droppedCount?: number;
+  plannedCount?: number;
 }
 
 export interface DayStatus {

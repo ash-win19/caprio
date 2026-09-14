@@ -312,6 +312,11 @@ func TestClosePersistsOutcomesAndCarriesExactlyOnce(t *testing.T) {
 	require.Len(t, sessions, 1)
 	require.Equal(t, "Daily plan", sessions[0].Title)
 	require.Zero(t, sessions[0].MessageCount)
+	require.Equal(t, "closed", sessions[0].State)
+	require.Equal(t, int32(1), sessions[0].CompletedCount)
+	require.Equal(t, int32(1), sessions[0].CarriedCount)
+	require.Equal(t, int32(1), sessions[0].DroppedCount)
+	require.Equal(t, int32(3), sessions[0].PlannedCount)
 	// A closed day remains immutable through the planner.
 	_, err = s.Confirm(ctx, user, date, uuid.New(), 0)
 	require.ErrorIs(t, err, ErrClosed)
