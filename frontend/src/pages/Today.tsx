@@ -44,6 +44,7 @@ export default function Today() {
   const readOnly = date < localDate() || workflow?.state === 'closed';
   const canComplete = isToday;
   const dayInProgress = isToday && workflow?.state === 'active';
+  const interruptHref = `/new?date=${date}&intent=interrupt`;
   const remainingMinutes = active.reduce((sum, task) => sum + (task.duration || 0), 0);
   const availableMinutes = workflow?.availableMinutes ?? workflow?.proposal?.availableMinutes ?? null;
   const overCapacity = availableMinutes !== null && remainingMinutes > availableMinutes;
@@ -73,7 +74,12 @@ export default function Today() {
           </p>
         )}
       </div>
-      {!readOnly && <div className="flex flex-wrap gap-2"><Button asChild variant="outline"><Link to={`/new?date=${date}`}>{workflow?.state === 'active' ? 'Adjust plan' : 'Plan this day'}</Link></Button>{dayInProgress && tasks.length > 0 && <Button asChild><Link to={`/review?date=${date}`}>Review day</Link></Button>}</div>}
+      {!readOnly && <div className="flex flex-wrap gap-2">
+        {dayInProgress
+          ? <Button asChild><Link to={interruptHref}>Something changed</Link></Button>
+          : <Button asChild variant="outline"><Link to={`/new?date=${date}`}>Plan this day</Link></Button>}
+        {dayInProgress && tasks.length > 0 && <Button asChild variant="outline"><Link to={`/review?date=${date}`}>Review day</Link></Button>}
+      </div>}
     </header>
     {tasksQuery.isLoading || workflowQuery.isLoading ? <p role="status" className="py-16 text-center text-sm text-muted-foreground">Loading your plan…</p> : tasksQuery.error || workflowQuery.error ? <WorkflowError error={tasksQuery.error || workflowQuery.error} retry={() => { void tasksQuery.refetch(); void workflowQuery.refetch(); }} /> : <>
       {workflow?.state === 'closed' ? <DaySummary workflow={workflow} /> : <>
@@ -87,7 +93,7 @@ export default function Today() {
           <ListChecks className="mx-auto mb-5 h-8 w-8 text-muted-foreground" />
           <h2 className="text-xl font-medium">{readOnly ? 'No saved plan for this day' : workflow?.state === 'active' ? 'Nothing planned for this day' : 'Make room for what matters today'}</h2>
           <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-muted-foreground">{readOnly ? 'Choose another day from your history.' : workflow?.state === 'active' ? 'Your plan is saved with no tasks. Enjoy the space, or plan something if it comes up.' : 'Start with the tasks on your mind. Caprio will help you decide what fits and what can wait.'}</p>
-          <Button asChild className="mt-6"><Link to={readOnly ? '/momentum' : `/new?date=${date}`}>{readOnly ? 'View history' : 'Plan my day'}<ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
+          <Button asChild className="mt-6"><Link to={readOnly ? '/momentum' : dayInProgress ? interruptHref : `/new?date=${date}`}>{readOnly ? 'View history' : dayInProgress ? 'Something changed' : 'Plan my day'}<ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
         </section> : <div className="grid gap-6 lg:grid-cols-[1fr_250px]">
           <div>
             {(reorder.error || toggle.error) && <div className="mb-4"><WorkflowError error={reorder.error || toggle.error} /></div>}
@@ -102,7 +108,8 @@ export default function Today() {
           </div>
           <aside className="space-y-4">
             <div className="rounded-xl border border-border bg-card p-5"><h2 className="text-sm font-medium">Your day at a glance</h2><p className="mt-4 text-3xl font-medium">{completed.length}<span className="ml-2 text-base text-muted-foreground">/ {tasks.length} done</span></p><p className={`mt-2 text-sm ${overCapacity ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'}`}>{remainingMinutes} estimated minutes remaining{availableMinutes !== null ? ` · ${availableMinutes} available` : ''}{overCapacity ? ' · over capacity' : ''}</p><div className="mt-4 h-1.5 overflow-hidden rounded-full bg-accent"><div className={`h-full rounded-full transition-[width] motion-reduce:transition-none ${overCapacity ? 'bg-amber-500' : 'bg-primary'}`} style={{ width: `${completed.length / tasks.length * 100}%` }} /></div></div>
-            {!readOnly && <div className="rounded-xl border border-border bg-card p-5"><h2 className="text-sm font-medium">Something changed?</h2><p className="mt-2 text-xs leading-5 text-muted-foreground">Share an interruption or a new constraint. Review the suggested changes before updating your plan.</p><Link to={`/new?date=${date}`} className="mt-3 inline-block text-sm text-primary hover:underline">Adjust my plan →</Link></div>}
+            {dayInProgress && <div className="rounded-xl border border-border bg-card p-5"><h2 className="text-sm font-medium">Something changed?</h2><p className="mt-2 text-xs leading-5 text-muted-foreground">Share an interruption or a new constraint. Review the suggested changes before updating your plan.</p><Link to={interruptHref} className="mt-3 inline-block text-sm text-primary hover:underline">Something changed →</Link></div>}
+            {!dayInProgress && !readOnly && <div className="rounded-xl border border-border bg-card p-5"><h2 className="text-sm font-medium">Something changed?</h2><p className="mt-2 text-xs leading-5 text-muted-foreground">Share an interruption or a new constraint. Review the suggested changes before updating your plan.</p><Link to={`/new?date=${date}`} className="mt-3 inline-block text-sm text-primary hover:underline">Adjust my plan →</Link></div>}
             <Link to="/capture" className="flex items-center justify-between rounded-xl border border-border p-4 text-sm text-muted-foreground hover:bg-accent"><span className="flex items-center gap-2"><Inbox size={16} />Open inbox</span><ArrowRight size={14} /></Link>
           </aside>
         </div>}

@@ -16,6 +16,42 @@ export function capacityOverMessage(plannedMinutes: number, availableMinutes: nu
   return `Plan is ${formatHours(over)} over your ${formatHours(availableMinutes)} day`;
 }
 
+export type ProposalRevisionDiff = {
+  kept: string[];
+  added: string[];
+  deferredOrRemoved: string[];
+};
+
+/** Compare an active day's unfinished tasks to a revision proposal (client-side). */
+export function proposalRevisionDiff(
+  currentTasks: Array<{ id: string; title: string; completed: boolean }>,
+  proposalTasks: Array<{ id?: string; title: string; disposition: 'today' | 'backlog' }>,
+): ProposalRevisionDiff {
+  const unfinished = currentTasks.filter((task) => !task.completed);
+  const proposedToday = proposalTasks.filter((task) => task.disposition === 'today');
+  const titleKey = (title: string) => title.trim().toLowerCase();
+  const keysFor = (task: { id?: string; title: string }) => {
+    const keys = new Set<string>([`title:${titleKey(task.title)}`]);
+    if (task.id) keys.add(`id:${task.id}`);
+    return keys;
+  };
+  const overlaps = (a: { id?: string; title: string }, b: { id?: string; title: string }) => {
+    const left = keysFor(a);
+    for (const key of keysFor(b)) if (left.has(key)) return true;
+    return false;
+  };
+  const kept: string[] = [];
+  const added: string[] = [];
+  for (const task of proposedToday) {
+    if (unfinished.some((current) => overlaps(current, task))) kept.push(task.title);
+    else added.push(task.title);
+  }
+  const deferredOrRemoved = unfinished
+    .filter((task) => !proposedToday.some((proposed) => overlaps(task, proposed)))
+    .map((task) => task.title);
+  return { kept, added, deferredOrRemoved };
+}
+
 const KNOWN_ERRORS: Record<string, string> = {
   'tomorrow is already closed': "Tomorrow is already closed, so these tasks can’t move forward. Drop them from today, or reopen tomorrow before carrying again.",
   'Internal server error': 'Something went wrong on our end. Please try again.',

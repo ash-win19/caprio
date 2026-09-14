@@ -37,6 +37,11 @@ export default function Capture() {
     });
   };
 
+  const discussHref = (taskTitle: string) => {
+    const seed = encodeURIComponent(`Consider adding to ${targetLabel}: ${taskTitle}`);
+    return `/new?date=${targetDate}&intent=interrupt&seed=${seed}`;
+  };
+
   return <div className="mx-auto max-w-3xl">
     <header className="mb-7 flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-2xl font-medium">Inbox</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">Keep tasks here until you’re ready to plan them.</p></div><Button onClick={() => { create.reset(); setShowForm(true); }}><Plus size={16} className="mr-2" />Add task</Button></header>
     <div role="status" aria-live="polite" className={notice ? 'mb-4 text-sm text-primary' : 'sr-only'}>{notice}</div>
@@ -54,9 +59,13 @@ export default function Capture() {
     {(remove.error || promote.error) && <div className="mb-4"><WorkflowError error={remove.error || promote.error} /></div>}
     {inbox.isLoading ? <p role="status" className="py-12 text-center text-sm text-muted-foreground">Loading your inbox…</p> : inbox.error ? <WorkflowError error={inbox.error} retry={() => void inbox.refetch()} /> : !visible.length ? <div className="rounded-2xl border border-dashed border-border px-6 py-14 text-center"><Inbox className="mx-auto mb-4 h-8 w-8 text-muted-foreground" /><h2 className="text-lg font-medium">{filter ? 'No tasks in this category' : 'A place for what comes next'}</h2><p className="mt-2 text-sm text-muted-foreground">{filter ? 'Choose another category or add a task.' : 'Add a task now. Decide when it belongs in your day later.'}</p></div> : <div className="space-y-2">{visible.map((task) => <article key={task.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
       <div className="min-w-0 flex-1"><h2 className="text-sm font-medium">{task.title}</h2><p className="mt-1.5 text-xs text-muted-foreground">{task.category}{task.duration ? ` · ${task.duration} min` : ''} · {task.urgency} urgency</p>{task.priorityReason && <p className="mt-2 text-xs leading-5 text-muted-foreground">{task.priorityReason}</p>}</div>
-      <div className="flex items-center gap-2"><Button variant="outline" size="sm" disabled={promote.isPending || remove.isPending || !workflow.data} onClick={() => { remove.reset(); setNotice(''); promote.mutate({ id: task.id, updates: { status: 'planned', plannedForDate: targetDate } }, { onSuccess: () => setNotice(`${task.title} added to ${targetLabel}’s plan.`) }); }}>Add to {targetLabel}<ArrowRight size={13} className="ml-2" /></Button><Button size="icon" variant="ghost" aria-label={`Delete ${task.title}`} disabled={remove.isPending || promote.isPending} onClick={() => { promote.reset(); setNotice(''); remove.mutate(task.id, { onSuccess: () => setNotice('Task removed from your inbox.') }); }}><Trash2 size={15} /></Button></div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button asChild variant="ghost" size="sm"><Link to={discussHref(task.title)}>Discuss in Plan</Link></Button>
+        <Button variant="outline" size="sm" disabled={promote.isPending || remove.isPending || !workflow.data} onClick={() => { remove.reset(); setNotice(''); promote.mutate({ id: task.id, updates: { status: 'planned', plannedForDate: targetDate } }, { onSuccess: () => setNotice(`${task.title} added to ${targetLabel}’s plan.`) }); }}>Add to {targetLabel}<ArrowRight size={13} className="ml-2" /></Button>
+        <Button size="icon" variant="ghost" aria-label={`Delete ${task.title}`} disabled={remove.isPending || promote.isPending} onClick={() => { promote.reset(); setNotice(''); remove.mutate(task.id, { onSuccess: () => setNotice('Task removed from your inbox.') }); }}><Trash2 size={15} /></Button>
+      </div>
     </article>)}</div>}
-    <p className="mt-6 text-xs leading-5 text-muted-foreground">Adding a task to {targetLabel} saves your choice immediately. Use the planner if you want help fitting it around your other work.</p>
+    <p className="mt-6 text-xs leading-5 text-muted-foreground">Add to {targetLabel} saves immediately. Discuss in Plan opens the planner with this task so Caprio can help fit it around your other work.</p>
     {workflow.error && <div className="mt-3"><WorkflowError error={workflow.error} retry={() => void workflow.refetch()} /></div>}
   </div>;
 }

@@ -6,7 +6,7 @@ import { PromptInput } from '@/components/agents/prompt-input';
 import { ConversationSidebar } from '@/components/ConversationSidebar';
 import { Button } from '@/components/ui/button';
 import { MessageBubble, StoppedNotice, StreamingReply, ThinkingIndicator } from '@/components/workflow/ChatMessages';
-import { DaySummary, WorkflowError, capacityOverMessage } from '@/components/workflow/WorkflowUI';
+import { DaySummary, WorkflowError, capacityOverMessage, proposalRevisionDiff } from '@/components/workflow/WorkflowUI';
 import { dateLabel, selectedDate } from '@/components/workflow/dates';
 import { CHAT_MODELS, DEFAULT_CHAT_MODEL } from '@/lib/chat-models';
 import { useChatSessions, useWorkflow } from '@/lib/queries';
@@ -30,12 +30,18 @@ type PendingTurn = {
 
 const isReplying = (turn: PendingTurn | null) => turn?.status === 'thinking' || turn?.status === 'streaming';
 
-function ConversationDay({ date }: { date: string }) {
+const INTERRUPT_CHIPS = [
+  { label: 'Meeting ran over', text: 'A meeting ran over and I have less time today. ' },
+  { label: 'Add work', text: 'I need to add work to today: ' },
+  { label: 'Cut scope', text: 'I need to cut scope from today. ' },
+] as const;
+
+function ConversationDay({ date, intent, seed }: { date: string; intent: string | null; seed: string }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const workflowQuery = useWorkflow(date);
   const workflow = workflowQuery.data;
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState(seed);
   const [model, setModel] = useState(DEFAULT_CHAT_MODEL);
   const [pending, setPending] = useState<PendingTurn | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -47,6 +53,11 @@ function ConversationDay({ date }: { date: string }) {
   const settling = pending?.status === 'settling';
   const shownReply = useRevealedText(pending && (pending.status === 'streaming' || settling) ? pending.reply : '');
   const settled = settling && shownReply === pending.reply;
+  const showInterruptChips = !readOnly && (intent === 'interrupt' || workflow?.state === 'active');
+
+  useEffect(() => {
+    if (seed.trim()) setInput(seed);
+  }, [seed]);
 
   const refresh = () => {
     for (const key of ['workflow', 'tasks', 'inbox', 'bootstrap', 'chat-sessions']) void queryClient.invalidateQueries({ queryKey: [key] });
@@ -159,6 +170,10 @@ function ConversationDay({ date }: { date: string }) {
   // existed before it was sent; the pending turn stands in for the rest.
   const savedMessages = workflow?.messages ?? [];
   const messages = pending?.status === 'settling' ? savedMessages.slice(0, pending.savedCount) : savedMessages;
+  const revisionDiff = proposal && workflow?.state === 'active' && (workflow.tasks?.length ?? 0) > 0
+    ? proposalRevisionDiff(workflow.tasks, proposal.tasks)
+    : null;
+  const showDiff = revisionDiff && (revisionDiff.kept.length + revisionDiff.added.length + revisionDiff.deferredOrRemoved.length) > 0;
 
   return <main className="flex min-w-0 flex-1 flex-col">
     <header className="flex min-h-16 items-center justify-between gap-3 px-4 pl-16 md:px-8">
@@ -169,8 +184,8 @@ function ConversationDay({ date }: { date: string }) {
       {workflowQuery.isLoading ? <p role="status" className="py-12 text-center text-sm text-muted-foreground">Loading your day…</p> : workflowQuery.error ? <WorkflowError error={workflowQuery.error} retry={() => void workflowQuery.refetch()} /> : <>
         {!messages.length && !pending && <div className="flex min-h-[38vh] flex-col items-center justify-center text-center">
           <ListChecks className="mb-5 h-7 w-7 text-primary" />
-          <h2 className="text-3xl font-medium">{past ? 'No conversation for this day' : 'What needs your attention?'}</h2>
-          <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">{past ? 'Your saved plan and review are available from View plan.' : 'Tell me your tasks, fixed commitments, and how much time you have. We’ll turn them into a realistic plan.'}</p>
+          <h2 className="text-3xl font-medium">{past ? 'No conversation for this day' : intent === 'interrupt' || workflow?.state === 'active' ? 'What changed?' : 'What needs your attention?'}</h2>
+          <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">{past ? 'Your saved plan and review are available from View plan.' : intent === 'interrupt' || workflow?.state === 'active' ? 'Tell Caprio what shifted — less time, new work, or something to drop. You’ll review a revision before anything is saved.' : 'Tell me your tasks, fixed commitments, and how much time you have. We’ll turn them into a realistic plan.'}</p>
           {!past && !!workflow?.tasks.length && <p className="mt-4 text-sm text-primary">{workflow.tasks.length} saved {workflow.tasks.length === 1 ? 'task is' : 'tasks are'} already waiting for this day{carriedCount > 0 ? ` · ${carriedCount} carried from yesterday` : ''}.</p>}
         </div>}
         {messages.map((message) => <MessageBubble key={message.id} role={message.role}>{message.content}</MessageBubble>)}
@@ -191,6 +206,12 @@ function ConversationDay({ date }: { date: string }) {
               : <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">Available time not set — tell Caprio how much time you have</span>}
           </div>
           {overCapacity && availableMinutes !== null && <p role="alert" className="mt-3 text-sm text-amber-700 dark:text-amber-400">{capacityOverMessage(minutes, availableMinutes)}</p>}
+          {showDiff && <div role="region" aria-label="Proposal changes" className="mt-5 space-y-3 rounded-xl border border-border bg-background p-4">
+            <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Compared with your current plan</h3>
+            {revisionDiff!.kept.length > 0 && <div><p className="text-xs font-medium text-muted-foreground">Kept · {revisionDiff!.kept.length}</p><ul className="mt-1.5 space-y-1">{revisionDiff!.kept.map((title) => <li key={`kept-${title}`} className="text-sm">{title}</li>)}</ul></div>}
+            {revisionDiff!.added.length > 0 && <div><p className="text-xs font-medium text-primary">Added · {revisionDiff!.added.length}</p><ul className="mt-1.5 space-y-1">{revisionDiff!.added.map((title) => <li key={`added-${title}`} className="text-sm">{title}</li>)}</ul></div>}
+            {revisionDiff!.deferredOrRemoved.length > 0 && <div><p className="text-xs font-medium text-amber-700 dark:text-amber-400">Deferred or removed · {revisionDiff!.deferredOrRemoved.length}</p><ul className="mt-1.5 space-y-1">{revisionDiff!.deferredOrRemoved.map((title) => <li key={`deferred-${title}`} className="text-sm">{title}</li>)}</ul></div>}
+          </div>}
           {([['For this day', proposedToday], ['Keep in inbox', proposedBacklog]] as const).map(([label, tasks]) => tasks.length > 0 && <div key={label} className="mt-5">
             <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</h3>
             <ol className="space-y-2">{tasks.map((task, index) => <li key={task.id || `${label}-${index}`} className="rounded-lg bg-background p-3"><div className="flex items-start justify-between gap-4"><p className="text-sm font-medium">{task.title}</p><span className="shrink-0 text-xs text-muted-foreground">{task.duration} min</span></div><p className="mt-1.5 text-xs leading-5 text-muted-foreground">{task.reason}</p></li>)}</ol>
@@ -206,7 +227,19 @@ function ConversationDay({ date }: { date: string }) {
     <div className="bg-background px-4 pb-4 pt-2 md:px-8"><div className="mx-auto max-w-2xl">
       {readOnly ? <div className="flex items-center justify-between gap-3 rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground"><span>{past ? 'Past conversations are read-only.' : 'This day is closed.'}</span><Link to="/new" className="shrink-0 text-primary hover:underline">Go to today</Link></div> : <>
         {!past && carriedCount > 0 && <p role="status" className="mb-3 inline-flex max-w-full items-center rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs text-primary">{carriedCount} carried from yesterday — they’ll be in the proposal unless you drop them</p>}
-        <PromptInput id="day-message" value={input} onValueChange={setInput} models={CHAT_MODELS} model={model} defaultModel={DEFAULT_CHAT_MODEL} onModelChange={setModel} onSubmit={handleSend} loading={replying} onStop={stop} disabled={workflowQuery.isLoading || !!workflowQuery.error || confirm.isPending || discard.isPending} aria-label="Message about your day" maxLength={8000} placeholder={workflow?.state === 'active' ? 'What changed? For example, a meeting took an extra hour…' : carriedCount > 0 ? `Include the ${carriedCount} carried task${carriedCount === 1 ? '' : 's'}, add what’s new, and say how much time you have…` : 'Finish a report, meet the team at 2, and go for a run. I have 4 hours…'} />
+        {showInterruptChips && <div className="mb-3 flex flex-wrap gap-2" aria-label="Quick interruption prompts">
+          {INTERRUPT_CHIPS.map((chip) => (
+            <button
+              key={chip.label}
+              type="button"
+              className="rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+              onClick={() => { setInput(chip.text); document.getElementById('day-message')?.focus(); }}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>}
+        <PromptInput id="day-message" value={input} onValueChange={setInput} models={CHAT_MODELS} model={model} defaultModel={DEFAULT_CHAT_MODEL} onModelChange={setModel} onSubmit={handleSend} loading={replying} onStop={stop} disabled={workflowQuery.isLoading || !!workflowQuery.error || confirm.isPending || discard.isPending} aria-label="Message about your day" maxLength={8000} placeholder={workflow?.state === 'active' || intent === 'interrupt' ? 'What changed? For example, a meeting took an extra hour…' : carriedCount > 0 ? `Include the ${carriedCount} carried task${carriedCount === 1 ? '' : 's'}, add what’s new, and say how much time you have…` : 'Finish a report, meet the team at 2, and go for a run. I have 4 hours…'} />
         <p className="mt-2 text-center text-[11px] text-muted-foreground">Your tasks and constraints guide the plan. You confirm changes before they’re saved.</p>
       </>}
     </div></div>
@@ -216,9 +249,11 @@ function ConversationDay({ date }: { date: string }) {
 export default function New() {
   const [params, setParams] = useSearchParams();
   const date = selectedDate(params.get('date'), localDate());
+  const intent = params.get('intent');
+  const seed = params.get('seed') || '';
   const sessions = useChatSessions();
   return <div className="relative flex h-dvh bg-background">
     <ConversationSidebar sessions={sessions.data || []} selectedDate={date} isLoading={sessions.isLoading} onSelect={(value) => setParams({ date: value })} onToday={() => setParams({})} />
-    <ConversationDay key={date} date={date} />
+    <ConversationDay key={`${date}:${intent || ''}:${seed}`} date={date} intent={intent} seed={seed} />
   </div>;
 }
