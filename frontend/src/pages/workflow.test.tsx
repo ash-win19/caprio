@@ -11,6 +11,7 @@ import Capture from './Capture';
 import Today from './Today';
 
 vi.mock('@/lib/api');
+vi.mock('@/hooks/use-toast', () => ({ toast: vi.fn() }));
 
 const today = localDate();
 const task = (id: string, completed = false, deferCount = 0): api.BackendTask => ({
@@ -364,5 +365,51 @@ describe('Daily planning workflow', () => {
     fireEvent.change(input, { target: { value: 'Plan my day' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send prompt' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/wasn’t complete enough to save/i);
+  });
+});
+
+
+describe('Model resilience', () => {
+  it('retries once with Groq after a capacity failure and notes the switch', async () => {
+    const { toast } = await import('@/hooks/use-toast');
+    vi.mocked(api.streamChatMessage)
+      .mockRejectedValueOnce(Object.assign(new Error('the planning model is overloaded or timed out; try again or switch models'), { status: 503 }))
+      .mockImplementationOnce(async ({ onDelta, model }) => {
+        expect(model).toBe('groq/openai/gpt-oss-20b');
+        onDelta?.('Fallback reply');
+        workflow = { ...workflow, messages: [{ id: 'sent', role: 'user', content: 'Plan with less load' }, { id: 'reply', role: 'assistant', content: 'Fallback reply' }] };
+        return { text: 'Fallback reply', workflow };
+      });
+    mount(<New />, '/new');
+    const input = await screen.findByRole('textbox', { name: 'Message about your day' });
+    await waitFor(() => expect(input).toBeEnabled());
+    fireEvent.change(input, { target: { value: 'Plan with less load' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send prompt' }));
+    await waitFor(() => expect(api.streamChatMessage).toHaveBeenCalledTimes(2));
+    const models = vi.mocked(api.streamChatMessage).mock.calls.map(([call]) => call.model);
+    expect(models[0]).toBe('google/gemini-3.7-flash');
+    expect(models[1]).toBe('groq/openai/gpt-oss-20b');
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Switched to Groq' }));
+    await waitFor(() => expect(screen.getByText('Fallback reply')).toBeInTheDocument());
+  });
+
+});
+
+describe('Plan composer voice', () => {
+  it('hides the mic when speech recognition is unsupported', async () => {
+    mount(<New />, '/new');
+    await screen.findByRole('textbox', { name: 'Message about your day' });
+    expect(screen.queryByRole('button', { name: 'Start voice input' })).not.toBeInTheDocument();
+  });
+
+  it('shows the mic when webkitSpeechRecognition exists', async () => {
+    const FakeRecognition = vi.fn(function (this: { start: () => void; stop: () => void }) {
+      this.start = vi.fn();
+      this.stop = vi.fn();
+    });
+    (window as unknown as { webkitSpeechRecognition: unknown }).webkitSpeechRecognition = FakeRecognition;
+    mount(<New />, '/new');
+    expect(await screen.findByRole('button', { name: 'Start voice input' })).toBeInTheDocument();
+    delete (window as unknown as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition;
   });
 });

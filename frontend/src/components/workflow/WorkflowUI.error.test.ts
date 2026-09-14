@@ -1,0 +1,18 @@
+import { describe, expect, it } from 'vitest';
+import { ApiError } from '@/lib/api';
+import { workflowErrorCategory, workflowErrorMessage } from './WorkflowUI';
+
+describe('workflowErrorMessage', () => {
+  it('maps capacity, validation, auth, and generic failures', () => {
+    expect(workflowErrorCategory(new ApiError(503, 'the planning model is overloaded or timed out; try again or switch models'))).toBe('capacity');
+    expect(workflowErrorMessage(new ApiError(503, 'the planning model is overloaded or timed out; try again or switch models'))).toMatch(/busy or timed out/i);
+
+    expect(workflowErrorCategory(new ApiError(400, 'proposal omitted an unfinished task'))).toBe('validation');
+    expect(workflowErrorMessage(new ApiError(400, 'proposal omitted an unfinished task'))).toMatch(/couldn’t be validated/i);
+
+    expect(workflowErrorCategory(new ApiError(401, 'Your session expired. Sign in again to continue.'))).toBe('auth');
+    expect(workflowErrorMessage(new ApiError(401, 'Your session expired. Sign in again to continue.'))).toMatch(/session expired/i);
+
+    expect(workflowErrorMessage(new ApiError(500, 'Internal server error'))).toMatch(/our end/i);
+  });
+});

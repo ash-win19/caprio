@@ -46,12 +46,26 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promi
   }
 
   if (response.status >= 500) {
-    toast({
-      title: 'Server Error',
-      description: 'Something went wrong on our end. Please try again later.',
-      variant: 'destructive',
-    });
-    throw new ApiError(response.status, 'Internal server error');
+    let message = 'Internal server error';
+    try {
+      if (typeof response.json === 'function') {
+        const errorData = await response.json();
+        if (typeof errorData?.error === 'string' && errorData.error.trim()) {
+          message = errorData.error;
+        }
+      }
+    } catch {
+      // Keep the generic message when the body is missing or not JSON.
+    }
+    // Capacity/unavailable (503) is surfaced inline / retried by chat UI — skip the noisy toast.
+    if (response.status !== 503) {
+      toast({
+        title: 'Server Error',
+        description: 'Something went wrong on our end. Please try again later.',
+        variant: 'destructive',
+      });
+    }
+    throw new ApiError(response.status, message);
   }
 
   if (!response.ok) {

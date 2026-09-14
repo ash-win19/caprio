@@ -37,6 +37,8 @@ func workflowStatus(err error) (int, string) {
 		return http.StatusConflict, err.Error()
 	case errors.Is(err, chat.ErrUnavailable):
 		return http.StatusServiceUnavailable, err.Error()
+	case errors.Is(err, chat.ErrModelCapacity):
+		return http.StatusServiceUnavailable, chat.ErrModelCapacity.Error()
 	case errors.Is(err, pgx.ErrNoRows):
 		return http.StatusNotFound, "task not found"
 	default:
