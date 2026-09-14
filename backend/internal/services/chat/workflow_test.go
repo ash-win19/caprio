@@ -60,7 +60,13 @@ func TestParseAgentReply(t *testing.T) {
 			r := valid
 			r.Tasks = append([]ProposalTask{}, valid.Tasks...)
 			change(&r)
-			require.Error(t, parse(encode(t, r)))
+			err := parse(encode(t, r))
+			require.Error(t, err)
+			if name == "over capacity" {
+				require.ErrorContains(t, err, "exceed the available time")
+				var validation *ValidationError
+				require.ErrorAs(t, err, &validation)
+			}
 		})
 	}
 	require.Error(t, parse(encode(t, valid)+" trailing text"))
@@ -190,6 +196,7 @@ func TestWorkflowConfirmationAndChatRetries(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "active", confirmed.State)
 	require.Nil(t, confirmed.Proposal)
+	require.Equal(t, ptr(int32(60)), confirmed.AvailableMinutes)
 	require.Len(t, confirmed.Tasks, 1)
 	repeated, err := s.Confirm(ctx, user, date, w.Proposal.ID, w.Version)
 	require.NoError(t, err)
@@ -238,6 +245,31 @@ func TestClarifyingPreservesProposalAndDiscardPreservesTasks(t *testing.T) {
 	require.ErrorIs(t, err, ErrConflict)
 	_, err = s.Discard(ctx, user, date, w.Proposal.ID, w.Version)
 	require.ErrorIs(t, err, ErrConflict)
+}
+
+func TestConfirmRejectsOverCapacityProposal(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	w := propose(t, s, a, user, date, planTask("Report"), planTask("Exercise"))
+	require.NotNil(t, w.Proposal)
+	require.NoError(t, CapacityError(w.Proposal.AvailableMinutes, TodayDuration(w.Proposal.Tasks)))
+	// Tamper with the stored draft so confirm sees an over-capacity plan the
+	// agent would no longer be allowed to emit.
+	over := *w.Proposal
+	over.AvailableMinutes = ptr(int32(30))
+	raw, err := json.Marshal(&over)
+	require.NoError(t, err)
+	_, err = s.store.Pool.Exec(ctx, `UPDATE daily_plans SET proposal=$3 WHERE user_id=$1 AND plan_date=$2`, user, date, raw)
+	require.NoError(t, err)
+	_, err = s.Confirm(ctx, user, date, w.Proposal.ID, w.Version)
+	require.ErrorContains(t, err, "exceed the available time")
+	var validation *ValidationError
+	require.ErrorAs(t, err, &validation)
+	unchanged, err := s.Get(ctx, user, date)
+	require.NoError(t, err)
+	require.NotNil(t, unchanged.Proposal)
+	require.Empty(t, unchanged.Tasks)
+	require.Nil(t, unchanged.AvailableMinutes)
 }
 
 func TestClosePersistsOutcomesAndCarriesExactlyOnce(t *testing.T) {

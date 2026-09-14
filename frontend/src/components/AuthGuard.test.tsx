@@ -63,7 +63,7 @@ const prefs = {
 };
 
 function workflow(date: string, state: 'planning' | 'active' | 'closed' = 'planning'): api.Workflow {
-  return { date, state, version: 1, messages: [], proposal: null, tasks: [], backlog: [], review: null };
+  return { date, state, version: 1, messages: [], proposal: null, availableMinutes: null, tasks: [], backlog: [], review: null };
 }
 
 function mount(path: string) {

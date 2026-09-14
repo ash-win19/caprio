@@ -18,7 +18,7 @@ const task = (id: string, completed = false, deferCount = 0): api.BackendTask =>
   source: 'manual', completed, sortOrder: 0, plannedForDate: today,
   status: completed ? 'completed' : 'planned', deferCount, createdAt: today, updatedAt: today,
 });
-const baseWorkflow = (): api.Workflow => ({ date: today, state: 'planning', version: 2, messages: [], proposal: null, tasks: [], backlog: [], review: null });
+const baseWorkflow = (): api.Workflow => ({ date: today, state: 'planning', version: 2, messages: [], proposal: null, availableMinutes: null, tasks: [], backlog: [], review: null });
 const proposal = (): api.PlanProposal => ({ id: 'proposal-1', summary: 'Protect time for your report.', availableMinutes: 60, tasks: [{ title: 'Finish report', duration: 30, urgency: 'high', disposition: 'today', reason: 'Due this afternoon.' }] });
 let workflow: api.Workflow;
 
@@ -47,7 +47,8 @@ describe('Daily planning workflow', () => {
     vi.mocked(api.confirmDayPlan).mockImplementation(async () => ({ ...workflow, proposal: null, state: 'active' }));
     mount(<New />, '/new');
     expect(await screen.findByText('I have an hour for the report.')).toBeInTheDocument();
-    expect(screen.getByText('30 min planned · 60 min available')).toBeInTheDocument();
+    expect(screen.getByText('30 min planned')).toBeInTheDocument();
+    expect(screen.getByText('60 min available')).toBeInTheDocument();
     expect(api.confirmDayPlan).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Confirm plan' }));
     expect(await screen.findByText('Saved plan destination')).toBeInTheDocument();
@@ -271,6 +272,34 @@ describe('Daily planning workflow', () => {
     expect(await screen.findByText('Close yesterday before planning today')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Tomorrow: Team meeting' })).toBeInTheDocument();
     expect(screen.queryByText('This day is in your history')).not.toBeInTheDocument();
+  });
+
+  it('hard-blocks confirm when the draft is over capacity', async () => {
+    workflow = {
+      ...workflow,
+      proposal: {
+        ...proposal(),
+        availableMinutes: 60,
+        tasks: [
+          { title: 'Finish report', duration: 90, urgency: 'high', disposition: 'today', reason: 'Due this afternoon.' },
+          { title: 'Clean inbox', duration: 30, urgency: 'low', disposition: 'today', reason: 'Would also take time.' },
+        ],
+      },
+    };
+    mount(<New />, '/new');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Plan is 1h over your 1h day');
+    expect(screen.getByRole('button', { name: 'Confirm plan' })).toBeDisabled();
+    expect(api.confirmDayPlan).not.toHaveBeenCalled();
+  });
+
+  it('shows remaining minutes on Today and warns when over available capacity', async () => {
+    workflow = { ...workflow, state: 'active', availableMinutes: 45 };
+    vi.mocked(api.getTodayTasks).mockResolvedValue([
+      { id: 'report', title: 'Finish report', urgency: 'medium', category: 'Uncategorized', completed: false, addedToday: true, carriedOver: false, order: 0, duration: 30 },
+      { id: 'meeting', title: 'Team meeting', urgency: 'medium', category: 'Uncategorized', completed: false, addedToday: true, carriedOver: false, order: 1, duration: 30 },
+    ]);
+    mount(<Today />, '/today');
+    expect(await screen.findByText(/60 min remaining · 45 min available · over capacity/i)).toBeInTheDocument();
   });
 
   it('surfaces planner validation failures as readable chat errors', async () => {

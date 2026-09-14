@@ -54,14 +54,15 @@ type Review struct {
 	EnergyLevel            *int32 `json:"energyLevel"`
 }
 type Workflow struct {
-	Date     string                  `json:"date"`
-	State    string                  `json:"state"`
-	Version  int32                   `json:"version"`
-	Messages []generated.ChatMessage `json:"messages"`
-	Proposal *Proposal               `json:"proposal"`
-	Tasks    []generated.Task        `json:"tasks"`
-	Backlog  []generated.Task        `json:"backlog"`
-	Review   *Review                 `json:"review"`
+	Date             string                  `json:"date"`
+	State            string                  `json:"state"`
+	Version          int32                   `json:"version"`
+	Messages         []generated.ChatMessage `json:"messages"`
+	Proposal         *Proposal               `json:"proposal"`
+	AvailableMinutes *int32                  `json:"availableMinutes"`
+	Tasks            []generated.Task        `json:"tasks"`
+	Backlog          []generated.Task        `json:"backlog"`
+	Review           *Review                 `json:"review"`
 }
 
 func ParseDate(value string) (pgtype.Date, error) {
@@ -162,10 +163,29 @@ func ParseAgentReply(text string, tasks, backlog []generated.Task, categories []
 			return nil, invalid("proposal omitted an unfinished task")
 		}
 	}
-	if reply.AvailableMinutes != nil && total > *reply.AvailableMinutes {
-		return nil, invalid("proposed tasks exceed the available time")
+	if err := CapacityError(reply.AvailableMinutes, total); err != nil {
+		return nil, err
 	}
 	return &reply, nil
+}
+
+// TodayDuration sums durations for proposal tasks kept on today.
+func TodayDuration(tasks []ProposalTask) int32 {
+	var total int32
+	for _, task := range tasks {
+		if task.Disposition == "today" {
+			total += task.Duration
+		}
+	}
+	return total
+}
+
+// CapacityError is the hard gate: known available minutes cannot be exceeded.
+func CapacityError(available *int32, planned int32) error {
+	if available != nil && planned > *available {
+		return invalid("proposed tasks exceed the available time")
+	}
+	return nil
 }
 
 func snapshot(tasks, backlog []generated.Task) string {
