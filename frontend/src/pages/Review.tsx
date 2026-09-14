@@ -1,3 +1,4 @@
+import { Page, PageBody, PageHeader } from '@/components/PageLayout';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -81,5 +82,8 @@ export default function Review() {
   const [params] = useSearchParams();
   const date = selectedDate(params.get('date'), localDate());
   const forceCloseBanner = params.get('reopen') === '1';
-  return <div className="mx-auto max-w-2xl"><header className="mb-7"><h1 className="text-2xl font-medium">Review your day</h1><p className="mt-2 text-sm text-muted-foreground">{dateLabel(date)}</p></header><DayReview key={date} date={date} forceCloseBanner={forceCloseBanner} /></div>;
+  return <Page>
+    <PageHeader title="Review your day"><p className="mt-2 text-sm text-muted-foreground">{dateLabel(date)}</p></PageHeader>
+    <PageBody width="form"><DayReview key={date} date={date} forceCloseBanner={forceCloseBanner} /></PageBody>
+  </Page>;
 }
