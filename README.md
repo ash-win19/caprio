@@ -1,6 +1,6 @@
 # Caprio
 
-Caprio turns a conversation about today's work and constraints into a realistic daily plan that the user reviews before saving. See [the daily workflow](docs/daily-workflow.md) for the page map, state transitions, and agent boundary.
+Caprio turns a conversation about today's work and constraints into a realistic daily plan that the user reviews before saving. See [the daily workflow](docs/daily-workflow.md) for the page map, state transitions, and agent boundary. For a terse day-of operator script and prod smoke checklist, see [day-of Caprio](docs/day-of-caprio.md).
 
 ## Mastra
 
