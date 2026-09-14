@@ -6,11 +6,19 @@ import { dateLabel, followingDate } from './dates';
 
 const KNOWN_ERRORS: Record<string, string> = {
   'tomorrow is already closed': "Tomorrow is already closed, so these tasks can’t move forward. Drop them from today, or reopen tomorrow before carrying again.",
+  'Internal server error': 'Something went wrong on our end. Please try again.',
 };
 
 export function workflowErrorMessage(error: unknown): string {
-  if (error instanceof Error) return KNOWN_ERRORS[error.message] || error.message;
-  return 'Something went wrong. Please try again.';
+  if (!(error instanceof Error)) return 'Something went wrong. Please try again.';
+  if (KNOWN_ERRORS[error.message]) return KNOWN_ERRORS[error.message];
+  if (/failed validation/i.test(error.message)) {
+    return 'The proposed plan wasn’t complete enough to save. Tell Caprio what to include or drop, then try again.';
+  }
+  if (/proposal omitted|exceed the available time|invalid proposal|unknown, completed, or repeated task/i.test(error.message)) {
+    return 'That plan couldn’t be validated. Adjust the tasks or available time, then ask for another proposal.';
+  }
+  return error.message;
 }
 
 export function WorkflowError({ error, retry }: { error: unknown; retry?: () => void }) {

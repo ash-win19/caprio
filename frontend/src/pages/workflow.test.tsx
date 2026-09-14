@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactElement } from 'react';
 import * as api from '@/lib/api';
-import { localDate, nextDate } from '@/lib/date';
+import { localDate, nextDate, previousDate } from '@/lib/date';
 import New from './New';
 import Review from './Review';
 import Capture from './Capture';
@@ -13,10 +13,10 @@ import Today from './Today';
 vi.mock('@/lib/api');
 
 const today = localDate();
-const task = (id: string, completed = false): api.BackendTask => ({
+const task = (id: string, completed = false, deferCount = 0): api.BackendTask => ({
   id, userId: 'user', title: id === 'report' ? 'Finish report' : 'Team meeting', urgency: 'medium', duration: 30,
   source: 'manual', completed, sortOrder: 0, plannedForDate: today,
-  status: completed ? 'completed' : 'planned', deferCount: 0, createdAt: today, updatedAt: today,
+  status: completed ? 'completed' : 'planned', deferCount, createdAt: today, updatedAt: today,
 });
 const baseWorkflow = (): api.Workflow => ({ date: today, state: 'planning', version: 2, messages: [], proposal: null, tasks: [], backlog: [], review: null });
 const proposal = (): api.PlanProposal => ({ id: 'proposal-1', summary: 'Protect time for your report.', availableMinutes: 60, tasks: [{ title: 'Finish report', duration: 30, urgency: 'high', disposition: 'today', reason: 'Due this afternoon.' }] });
@@ -245,5 +245,41 @@ describe('Daily planning workflow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close day' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/Tomorrow is already closed/i);
     expect(screen.getByRole('alert')).toHaveTextContent(/can’t move forward/i);
+  });
+  it('shows a carried-from-yesterday chip above the plan composer', async () => {
+    workflow = { ...workflow, tasks: [task('report', false, 1)] };
+    mount(<New />, '/new');
+    const input = await screen.findByRole('textbox', { name: 'Message about your day' });
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/1 carried from yesterday/i));
+    expect(input.getAttribute('placeholder') || '').toMatch(/carried task/i);
+  });
+
+  it('warns last-chance and highlights Drop for already carried tasks on Review', async () => {
+    workflow = { ...workflow, state: 'active', tasks: [task('report', false, 1)] };
+    mount(<Review />, '/review');
+    expect(await screen.findByText(/Last chance/i)).toBeInTheDocument();
+    expect(screen.getByText(/won’t carry a third day/i)).toBeInTheDocument();
+    const drop = screen.getByRole('button', { name: 'Drop: Finish report' });
+    expect(drop).toHaveAttribute('aria-pressed', 'false');
+    expect(drop.className).toMatch(/amber/);
+  });
+
+  it('lets you close yesterday when it is still active and shows the reopen banner', async () => {
+    const yesterday = previousDate(today);
+    workflow = { ...workflow, date: yesterday, state: 'active', tasks: [{ ...task('meeting'), plannedForDate: yesterday }] };
+    mount(<Review />, `/review?date=${yesterday}&reopen=1`);
+    expect(await screen.findByText('Close yesterday before planning today')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Tomorrow: Team meeting' })).toBeInTheDocument();
+    expect(screen.queryByText('This day is in your history')).not.toBeInTheDocument();
+  });
+
+  it('surfaces planner validation failures as readable chat errors', async () => {
+    vi.mocked(api.streamChatMessage).mockRejectedValueOnce(new Error('assistant response failed validation: proposal omitted an unfinished task'));
+    mount(<New />, '/new');
+    const input = await screen.findByRole('textbox', { name: 'Message about your day' });
+    await waitFor(() => expect(input).toBeEnabled());
+    fireEvent.change(input, { target: { value: 'Plan my day' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send prompt' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/wasn’t complete enough to save/i);
   });
 });

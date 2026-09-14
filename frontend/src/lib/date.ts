@@ -14,3 +14,10 @@ export function nextDate(value: string): string {
   date.setDate(date.getDate() + 1);
   return localDate(date);
 }
+
+export function previousDate(value: string): string {
+  const date = new Date(`${value}T12:00:00`);
+  date.setDate(date.getDate() - 1);
+  return localDate(date);
+}
+
