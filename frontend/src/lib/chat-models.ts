@@ -16,3 +16,6 @@ export const CHAT_MODELS: PromptModel[] = [
     label: 'GPT-OSS 120B',
   },
 ];
+
+/** Automatic fallback when the selected model is overloaded or times out. */
+export const FALLBACK_CHAT_MODEL = 'groq/openai/gpt-oss-20b';

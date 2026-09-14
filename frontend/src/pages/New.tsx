@@ -3,12 +3,15 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, Clock3, ListChecks } from 'lucide-react';
 import { PromptInput } from '@/components/agents/prompt-input';
+import { SpeechMicButton } from '@/components/agents/SpeechMicButton';
 import { ConversationSidebar } from '@/components/ConversationSidebar';
 import { Button } from '@/components/ui/button';
 import { MessageBubble, StoppedNotice, StreamingReply, ThinkingIndicator } from '@/components/workflow/ChatMessages';
 import { DaySummary, WorkflowError, capacityOverMessage, proposalRevisionDiff } from '@/components/workflow/WorkflowUI';
 import { dateLabel, selectedDate } from '@/components/workflow/dates';
-import { CHAT_MODELS, DEFAULT_CHAT_MODEL } from '@/lib/chat-models';
+import { toast } from '@/hooks/use-toast';
+import { CHAT_MODELS, DEFAULT_CHAT_MODEL, FALLBACK_CHAT_MODEL } from '@/lib/chat-models';
+import { shouldFallbackToGroq } from '@/lib/chat-resilience';
 import { useChatSessions, useWorkflow } from '@/lib/queries';
 import { useRevealedText } from '@/lib/hooks/use-revealed-text';
 import { localDate } from '@/lib/date';
@@ -84,7 +87,8 @@ function ConversationDay({ date, intent, seed }: { date: string; intent: string 
   const updatePending = (requestId: string, update: (turn: PendingTurn) => PendingTurn) =>
     setPending((current) => (current?.requestId === requestId ? update(current) : current));
 
-  const send = async (request: { content: string; requestId: string; model?: string }) => {
+  const send = async (request: { content: string; requestId: string; model?: string }, opts?: { allowFallback?: boolean }) => {
+    const allowFallback = opts?.allowFallback !== false;
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -101,6 +105,12 @@ function ConversationDay({ date, intent, seed }: { date: string; intent: string 
       refresh();
     } catch (error) {
       if (controller.signal.aborted) return;
+      if (allowFallback && shouldFallbackToGroq(error, request.model)) {
+        setModel(FALLBACK_CHAT_MODEL);
+        toast({ title: 'Switched to Groq', description: 'The previous model was busy. Retrying with Groq.' });
+        await send({ ...request, model: FALLBACK_CHAT_MODEL }, { allowFallback: false });
+        return;
+      }
       updatePending(request.requestId, (turn) => ({ ...turn, status: 'failed', error }));
       void workflowQuery.refetch();
     } finally {
@@ -239,7 +249,7 @@ function ConversationDay({ date, intent, seed }: { date: string; intent: string 
             </button>
           ))}
         </div>}
-        <PromptInput id="day-message" value={input} onValueChange={setInput} models={CHAT_MODELS} model={model} defaultModel={DEFAULT_CHAT_MODEL} onModelChange={setModel} onSubmit={handleSend} loading={replying} onStop={stop} disabled={workflowQuery.isLoading || !!workflowQuery.error || confirm.isPending || discard.isPending} aria-label="Message about your day" maxLength={8000} placeholder={workflow?.state === 'active' || intent === 'interrupt' ? 'What changed? For example, a meeting took an extra hour…' : carriedCount > 0 ? `Include the ${carriedCount} carried task${carriedCount === 1 ? '' : 's'}, add what’s new, and say how much time you have…` : 'Finish a report, meet the team at 2, and go for a run. I have 4 hours…'} />
+        <PromptInput id="day-message" value={input} onValueChange={setInput} models={CHAT_MODELS} model={model} defaultModel={DEFAULT_CHAT_MODEL} onModelChange={setModel} onSubmit={handleSend} loading={replying} onStop={stop} disabled={workflowQuery.isLoading || !!workflowQuery.error || confirm.isPending || discard.isPending} leadingAction={<SpeechMicButton value={input} onTranscript={setInput} disabled={workflowQuery.isLoading || !!workflowQuery.error || confirm.isPending || discard.isPending || replying} />} aria-label="Message about your day" maxLength={8000} placeholder={workflow?.state === 'active' || intent === 'interrupt' ? 'What changed? For example, a meeting took an extra hour…' : carriedCount > 0 ? `Include the ${carriedCount} carried task${carriedCount === 1 ? '' : 's'}, add what’s new, and say how much time you have…` : 'Finish a report, meet the team at 2, and go for a run. I have 4 hours…'} />
         <p className="mt-2 text-center text-[11px] text-muted-foreground">Your tasks and constraints guide the plan. You confirm changes before they’re saved.</p>
       </>}
     </div></div>

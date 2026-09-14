@@ -63,6 +63,16 @@ describe('API Client', () => {
       await expect(api.getTodayTasks()).rejects.toThrow('Internal server error');
     });
 
+    it('preserves 503 capacity messages without a generic toast body wipe', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: false,
+        status: 503,
+        json: async () => ({ error: 'the planning model is overloaded or timed out; try again or switch models' }),
+      } as Response);
+
+      await expect(api.getTodayTasks()).rejects.toThrow(/overloaded or timed out/i);
+    });
+
     it('should handle network errors', async () => {
       vi.mocked(fetch).mockRejectedValue(new Error('Network error'));
 

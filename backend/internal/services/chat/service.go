@@ -158,7 +158,7 @@ func (s *Service) ProcessStream(ctx context.Context, req ProcessRequest, onDelta
 		messages = append(messages, mastra.ChatMessage{Role: "user", Content: req.Content})
 		response, err := s.callAgent(ctx, messages, req.UserID.String()+":"+w.Date, req.UserID.String(), model, onDelta)
 		if err != nil {
-			return fmt.Errorf("call planning assistant: %w", err)
+			return classifyAgentError(err)
 		}
 		reply, err := ParseAgentReply(response.Message, w.Tasks, w.Backlog, categories)
 		if err != nil {

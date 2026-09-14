@@ -55,17 +55,58 @@ export function proposalRevisionDiff(
 const KNOWN_ERRORS: Record<string, string> = {
   'tomorrow is already closed': "Tomorrow is already closed, so these tasks can’t move forward. Drop them from today, or reopen tomorrow before carrying again.",
   'Internal server error': 'Something went wrong on our end. Please try again.',
+  'the planning assistant is not configured': 'Planning isn’t available right now. Please try again in a moment.',
+  'the planning model is overloaded or timed out; try again or switch models': 'The planning model is busy or timed out. Try again, or switch to Groq in the model picker.',
 };
+
+export type WorkflowErrorCategory = 'capacity' | 'validation' | 'auth' | 'model' | 'generic';
+
+/** Classify API/workflow failures into human-facing buckets. */
+export function workflowErrorCategory(error: unknown): WorkflowErrorCategory {
+  const status = error && typeof error === 'object' && 'status' in error ? Number((error as { status: unknown }).status) : NaN;
+  const message = error instanceof Error ? error.message : '';
+  if (status === 401 || status === 403 || /session expired|unauthorized|forbidden/i.test(message)) return 'auth';
+  if (
+    status === 503 || status === 429 || status === 502 || status === 504
+    || /overload|timed?\s*out|timeout|capacity|rate.?limit|unavailable|too many requests|model is overloaded/i.test(message)
+  ) {
+    return 'capacity';
+  }
+  if (
+    status === 400
+    || /failed validation|proposal omitted|exceed the available time|invalid proposal|unknown, completed, or repeated task|invalid date|must contain/i.test(message)
+  ) {
+    return 'validation';
+  }
+  if (/mastra|planning model|model.*(down|unavailable)|provider/i.test(message)) return 'model';
+  return 'generic';
+}
 
 export function workflowErrorMessage(error: unknown): string {
   if (!(error instanceof Error)) return 'Something went wrong. Please try again.';
   if (KNOWN_ERRORS[error.message]) return KNOWN_ERRORS[error.message];
-  if (/failed validation/i.test(error.message)) {
-    return 'The proposed plan wasn’t complete enough to save. Tell Caprio what to include or drop, then try again.';
+
+  const category = workflowErrorCategory(error);
+  if (category === 'auth') {
+    return 'Your session expired. Sign in again to continue.';
   }
-  if (/proposal omitted|exceed the available time|invalid proposal|unknown, completed, or repeated task/i.test(error.message)) {
-    return 'That plan couldn’t be validated. Adjust the tasks or available time, then ask for another proposal.';
+  if (category === 'capacity') {
+    if (/planning model is overloaded/i.test(error.message)) return KNOWN_ERRORS['the planning model is overloaded or timed out; try again or switch models'];
+    if (/planning assistant is not configured/i.test(error.message)) return KNOWN_ERRORS['the planning assistant is not configured'];
+    return 'The planning model is busy or timed out. Try again, or switch models.';
   }
+  if (category === 'validation' || /failed validation/i.test(error.message)) {
+    if (/failed validation/i.test(error.message)) {
+      return 'The proposed plan wasn’t complete enough to save. Tell Caprio what to include or drop, then try again.';
+    }
+    if (/proposal omitted|exceed the available time|invalid proposal|unknown, completed, or repeated task/i.test(error.message)) {
+      return 'That plan couldn’t be validated. Adjust the tasks or available time, then ask for another proposal.';
+    }
+  }
+  if (category === 'model') {
+    return 'The planning model couldn’t answer. Try again or switch models.';
+  }
+  if (KNOWN_ERRORS[error.message]) return KNOWN_ERRORS[error.message];
   return error.message;
 }
 

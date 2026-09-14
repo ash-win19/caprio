@@ -19,6 +19,7 @@ import (
 var ErrConflict = errors.New("the plan changed; reload and review a new proposal")
 var ErrClosed = errors.New("this day is closed; start the next day's plan")
 var ErrUnavailable = errors.New("the planning assistant is not configured")
+var ErrModelCapacity = errors.New("the planning model is overloaded or timed out; try again or switch models")
 
 type ValidationError struct{ Message string }
 
