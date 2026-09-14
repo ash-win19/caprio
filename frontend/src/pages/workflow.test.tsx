@@ -199,11 +199,13 @@ describe('Daily planning workflow', () => {
     expect(screen.getByRole('checkbox', { name: 'Mark Finish report complete' })).not.toBeChecked();
   });
 
-  it('shows an intentional empty plan as saved and nudges Plan instead of Review', async () => {
+  it('shows an intentional empty plan as saved and nudges Something changed instead of Review', async () => {
     workflow = { ...workflow, state: 'active' };
     mount(<Today />, '/today');
     expect(await screen.findByRole('heading', { name: 'Nothing planned for this day' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Plan my day/i })).toHaveAttribute('href', `/new?date=${today}`);
+    const interruptLinks = screen.getAllByRole('link', { name: /^Something changed$/i });
+    expect(interruptLinks.length).toBeGreaterThan(0);
+    expect(interruptLinks.every((link) => link.getAttribute('href') === `/new?date=${today}&intent=interrupt`)).toBe(true);
     expect(screen.queryByRole('link', { name: 'Review day' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Close the day/i })).not.toBeInTheDocument();
   });
@@ -300,6 +302,58 @@ describe('Daily planning workflow', () => {
     ]);
     mount(<Today />, '/today');
     expect(await screen.findByText(/60 min remaining · 45 min available · over capacity/i)).toBeInTheDocument();
+  });
+
+  it('shows Something changed CTA on an active today with unfinished work', async () => {
+    workflow = { ...workflow, state: 'active', tasks: [task('report')] };
+    vi.mocked(api.getTodayTasks).mockResolvedValue([{ id: 'report', title: 'Finish report', urgency: 'medium', category: 'Uncategorized', completed: false, addedToday: true, carriedOver: false, order: 0 }]);
+    mount(<Today />, '/today');
+    const cta = await screen.findByRole('link', { name: /^Something changed$/i });
+    expect(cta).toHaveAttribute('href', `/new?date=${today}&intent=interrupt`);
+    expect(screen.getByRole('link', { name: 'Something changed →' })).toHaveAttribute('href', `/new?date=${today}&intent=interrupt`);
+    expect(screen.getByRole('link', { name: 'Review day' })).toHaveAttribute('href', `/review?date=${today}`);
+  });
+
+  it('shows a kept/added/deferred diff when revising an active day proposal', async () => {
+    workflow = {
+      ...workflow,
+      state: 'active',
+      tasks: [task('report'), task('meeting')],
+      proposal: {
+        id: 'proposal-2',
+        summary: 'Protect the report and park the meeting.',
+        availableMinutes: 60,
+        tasks: [
+          { id: 'report', title: 'Finish report', duration: 30, urgency: 'high', disposition: 'today', reason: 'Still due.' },
+          { title: 'Ship hotfix', duration: 30, urgency: 'high', disposition: 'today', reason: 'New interruption.' },
+          { id: 'meeting', title: 'Team meeting', duration: 30, urgency: 'medium', disposition: 'backlog', reason: 'Can wait.' },
+        ],
+      },
+    };
+    mount(<New />, '/new');
+    expect(await screen.findByRole('region', { name: 'Proposal changes' })).toBeInTheDocument();
+    expect(screen.getByText(/Kept · 1/i)).toBeInTheDocument();
+    expect(screen.getByText(/Added · 1/i)).toBeInTheDocument();
+    expect(screen.getByText(/Deferred or removed · 1/i)).toBeInTheDocument();
+    expect(screen.getAllByText('Ship hotfix').length).toBeGreaterThan(0);
+  });
+
+  it('offers Discuss in Plan from inbox items with seed context', async () => {
+    workflow = { ...workflow, state: 'active' };
+    vi.mocked(api.getInboxTasks).mockResolvedValue([{ id: 'inbox-1', title: 'Write brief', urgency: 'medium', category: 'Uncategorized', completed: false, addedToday: false, carriedOver: false, order: 0, duration: 30 }]);
+    mount(<Capture />, '/capture');
+    const discuss = await screen.findByRole('link', { name: 'Discuss in Plan' });
+    expect(discuss.getAttribute('href')).toContain(`/new?date=${today}&intent=interrupt&seed=`);
+    expect(decodeURIComponent(discuss.getAttribute('href') || '')).toContain('Consider adding to today: Write brief');
+    expect(screen.getByRole('button', { name: /Add to today/i })).toBeInTheDocument();
+  });
+
+  it('seeds interrupt chips on the planner when intent=interrupt', async () => {
+    workflow = { ...workflow, state: 'active', tasks: [task('report')] };
+    mount(<New />, `/new?date=${today}&intent=interrupt`);
+    expect(await screen.findByLabelText('Quick interruption prompts')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Meeting ran over' }));
+    expect(screen.getByRole('textbox', { name: 'Message about your day' })).toHaveValue('A meeting ran over and I have less time today. ');
   });
 
   it('surfaces planner validation failures as readable chat errors', async () => {
