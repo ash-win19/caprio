@@ -198,10 +198,52 @@ describe('Daily planning workflow', () => {
     expect(screen.getByRole('checkbox', { name: 'Mark Finish report complete' })).not.toBeChecked();
   });
 
-  it('shows an intentional empty plan as saved', async () => {
+  it('shows an intentional empty plan as saved and nudges Plan instead of Review', async () => {
     workflow = { ...workflow, state: 'active' };
     mount(<Today />, '/today');
     expect(await screen.findByRole('heading', { name: 'Nothing planned for this day' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Plan my day/i })).toHaveAttribute('href', `/new?date=${today}`);
+    expect(screen.queryByRole('link', { name: 'Review day' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Close the day/i })).not.toBeInTheDocument();
+  });
+
+  it('nudges closing an active day with unfinished work', async () => {
+    workflow = { ...workflow, state: 'active', tasks: [task('report')] };
+    vi.mocked(api.getTodayTasks).mockResolvedValue([{ id: 'report', title: 'Finish report', urgency: 'medium', category: 'Uncategorized', completed: false, addedToday: true, carriedOver: false, order: 0 }]);
+    mount(<Today />, '/today');
+    expect(await screen.findByRole('link', { name: /Close the day/i })).toHaveAttribute('href', `/review?date=${today}`);
     expect(screen.getByRole('link', { name: 'Review day' })).toHaveAttribute('href', `/review?date=${today}`);
+  });
+
+  it('groups carried-over tasks separately on Today', async () => {
+    workflow = { ...workflow, state: 'active' };
+    vi.mocked(api.getTodayTasks).mockResolvedValue([
+      { id: 'carry', title: 'Finish report', urgency: 'medium', category: 'Uncategorized', completed: false, addedToday: false, carriedOver: true, order: 0 },
+      { id: 'fresh', title: 'Team meeting', urgency: 'medium', category: 'Uncategorized', completed: false, addedToday: true, carriedOver: false, order: 1 },
+    ]);
+    mount(<Today />, '/today');
+    expect(await screen.findByRole('heading', { name: /Carried over/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Priorities/i })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Mark Finish report complete' })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Mark Team meeting complete' })).toBeInTheDocument();
+  });
+
+  it('explains one-hop carry and drop outcomes on Review', async () => {
+    workflow = { ...workflow, state: 'active', tasks: [task('meeting')] };
+    mount(<Review />, '/review');
+    expect(await screen.findByText(/one hop only/i)).toBeInTheDocument();
+    expect(screen.getByText(/without carrying it forward, it’s gone/i)).toBeInTheDocument();
+    expect(screen.getByText(/Drop removes it from your plan/i)).toBeInTheDocument();
+  });
+
+  it('surfaces a human-readable error when tomorrow is already closed', async () => {
+    workflow = { ...workflow, state: 'active', tasks: [task('meeting')] };
+    vi.mocked(api.closeDay).mockRejectedValue(new Error('tomorrow is already closed'));
+    mount(<Review />, '/review');
+    fireEvent.click(await screen.findByRole('button', { name: 'Tomorrow: Team meeting' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close day' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Tomorrow is already closed/i);
+    expect(screen.getByRole('alert')).toHaveTextContent(/can’t move forward/i);
   });
 });

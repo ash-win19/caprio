@@ -3,6 +3,8 @@ import { Link, NavLink, useLocation } from 'react-router-dom';
 import { LayoutGrid, Inbox, CheckSquare, History, Settings, MessageSquare, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { SIDEBAR_WIDTH_CLASS, sidebarShortcutLabel, useSidebarFocus, useSidebarShortcut, useSidebarStore } from '@/lib/sidebar';
+import { useWorkflow } from '@/lib/queries';
+import { localDate } from '@/lib/date';
 import { UserAvatar } from '@/components/UserAvatar';
 import { CaprioMark, Logo } from '@/components/Logo';
 
@@ -21,6 +23,16 @@ const railLink = ({ isActive }: { isActive: boolean }) =>
 
 const toggleButton = 'rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary';
 
+function ReviewBadge({ pending, count, compact = false }: { pending: boolean; count: number; compact?: boolean }) {
+  if (!pending) return null;
+  if (compact) {
+    return <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-primary" aria-hidden />;
+  }
+  return count > 0
+    ? <span className="ml-auto rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary" aria-label={`${count} unfinished`}>{count}</span>
+    : <span className="ml-auto h-2 w-2 rounded-full bg-primary" aria-hidden />;
+}
+
 export function AppSidebar() {
   const user = useAppStore((s) => s.user);
   const collapsed = useSidebarStore((s) => s.collapsed);
@@ -29,6 +41,9 @@ export function AppSidebar() {
   const collapseRef = useRef<HTMLButtonElement>(null);
   const expandRef = useRef<HTMLButtonElement>(null);
   const shortcut = sidebarShortcutLabel();
+  const todayWorkflow = useWorkflow(localDate());
+  const reviewPending = todayWorkflow.data?.state === 'active';
+  const unfinished = (todayWorkflow.data?.tasks || []).filter((task) => !task.completed).length;
   useSidebarShortcut();
   useSidebarFocus(collapsed, asideRef, collapseRef, expandRef);
 
@@ -77,6 +92,7 @@ export function AppSidebar() {
             >
               <item.icon size={16} />
               {item.label}
+              {item.path === '/review' && <ReviewBadge pending={reviewPending} count={unfinished} />}
             </NavLink>
           ))}
         </nav>
@@ -125,8 +141,9 @@ export function AppSidebar() {
 
         <nav aria-label="Primary" className="mt-3 flex flex-col items-center gap-1">
           {NAV_ITEMS.map((item) => (
-            <NavLink key={item.path} to={item.path} aria-label={item.label} title={item.label} className={railLink}>
+            <NavLink key={item.path} to={item.path} aria-label={item.label} title={item.label} className={({ isActive }) => `${railLink({ isActive })} relative`}>
               <item.icon size={18} />
+              {item.path === '/review' && <ReviewBadge pending={reviewPending} count={unfinished} compact />}
             </NavLink>
           ))}
         </nav>
@@ -152,6 +169,8 @@ export function AppSidebar() {
 export function MobileBottomNav() {
   const location = useLocation();
   const items = [...NAV_ITEMS, { label: 'Settings', path: '/settings', icon: Settings }];
+  const todayWorkflow = useWorkflow(localDate());
+  const reviewPending = todayWorkflow.data?.state === 'active';
 
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-card border-t border-border z-40 flex justify-around py-2 px-1">
@@ -161,12 +180,13 @@ export function MobileBottomNav() {
           <NavLink
             key={item.path}
             to={item.path}
-            className={`flex flex-col items-center gap-1 px-2 py-1 text-[11px] ${
+            className={`relative flex flex-col items-center gap-1 px-2 py-1 text-[11px] ${
               active ? 'text-primary' : 'text-muted-foreground'
             }`}
           >
             <item.icon size={18} />
             {item.label}
+            {item.path === '/review' && reviewPending && <span className="absolute right-1 top-0 h-1.5 w-1.5 rounded-full bg-primary" aria-hidden />}
           </NavLink>
         );
       })}

@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppSidebar } from './AppSidebar';
+import { useWorkflow } from '@/lib/queries';
 import { ConversationSidebar } from './ConversationSidebar';
 import AppLayout from '@/layouts/AppLayout';
 import { useSidebarStore } from '@/lib/sidebar';
@@ -10,12 +11,21 @@ vi.mock('@/lib/store', () => ({
   useAppStore: vi.fn((selector) => selector({ user: { name: 'Ashwin Shanmugam', email: 'ashwin@example.com', categories: [] } })),
 }));
 
+vi.mock('@/lib/queries', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/queries')>('@/lib/queries');
+  return {
+    ...actual,
+    useWorkflow: vi.fn(() => ({ data: { date: '2026-09-13', state: 'planning', version: 1, messages: [], proposal: null, tasks: [], backlog: [], review: null }, isLoading: false, error: null })),
+  };
+});
+
 const mountSidebar = () => render(<MemoryRouter initialEntries={['/today']}><AppSidebar /></MemoryRouter>);
 const stored = () => JSON.parse(localStorage.getItem('caprio-sidebar') || '{}').state?.collapsed;
 
 beforeEach(() => {
   localStorage.clear();
   useSidebarStore.setState({ collapsed: false });
+  vi.mocked(useWorkflow).mockReturnValue({ data: { date: '2026-09-13', state: 'planning', version: 1, messages: [], proposal: null, tasks: [], backlog: [], review: null }, isLoading: false, error: null } as ReturnType<typeof useWorkflow>);
 });
 
 describe('AppSidebar', () => {
@@ -91,5 +101,20 @@ describe('AppSidebar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
     expect(screen.getByRole('main')).toHaveClass('md:ml-16');
     expect(screen.getByText('Plan for today')).toBeInTheDocument();
+  });
+
+  it('emphasizes Review when today’s workflow is active', () => {
+    vi.mocked(useWorkflow).mockReturnValue({
+      data: {
+        date: '2026-09-13', state: 'active', version: 1, messages: [], proposal: null,
+        tasks: [{ id: 'a', completed: false }, { id: 'b', completed: true }],
+        backlog: [], review: null,
+      },
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useWorkflow>);
+    mountSidebar();
+    expect(screen.getByLabelText('1 unfinished')).toBeInTheDocument();
+    expect(screen.getByText('1')).toBeInTheDocument();
   });
 });
