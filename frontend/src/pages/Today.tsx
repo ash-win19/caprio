@@ -45,6 +45,8 @@ export default function Today() {
   const canComplete = isToday;
   const dayInProgress = isToday && workflow?.state === 'active';
   const remainingMinutes = active.reduce((sum, task) => sum + (task.duration || 0), 0);
+  const availableMinutes = workflow?.availableMinutes ?? workflow?.proposal?.availableMinutes ?? null;
+  const overCapacity = availableMinutes !== null && remainingMinutes > availableMinutes;
   const busy = reorder.isPending || toggle.isPending;
   const cardReadOnly = readOnly || !canComplete || busy;
 
@@ -62,7 +64,15 @@ export default function Today() {
 
   return <div className="mx-auto max-w-5xl">
     <header className="mb-7 flex flex-wrap items-start justify-between gap-4">
-      <div><h1 className="text-2xl font-medium">{isToday ? 'Today' : 'Your daily plan'}</h1><p className="mt-2 text-sm text-muted-foreground">{dateLabel(date)}</p></div>
+      <div>
+        <h1 className="text-2xl font-medium">{isToday ? 'Today' : 'Your daily plan'}</h1>
+        <p className="mt-2 text-sm text-muted-foreground">{dateLabel(date)}</p>
+        {workflow?.state !== 'closed' && tasks.length > 0 && (
+          <p className={`mt-2 text-sm ${overCapacity ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'}`}>
+            {remainingMinutes} min remaining{availableMinutes !== null ? ` · ${availableMinutes} min available` : ''}{overCapacity ? ' · over capacity' : ''}
+          </p>
+        )}
+      </div>
       {!readOnly && <div className="flex flex-wrap gap-2"><Button asChild variant="outline"><Link to={`/new?date=${date}`}>{workflow?.state === 'active' ? 'Adjust plan' : 'Plan this day'}</Link></Button>{dayInProgress && tasks.length > 0 && <Button asChild><Link to={`/review?date=${date}`}>Review day</Link></Button>}</div>}
     </header>
     {tasksQuery.isLoading || workflowQuery.isLoading ? <p role="status" className="py-16 text-center text-sm text-muted-foreground">Loading your plan…</p> : tasksQuery.error || workflowQuery.error ? <WorkflowError error={tasksQuery.error || workflowQuery.error} retry={() => { void tasksQuery.refetch(); void workflowQuery.refetch(); }} /> : <>
@@ -91,7 +101,7 @@ export default function Today() {
             {completed.length > 0 && <section className="mt-7"><h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">Completed · {completed.length}</h2><div className="space-y-2">{completed.map((task) => <TaskCard key={task.id} task={task} readOnly={cardReadOnly} onToggle={(item) => toggle.mutate({ id: item.id, completed: !item.completed })} />)}</div></section>}
           </div>
           <aside className="space-y-4">
-            <div className="rounded-xl border border-border bg-card p-5"><h2 className="text-sm font-medium">Your day at a glance</h2><p className="mt-4 text-3xl font-medium">{completed.length}<span className="ml-2 text-base text-muted-foreground">/ {tasks.length} done</span></p><p className="mt-2 text-sm text-muted-foreground">{remainingMinutes} estimated minutes remaining</p><div className="mt-4 h-1.5 overflow-hidden rounded-full bg-accent"><div className="h-full rounded-full bg-primary transition-[width] motion-reduce:transition-none" style={{ width: `${completed.length / tasks.length * 100}%` }} /></div></div>
+            <div className="rounded-xl border border-border bg-card p-5"><h2 className="text-sm font-medium">Your day at a glance</h2><p className="mt-4 text-3xl font-medium">{completed.length}<span className="ml-2 text-base text-muted-foreground">/ {tasks.length} done</span></p><p className={`mt-2 text-sm ${overCapacity ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'}`}>{remainingMinutes} estimated minutes remaining{availableMinutes !== null ? ` · ${availableMinutes} available` : ''}{overCapacity ? ' · over capacity' : ''}</p><div className="mt-4 h-1.5 overflow-hidden rounded-full bg-accent"><div className={`h-full rounded-full transition-[width] motion-reduce:transition-none ${overCapacity ? 'bg-amber-500' : 'bg-primary'}`} style={{ width: `${completed.length / tasks.length * 100}%` }} /></div></div>
             {!readOnly && <div className="rounded-xl border border-border bg-card p-5"><h2 className="text-sm font-medium">Something changed?</h2><p className="mt-2 text-xs leading-5 text-muted-foreground">Share an interruption or a new constraint. Review the suggested changes before updating your plan.</p><Link to={`/new?date=${date}`} className="mt-3 inline-block text-sm text-primary hover:underline">Adjust my plan →</Link></div>}
             <Link to="/capture" className="flex items-center justify-between rounded-xl border border-border p-4 text-sm text-muted-foreground hover:bg-accent"><span className="flex items-center gap-2"><Inbox size={16} />Open inbox</span><ArrowRight size={14} /></Link>
           </aside>

@@ -6,7 +6,7 @@ import { PromptInput } from '@/components/agents/prompt-input';
 import { ConversationSidebar } from '@/components/ConversationSidebar';
 import { Button } from '@/components/ui/button';
 import { MessageBubble, StoppedNotice, StreamingReply, ThinkingIndicator } from '@/components/workflow/ChatMessages';
-import { DaySummary, WorkflowError } from '@/components/workflow/WorkflowUI';
+import { DaySummary, WorkflowError, capacityOverMessage } from '@/components/workflow/WorkflowUI';
 import { dateLabel, selectedDate } from '@/components/workflow/dates';
 import { CHAT_MODELS, DEFAULT_CHAT_MODEL } from '@/lib/chat-models';
 import { useChatSessions, useWorkflow } from '@/lib/queries';
@@ -151,6 +151,8 @@ function ConversationDay({ date }: { date: string }) {
   const proposedToday = proposal?.tasks.filter((task) => task.disposition === 'today') || [];
   const proposedBacklog = proposal?.tasks.filter((task) => task.disposition === 'backlog') || [];
   const minutes = proposedToday.reduce((sum, task) => sum + task.duration, 0);
+  const availableMinutes = proposal?.availableMinutes ?? null;
+  const overCapacity = availableMinutes !== null && minutes > availableMinutes;
   const carriedCount = (workflow?.tasks || []).filter((task) => task.deferCount > 0 && !task.completed).length;
   const busy = replying || confirm.isPending || discard.isPending;
   // While a reply is still being revealed, the thread shows the messages that
@@ -182,14 +184,20 @@ function ConversationDay({ date }: { date: string }) {
         {proposal && !readOnly && !settling && <section aria-label="Proposed plan" className="rounded-2xl border border-primary/30 bg-card p-5 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-medium">{workflow?.state === 'active' ? 'Proposed changes' : 'Your proposed plan'}</h2><span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs text-primary">Needs your confirmation</span></div>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">{proposal.summary}</p>
-          <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><Clock3 className="h-3.5 w-3.5" /><span>{minutes} min planned{proposal.availableMinutes !== null ? ` · ${proposal.availableMinutes} min available` : ''}</span></div>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground"><Clock3 className="h-3.5 w-3.5" />{minutes} min planned</span>
+            {availableMinutes !== null
+              ? <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs ${overCapacity ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400' : 'bg-primary/10 text-primary'}`}>{availableMinutes} min available</span>
+              : <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">Available time not set — tell Caprio how much time you have</span>}
+          </div>
+          {overCapacity && availableMinutes !== null && <p role="alert" className="mt-3 text-sm text-amber-700 dark:text-amber-400">{capacityOverMessage(minutes, availableMinutes)}</p>}
           {([['For this day', proposedToday], ['Keep in inbox', proposedBacklog]] as const).map(([label, tasks]) => tasks.length > 0 && <div key={label} className="mt-5">
             <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</h3>
             <ol className="space-y-2">{tasks.map((task, index) => <li key={task.id || `${label}-${index}`} className="rounded-lg bg-background p-3"><div className="flex items-start justify-between gap-4"><p className="text-sm font-medium">{task.title}</p><span className="shrink-0 text-xs text-muted-foreground">{task.duration} min</span></div><p className="mt-1.5 text-xs leading-5 text-muted-foreground">{task.reason}</p></li>)}</ol>
           </div>)}
           <p className="mt-5 text-xs leading-5 text-muted-foreground">Confirming saves this plan. Completed tasks stay completed.</p>
           {(confirm.error || discard.error) && <div className="mt-4"><WorkflowError error={confirm.error || discard.error} /></div>}
-          <div className="mt-4 flex flex-wrap gap-2"><Button onClick={() => confirm.mutate()} disabled={busy}>{confirm.isPending ? 'Saving plan…' : 'Confirm plan'}<ArrowRight className="ml-2 h-4 w-4" /></Button><Button variant="outline" onClick={revise} disabled={busy}>Revise proposal</Button><Button variant="ghost" onClick={() => discard.mutate()} disabled={busy}>{discard.isPending ? 'Discarding…' : 'Discard proposal'}</Button></div>
+          <div className="mt-4 flex flex-wrap gap-2"><Button onClick={() => confirm.mutate()} disabled={busy || overCapacity}>{confirm.isPending ? 'Saving plan…' : 'Confirm plan'}<ArrowRight className="ml-2 h-4 w-4" /></Button><Button variant="outline" onClick={revise} disabled={busy}>Revise proposal</Button><Button variant="ghost" onClick={() => discard.mutate()} disabled={busy}>{discard.isPending ? 'Discarding…' : 'Discard proposal'}</Button></div>
         </section>}
         {workflow?.state === 'closed' && <DaySummary workflow={workflow} />}
       </>}

@@ -16,7 +16,7 @@ vi.mock('@/lib/queries', async () => {
   const actual = await vi.importActual<typeof import('@/lib/queries')>('@/lib/queries');
   return {
     ...actual,
-    useWorkflow: vi.fn((date: string) => ({ data: { date, state: 'planning', version: 1, messages: [], proposal: null, tasks: [], backlog: [], review: null }, isLoading: false, error: null })),
+    useWorkflow: vi.fn((date: string) => ({ data: { date, state: 'planning', version: 1, messages: [], proposal: null, availableMinutes: null, tasks: [], backlog: [], review: null }, isLoading: false, error: null })),
   };
 });
 
@@ -26,7 +26,7 @@ const stored = () => JSON.parse(localStorage.getItem('caprio-sidebar') || '{}').
 beforeEach(() => {
   localStorage.clear();
   useSidebarStore.setState({ collapsed: false });
-  vi.mocked(useWorkflow).mockImplementation((date: string) => ({ data: { date, state: 'planning', version: 1, messages: [], proposal: null, tasks: [], backlog: [], review: null }, isLoading: false, error: null } as ReturnType<typeof useWorkflow>));
+  vi.mocked(useWorkflow).mockImplementation((date: string) => ({ data: { date, state: 'planning', version: 1, messages: [], proposal: null, availableMinutes: null, tasks: [], backlog: [], review: null }, isLoading: false, error: null } as ReturnType<typeof useWorkflow>));
 });
 
 describe('AppSidebar', () => {
@@ -113,6 +113,7 @@ describe('AppSidebar', () => {
         version: 1,
         messages: [],
         proposal: null,
+        availableMinutes: null,
         tasks: date === today ? [{ id: 'a', completed: false }, { id: 'b', completed: true }] : [],
         backlog: [],
         review: null,
@@ -136,6 +137,7 @@ describe('AppSidebar', () => {
         version: 1,
         messages: [],
         proposal: null,
+        availableMinutes: null,
         tasks: date === yesterday ? [{ id: 'a', completed: false }] : [],
         backlog: [],
         review: null,

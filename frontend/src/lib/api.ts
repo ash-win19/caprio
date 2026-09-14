@@ -325,6 +325,7 @@ export interface Workflow {
   version: number;
   messages: Array<{ id: string; role: 'user' | 'assistant'; content: string }>;
   proposal: PlanProposal | null;
+  availableMinutes: number | null;
   tasks: BackendTask[];
   backlog: BackendTask[];
   review: DayReview | null;

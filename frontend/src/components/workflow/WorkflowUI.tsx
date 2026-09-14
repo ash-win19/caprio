@@ -4,6 +4,18 @@ import { Button } from '@/components/ui/button';
 import type { Workflow } from '@/lib/api';
 import { dateLabel, followingDate } from './dates';
 
+/** Format minutes as compact hours for capacity copy (90 → "1.5h"). */
+export function formatHours(minutes: number): string {
+  const rounded = Math.round((minutes / 60) * 10) / 10;
+  return `${rounded}h`;
+}
+
+/** Hard-gate copy when planned today minutes exceed known available minutes. */
+export function capacityOverMessage(plannedMinutes: number, availableMinutes: number): string {
+  const over = plannedMinutes - availableMinutes;
+  return `Plan is ${formatHours(over)} over your ${formatHours(availableMinutes)} day`;
+}
+
 const KNOWN_ERRORS: Record<string, string> = {
   'tomorrow is already closed': "Tomorrow is already closed, so these tasks can’t move forward. Drop them from today, or reopen tomorrow before carrying again.",
   'Internal server error': 'Something went wrong on our end. Please try again.',

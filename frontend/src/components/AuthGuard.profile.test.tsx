@@ -37,6 +37,7 @@ vi.mock('@/lib/api', async (load) => {
       version: 1,
       messages: [],
       proposal: null,
+      availableMinutes: null,
       tasks: [],
       backlog: [],
       review: null,
