@@ -1,3 +1,4 @@
+import { Page, PageBody, PageHeader } from '@/components/PageLayout';
 import { Link } from 'react-router-dom';
 import { ArrowRight, CalendarDays } from 'lucide-react';
 import { useChatSessions } from '@/lib/queries';
@@ -71,13 +72,13 @@ function DayRow({ day }: { day: ChatSession }) {
 export default function Momentum() {
   const history = useChatSessions();
   return (
-    <div className="mx-auto max-w-3xl">
-      <header className="mb-7">
-        <h1 className="text-2xl font-medium">History</h1>
+    <Page>
+      <PageHeader title="History">
         <p className="mt-2 text-sm text-muted-foreground">
           What you finished, carried, or dropped — and the conversations behind each day.
         </p>
-      </header>
+      </PageHeader>
+      <PageBody width="list">
       {history.isLoading ? (
         <p role="status" className="py-12 text-sm text-muted-foreground">Loading your history…</p>
       ) : history.error ? (
@@ -101,6 +102,7 @@ export default function Momentum() {
           </div>
         </>
       )}
-    </div>
+      </PageBody>
+    </Page>
   );
 }

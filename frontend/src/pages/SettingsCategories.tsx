@@ -1,3 +1,4 @@
+import { Page, PageBody, PageHeader } from '@/components/PageLayout';
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
@@ -73,10 +74,9 @@ export default function SettingsCategories() {
   };
 
   return (
-    <div className="max-w-[560px] mx-auto">
-      <Link to="/settings" className="text-sm text-muted-foreground hover:text-foreground mb-4 inline-block">← Settings</Link>
-      <h1 className="text-heading text-foreground mb-1">Life categories</h1>
-      <p className="text-sm text-muted-foreground mb-6">Drag to reorder. These appear across all views.</p>
+    <Page>
+      <PageHeader title="Life categories" breadcrumb={<Link to="/settings" className="text-sm text-muted-foreground hover:text-foreground">← Settings</Link>}><p className="mt-2 text-sm text-muted-foreground">Drag to reorder. These appear across all views.</p></PageHeader>
+      <PageBody width="form">
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={cats.map((c) => c.id)} strategy={verticalListSortingStrategy}>
@@ -95,6 +95,7 @@ export default function SettingsCategories() {
 
       <p role="status" className="text-sm mt-4">{message}</p>
       <Button disabled={saving || cats.some(cat => !cat.name.trim())} onClick={save} className="w-full mt-6 bg-primary text-primary-foreground">{saving ? 'Saving...' : 'Save changes'}</Button>
-    </div>
+      </PageBody>
+    </Page>
   );
 }

@@ -16,7 +16,7 @@ export default function AppLayout() {
           initial={reduceMotion ? false : { opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.2 }}
-          className="px-4 md:px-6 py-6"
+          className="px-4 py-6 md:px-6 md:py-8"
         >
           <Outlet />
         </motion.div>

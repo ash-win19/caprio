@@ -1,3 +1,4 @@
+import { Page, PageBody, PageHeader } from '@/components/PageLayout';
 import { Link, useNavigate } from 'react-router-dom';
 import { ChevronRight, LogOut } from 'lucide-react';
 import { useAuth0 } from '@auth0/auth0-react';
@@ -30,8 +31,9 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="max-w-[560px] mx-auto">
-      <h1 className="text-heading text-foreground mb-6">Settings</h1>
+    <Page>
+      <PageHeader title="Settings" />
+      <PageBody width="form">
 
       <section className="mb-6">
         <p className="text-caption uppercase tracking-wider mb-2">Account</p>
@@ -78,6 +80,7 @@ export default function SettingsPage() {
           <span className="text-mono">Caprio v0.1.0</span>
         </div>
       </section>
-    </div>
+      </PageBody>
+    </Page>
   );
 }

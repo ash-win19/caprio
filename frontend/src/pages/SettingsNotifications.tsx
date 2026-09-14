@@ -1,3 +1,4 @@
+import { Page, PageBody, PageHeader } from '@/components/PageLayout';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -24,9 +25,9 @@ export default function SettingsNotifications() {
     } finally { setSaving(false); }
   };
   return (
-    <div className="max-w-[560px] mx-auto">
-      <Link to="/settings" className="text-sm text-muted-foreground mb-4 inline-block">← Settings</Link>
-      <h1 className="text-heading text-foreground mb-6">Planning preferences</h1>
+    <Page>
+      <PageHeader title="Planning preferences" breadcrumb={<Link to="/settings" className="text-sm text-muted-foreground hover:text-foreground">← Settings</Link>} />
+      <PageBody width="form">
       <div className="bg-card border border-border rounded-lg p-4">
         <label htmlFor="planning-time" className="text-sm block mb-3">When do you usually plan your day?</label>
         <input id="planning-time" type="time" value={briefTime} onChange={event => setBriefTime(event.target.value)} className="bg-accent border border-border rounded-md px-3 py-2 text-sm" />
@@ -35,6 +36,7 @@ export default function SettingsNotifications() {
       </div>
       <p role="status" className="text-sm mt-4">{status}</p>
       <Button onClick={save} disabled={saving || !briefTime} className="mt-4">{saving ? 'Saving...' : 'Save preferences'}</Button>
-    </div>
+      </PageBody>
+    </Page>
   );
 }

@@ -87,6 +87,88 @@
   }
 }
 
+@layer components {
+  .page-shell {
+    --page-gap: 1.5rem;
+    --section-heading-gap: 0.75rem;
+    --summary-card-inset: 1.25rem;
+    width: 100%;
+    max-width: 72rem;
+    margin-inline: auto;
+    container: page / inline-size;
+  }
+
+  .page-grid,
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--page-gap);
+    align-items: start;
+  }
+
+  .page-grid > *,
+  .dashboard-grid > * {
+    grid-column: 1 / -1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .page-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+    align-items: start;
+  }
+
+  .page-heading { min-width: 0; }
+  .page-breadcrumb { grid-column: 1 / -1; }
+  .page-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .page-body-form { width: 100%; max-width: 35rem; }
+
+  .page-section { display: grid; gap: var(--section-heading-gap); }
+  .section-heading {
+    @apply text-xs font-medium uppercase tracking-wider text-muted-foreground;
+    margin: 0;
+  }
+
+  .task-groups { display: grid; gap: var(--page-gap); }
+  .task-stack { display: grid; gap: 0.75rem; min-width: 0; }
+  .overview-stack { display: grid; gap: 1rem; min-width: 0; }
+  .overview-card {
+    @apply rounded-xl border border-border bg-card;
+    min-width: 0;
+    padding: var(--summary-card-inset);
+  }
+
+  .page-notice {
+    @apply rounded-xl border border-primary/30 bg-primary/5 p-4;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem 1.5rem;
+  }
+
+  @container page (min-width: 40rem) {
+    .page-header { grid-template-columns: minmax(0, 1fr) auto; }
+    .page-actions { justify-content: flex-end; }
+  }
+
+  @container page (min-width: 60rem) {
+    .page-grid,
+    .dashboard-grid,
+    .page-header { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+    .page-header { column-gap: var(--page-gap); }
+    .page-heading,
+    .page-body-list,
+    .dashboard-main { grid-column: 1 / 9; }
+    .page-actions,
+    .dashboard-aside { grid-column: 9 / -1; }
+    .page-body-form { grid-column: 1 / 7; max-width: none; }
+  }
+}
+
 @layer utilities {
   .text-display {
     @apply text-[28px] font-medium leading-tight;

@@ -1,3 +1,4 @@
+import { Page, PageBody, PageHeader } from '@/components/PageLayout';
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Inbox, Plus, Trash2 } from 'lucide-react';
@@ -42,8 +43,11 @@ export default function Capture() {
     return `/new?date=${targetDate}&intent=interrupt&seed=${seed}`;
   };
 
-  return <div className="mx-auto max-w-3xl">
-    <header className="mb-7 flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-2xl font-medium">Inbox</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">Keep tasks here until you’re ready to plan them.</p></div><Button onClick={() => { create.reset(); setShowForm(true); }}><Plus size={16} className="mr-2" />Add task</Button></header>
+  return <Page>
+    <PageHeader title="Inbox" actions={<Button onClick={() => { create.reset(); setShowForm(true); }}><Plus size={16} className="mr-2" />Add task</Button>}>
+      <p className="mt-2 text-sm leading-6 text-muted-foreground">Keep tasks here until you’re ready to plan them.</p>
+    </PageHeader>
+    <PageBody width="list">
     <div role="status" aria-live="polite" className={notice ? 'mb-4 text-sm text-primary' : 'sr-only'}>{notice}</div>
     {showForm && <form onSubmit={handleAdd} className="mb-6 space-y-4 rounded-xl border border-border bg-card p-5">
       <div><label htmlFor="inbox-title" className="mb-2 block text-xs text-muted-foreground">Task</label><Input id="inbox-title" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="What do you need to do?" maxLength={500} required autoFocus /></div>
@@ -67,5 +71,6 @@ export default function Capture() {
     </article>)}</div>}
     <p className="mt-6 text-xs leading-5 text-muted-foreground">Add to {targetLabel} saves immediately. Discuss in Plan opens the planner with this task so Caprio can help fit it around your other work.</p>
     {workflow.error && <div className="mt-3"><WorkflowError error={workflow.error} retry={() => void workflow.refetch()} /></div>}
-  </div>;
+    </PageBody>
+  </Page>;
 }
