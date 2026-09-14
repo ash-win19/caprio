@@ -31,6 +31,16 @@ vi.mock('@/lib/api', async (load) => {
       backlog: [],
       streak: 0,
     })),
+    getWorkflow: vi.fn(async (date: string) => ({
+      date,
+      state: 'planning' as const,
+      version: 1,
+      messages: [],
+      proposal: null,
+      tasks: [],
+      backlog: [],
+      review: null,
+    })),
     setAccessTokenProvider: vi.fn(() => vi.fn()),
   };
 });

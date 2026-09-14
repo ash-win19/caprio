@@ -151,6 +151,7 @@ function ConversationDay({ date }: { date: string }) {
   const proposedToday = proposal?.tasks.filter((task) => task.disposition === 'today') || [];
   const proposedBacklog = proposal?.tasks.filter((task) => task.disposition === 'backlog') || [];
   const minutes = proposedToday.reduce((sum, task) => sum + task.duration, 0);
+  const carriedCount = (workflow?.tasks || []).filter((task) => task.deferCount > 0 && !task.completed).length;
   const busy = replying || confirm.isPending || discard.isPending;
   // While a reply is still being revealed, the thread shows the messages that
   // existed before it was sent; the pending turn stands in for the rest.
@@ -168,7 +169,7 @@ function ConversationDay({ date }: { date: string }) {
           <ListChecks className="mb-5 h-7 w-7 text-primary" />
           <h2 className="text-3xl font-medium">{past ? 'No conversation for this day' : 'What needs your attention?'}</h2>
           <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">{past ? 'Your saved plan and review are available from View plan.' : 'Tell me your tasks, fixed commitments, and how much time you have. We’ll turn them into a realistic plan.'}</p>
-          {!past && !!workflow?.tasks.length && <p className="mt-4 text-sm text-primary">{workflow.tasks.length} saved {workflow.tasks.length === 1 ? 'task is' : 'tasks are'} already waiting for this day.</p>}
+          {!past && !!workflow?.tasks.length && <p className="mt-4 text-sm text-primary">{workflow.tasks.length} saved {workflow.tasks.length === 1 ? 'task is' : 'tasks are'} already waiting for this day{carriedCount > 0 ? ` · ${carriedCount} carried from yesterday` : ''}.</p>}
         </div>}
         {messages.map((message) => <MessageBubble key={message.id} role={message.role}>{message.content}</MessageBubble>)}
         {pending && <>
@@ -196,7 +197,8 @@ function ConversationDay({ date }: { date: string }) {
     </div></div>
     <div className="bg-background px-4 pb-4 pt-2 md:px-8"><div className="mx-auto max-w-2xl">
       {readOnly ? <div className="flex items-center justify-between gap-3 rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground"><span>{past ? 'Past conversations are read-only.' : 'This day is closed.'}</span><Link to="/new" className="shrink-0 text-primary hover:underline">Go to today</Link></div> : <>
-        <PromptInput id="day-message" value={input} onValueChange={setInput} models={CHAT_MODELS} model={model} defaultModel={DEFAULT_CHAT_MODEL} onModelChange={setModel} onSubmit={handleSend} loading={replying} onStop={stop} disabled={workflowQuery.isLoading || !!workflowQuery.error || confirm.isPending || discard.isPending} aria-label="Message about your day" maxLength={8000} placeholder={workflow?.state === 'active' ? 'What changed? For example, a meeting took an extra hour…' : 'Finish a report, meet the team at 2, and go for a run. I have 4 hours…'} />
+        {!past && carriedCount > 0 && <p role="status" className="mb-3 inline-flex max-w-full items-center rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs text-primary">{carriedCount} carried from yesterday — they’ll be in the proposal unless you drop them</p>}
+        <PromptInput id="day-message" value={input} onValueChange={setInput} models={CHAT_MODELS} model={model} defaultModel={DEFAULT_CHAT_MODEL} onModelChange={setModel} onSubmit={handleSend} loading={replying} onStop={stop} disabled={workflowQuery.isLoading || !!workflowQuery.error || confirm.isPending || discard.isPending} aria-label="Message about your day" maxLength={8000} placeholder={workflow?.state === 'active' ? 'What changed? For example, a meeting took an extra hour…' : carriedCount > 0 ? `Include the ${carriedCount} carried task${carriedCount === 1 ? '' : 's'}, add what’s new, and say how much time you have…` : 'Finish a report, meet the team at 2, and go for a run. I have 4 hours…'} />
         <p className="mt-2 text-center text-[11px] text-muted-foreground">Your tasks and constraints guide the plan. You confirm changes before they’re saved.</p>
       </>}
     </div></div>

@@ -4,8 +4,9 @@ import { useAuth0 } from '@auth0/auth0-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { activateAccount } from '@/lib/accountSession';
 import { useAppStore } from '@/lib/store';
-import { bootstrap, setAccessTokenProvider } from '@/lib/api';
-import { localDate } from '@/lib/date';
+import { bootstrap, getWorkflow, setAccessTokenProvider } from '@/lib/api';
+import { localDate, previousDate } from '@/lib/date';
+import { morningHomePath, shouldForceYesterdayReview } from '@/lib/homePath';
 import { QUERY_KEYS } from '@/lib/queries';
 
 const PUBLIC_ROUTES = ['/', '/login', '/signup', '/landing'];
@@ -20,6 +21,7 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   const [sessionExpired, setSessionExpired] = useState(false);
   const previousAccount = useRef<string | null>(null);
   const date = localDate();
+  const yesterday = previousDate(date);
 
   useLayoutEffect(() => {
     if (previousAccount.current !== account) {
@@ -67,6 +69,22 @@ export function AuthGuard({ children }: { children: ReactNode }) {
     staleTime: 60_000,
   });
 
+  const routingReady = Boolean(account && preparedAccount === account && session.data?.onboardingComplete);
+  const todayWorkflow = useQuery({
+    queryKey: [...QUERY_KEYS.workflow, date],
+    queryFn: () => getWorkflow(date),
+    enabled: routingReady,
+    retry: 1,
+    staleTime: 60_000,
+  });
+  const yesterdayWorkflow = useQuery({
+    queryKey: [...QUERY_KEYS.workflow, yesterday],
+    queryFn: () => getWorkflow(yesterday),
+    enabled: routingReady,
+    retry: 1,
+    staleTime: 60_000,
+  });
+
   useEffect(() => {
     if (!session.data || !account || preparedAccount !== account) return;
     const { categories, preferences, onboardingComplete } = session.data;
@@ -91,9 +109,25 @@ export function AuthGuard({ children }: { children: ReactNode }) {
     );
   }
   if (!session.data.onboardingComplete && !location.pathname.startsWith('/onboarding')) return <Navigate to="/onboarding" replace />;
-  if (session.data.onboardingComplete && (PUBLIC_ROUTES.includes(location.pathname) || location.pathname.startsWith('/onboarding'))) {
-    return <Navigate to={session.data.todayTasks?.length ? '/today' : '/new'} replace />;
+
+  const workflowsPending = routingReady && (todayWorkflow.isPending || yesterdayWorkflow.isPending);
+  if (session.data.onboardingComplete && workflowsPending && (PUBLIC_ROUTES.includes(location.pathname) || location.pathname.startsWith('/onboarding') || location.pathname === '/new' || location.pathname === '/today')) {
+    return <SessionStatus>Loading your day...</SessionStatus>;
   }
+
+  const home = morningHomePath({
+    today: date,
+    yesterdayState: yesterdayWorkflow.data?.state,
+    todayState: todayWorkflow.data?.state,
+  });
+
+  if (session.data.onboardingComplete && (PUBLIC_ROUTES.includes(location.pathname) || location.pathname.startsWith('/onboarding'))) {
+    return <Navigate to={home} replace />;
+  }
+
+  const forced = shouldForceYesterdayReview(location.pathname, location.search, date, yesterdayWorkflow.data?.state);
+  if (forced) return <Navigate to={forced} replace />;
+
   return <>{children}</>;
 }
 

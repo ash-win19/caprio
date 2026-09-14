@@ -6,6 +6,7 @@ import { useWorkflow } from '@/lib/queries';
 import { ConversationSidebar } from './ConversationSidebar';
 import AppLayout from '@/layouts/AppLayout';
 import { useSidebarStore } from '@/lib/sidebar';
+import { localDate, previousDate } from '@/lib/date';
 
 vi.mock('@/lib/store', () => ({
   useAppStore: vi.fn((selector) => selector({ user: { name: 'Ashwin Shanmugam', email: 'ashwin@example.com', categories: [] } })),
@@ -15,7 +16,7 @@ vi.mock('@/lib/queries', async () => {
   const actual = await vi.importActual<typeof import('@/lib/queries')>('@/lib/queries');
   return {
     ...actual,
-    useWorkflow: vi.fn(() => ({ data: { date: '2026-09-13', state: 'planning', version: 1, messages: [], proposal: null, tasks: [], backlog: [], review: null }, isLoading: false, error: null })),
+    useWorkflow: vi.fn((date: string) => ({ data: { date, state: 'planning', version: 1, messages: [], proposal: null, tasks: [], backlog: [], review: null }, isLoading: false, error: null })),
   };
 });
 
@@ -25,7 +26,7 @@ const stored = () => JSON.parse(localStorage.getItem('caprio-sidebar') || '{}').
 beforeEach(() => {
   localStorage.clear();
   useSidebarStore.setState({ collapsed: false });
-  vi.mocked(useWorkflow).mockReturnValue({ data: { date: '2026-09-13', state: 'planning', version: 1, messages: [], proposal: null, tasks: [], backlog: [], review: null }, isLoading: false, error: null } as ReturnType<typeof useWorkflow>);
+  vi.mocked(useWorkflow).mockImplementation((date: string) => ({ data: { date, state: 'planning', version: 1, messages: [], proposal: null, tasks: [], backlog: [], review: null }, isLoading: false, error: null } as ReturnType<typeof useWorkflow>));
 });
 
 describe('AppSidebar', () => {
@@ -104,17 +105,46 @@ describe('AppSidebar', () => {
   });
 
   it('emphasizes Review when today’s workflow is active', () => {
-    vi.mocked(useWorkflow).mockReturnValue({
+    const today = localDate();
+    vi.mocked(useWorkflow).mockImplementation((date: string) => ({
       data: {
-        date: '2026-09-13', state: 'active', version: 1, messages: [], proposal: null,
-        tasks: [{ id: 'a', completed: false }, { id: 'b', completed: true }],
-        backlog: [], review: null,
+        date,
+        state: date === today ? 'active' : 'closed',
+        version: 1,
+        messages: [],
+        proposal: null,
+        tasks: date === today ? [{ id: 'a', completed: false }, { id: 'b', completed: true }] : [],
+        backlog: [],
+        review: null,
       },
       isLoading: false,
       error: null,
-    } as ReturnType<typeof useWorkflow>);
+    } as ReturnType<typeof useWorkflow>));
     mountSidebar();
     expect(screen.getByLabelText('1 unfinished')).toBeInTheDocument();
     expect(screen.getByText('1')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Review/ })).toHaveAttribute('href', '/review');
+  });
+
+  it('points Review at yesterday when that day is still open', () => {
+    const today = localDate();
+    const yesterday = previousDate(today);
+    vi.mocked(useWorkflow).mockImplementation((date: string) => ({
+      data: {
+        date,
+        state: date === yesterday ? 'active' : 'planning',
+        version: 1,
+        messages: [],
+        proposal: null,
+        tasks: date === yesterday ? [{ id: 'a', completed: false }] : [],
+        backlog: [],
+        review: null,
+      },
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useWorkflow>));
+    mountSidebar();
+    expect(screen.getByRole('link', { name: /Review/ })).toHaveAttribute('href', `/review?date=${yesterday}&reopen=1`);
+    expect(screen.getByLabelText('1 unfinished')).toBeInTheDocument();
   });
 });

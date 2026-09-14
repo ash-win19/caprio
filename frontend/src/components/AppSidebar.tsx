@@ -4,7 +4,7 @@ import { LayoutGrid, Inbox, CheckSquare, History, Settings, MessageSquare, Panel
 import { useAppStore } from '@/lib/store';
 import { SIDEBAR_WIDTH_CLASS, sidebarShortcutLabel, useSidebarFocus, useSidebarShortcut, useSidebarStore } from '@/lib/sidebar';
 import { useWorkflow } from '@/lib/queries';
-import { localDate } from '@/lib/date';
+import { localDate, previousDate } from '@/lib/date';
 import { UserAvatar } from '@/components/UserAvatar';
 import { CaprioMark, Logo } from '@/components/Logo';
 
@@ -33,6 +33,19 @@ function ReviewBadge({ pending, count, compact = false }: { pending: boolean; co
     : <span className="ml-auto h-2 w-2 rounded-full bg-primary" aria-hidden />;
 }
 
+
+function useReviewNav() {
+  const today = localDate();
+  const yesterday = previousDate(today);
+  const todayWorkflow = useWorkflow(today);
+  const yesterdayWorkflow = useWorkflow(yesterday);
+  const reopenYesterday = yesterdayWorkflow.data?.state === 'active';
+  const reviewPath = reopenYesterday ? `/review?date=${yesterday}&reopen=1` : '/review';
+  const reviewPending = reopenYesterday || todayWorkflow.data?.state === 'active';
+  const unfinished = ((reopenYesterday ? yesterdayWorkflow.data?.tasks : todayWorkflow.data?.tasks) || []).filter((task) => !task.completed).length;
+  return { reviewPath, reviewPending, unfinished };
+}
+
 export function AppSidebar() {
   const user = useAppStore((s) => s.user);
   const collapsed = useSidebarStore((s) => s.collapsed);
@@ -41,9 +54,7 @@ export function AppSidebar() {
   const collapseRef = useRef<HTMLButtonElement>(null);
   const expandRef = useRef<HTMLButtonElement>(null);
   const shortcut = sidebarShortcutLabel();
-  const todayWorkflow = useWorkflow(localDate());
-  const reviewPending = todayWorkflow.data?.state === 'active';
-  const unfinished = (todayWorkflow.data?.tasks || []).filter((task) => !task.completed).length;
+  const { reviewPath, reviewPending, unfinished } = useReviewNav();
   useSidebarShortcut();
   useSidebarFocus(collapsed, asideRef, collapseRef, expandRef);
 
@@ -81,7 +92,7 @@ export function AppSidebar() {
           {NAV_ITEMS.map((item) => (
             <NavLink
               key={item.path}
-              to={item.path}
+              to={item.path === '/review' ? reviewPath : item.path}
               className={({ isActive }) =>
                 `flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors ${
                   isActive
@@ -141,7 +152,7 @@ export function AppSidebar() {
 
         <nav aria-label="Primary" className="mt-3 flex flex-col items-center gap-1">
           {NAV_ITEMS.map((item) => (
-            <NavLink key={item.path} to={item.path} aria-label={item.label} title={item.label} className={({ isActive }) => `${railLink({ isActive })} relative`}>
+            <NavLink key={item.path} to={item.path === '/review' ? reviewPath : item.path} aria-label={item.label} title={item.label} className={({ isActive }) => `${railLink({ isActive })} relative`}>
               <item.icon size={18} />
               {item.path === '/review' && <ReviewBadge pending={reviewPending} count={unfinished} compact />}
             </NavLink>
@@ -169,8 +180,7 @@ export function AppSidebar() {
 export function MobileBottomNav() {
   const location = useLocation();
   const items = [...NAV_ITEMS, { label: 'Settings', path: '/settings', icon: Settings }];
-  const todayWorkflow = useWorkflow(localDate());
-  const reviewPending = todayWorkflow.data?.state === 'active';
+  const { reviewPath, reviewPending } = useReviewNav();
 
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-card border-t border-border z-40 flex justify-around py-2 px-1">
@@ -179,7 +189,7 @@ export function MobileBottomNav() {
         return (
           <NavLink
             key={item.path}
-            to={item.path}
+            to={item.path === '/review' ? reviewPath : item.path}
             className={`relative flex flex-col items-center gap-1 px-2 py-1 text-[11px] ${
               active ? 'text-primary' : 'text-muted-foreground'
             }`}
