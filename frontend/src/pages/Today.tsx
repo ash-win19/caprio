@@ -36,11 +36,17 @@ export default function Today() {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const tasks = tasksQuery.data || [];
   const active = tasks.filter((task) => !task.completed);
+  const carried = active.filter((task) => task.carriedOver);
+  const planned = active.filter((task) => !task.carriedOver);
   const completed = tasks.filter((task) => task.completed);
   const workflow = workflowQuery.data;
+  const isToday = date === localDate();
   const readOnly = date < localDate() || workflow?.state === 'closed';
-  const canComplete = date === localDate();
+  const canComplete = isToday;
+  const dayInProgress = isToday && workflow?.state === 'active';
   const remainingMinutes = active.reduce((sum, task) => sum + (task.duration || 0), 0);
+  const busy = reorder.isPending || toggle.isPending;
+  const cardReadOnly = readOnly || !canComplete || busy;
 
   const handleDragEnd = ({ active: dragged, over }: DragEndEvent) => {
     if (!over || dragged.id === over.id || reorder.isPending || readOnly) return;
@@ -50,26 +56,39 @@ export default function Today() {
     reorder.mutate([...arrayMove(active, from, to), ...completed].map((task, sortOrder) => ({ id: task.id, sortOrder })));
   };
 
+  const renderCard = (task: Task) => (
+    <TaskCard key={task.id} task={task} readOnly={cardReadOnly} onToggle={(item) => toggle.mutate({ id: item.id, completed: !item.completed })} sortable />
+  );
+
   return <div className="mx-auto max-w-5xl">
     <header className="mb-7 flex flex-wrap items-start justify-between gap-4">
-      <div><h1 className="text-2xl font-medium">{date === localDate() ? 'Today' : 'Your daily plan'}</h1><p className="mt-2 text-sm text-muted-foreground">{dateLabel(date)}</p></div>
-      {!readOnly && <div className="flex flex-wrap gap-2"><Button asChild variant="outline"><Link to={`/new?date=${date}`}>{workflow?.state === 'active' ? 'Adjust plan' : 'Plan this day'}</Link></Button>{workflow?.state === 'active' && canComplete && <Button asChild><Link to={`/review?date=${date}`}>Review day</Link></Button>}</div>}
+      <div><h1 className="text-2xl font-medium">{isToday ? 'Today' : 'Your daily plan'}</h1><p className="mt-2 text-sm text-muted-foreground">{dateLabel(date)}</p></div>
+      {!readOnly && <div className="flex flex-wrap gap-2"><Button asChild variant="outline"><Link to={`/new?date=${date}`}>{workflow?.state === 'active' ? 'Adjust plan' : 'Plan this day'}</Link></Button>{dayInProgress && tasks.length > 0 && <Button asChild><Link to={`/review?date=${date}`}>Review day</Link></Button>}</div>}
     </header>
     {tasksQuery.isLoading || workflowQuery.isLoading ? <p role="status" className="py-16 text-center text-sm text-muted-foreground">Loading your plan…</p> : tasksQuery.error || workflowQuery.error ? <WorkflowError error={tasksQuery.error || workflowQuery.error} retry={() => { void tasksQuery.refetch(); void workflowQuery.refetch(); }} /> : <>
       {workflow?.state === 'closed' ? <DaySummary workflow={workflow} /> : <>
+        {dayInProgress && tasks.length > 0 && <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4" role="status">
+          <p className="text-sm">Ready to close the day? Choose Done, Tomorrow, or Drop for each unfinished task.</p>
+          <Link to={`/review?date=${date}`} className="text-sm font-medium text-primary hover:underline">Close the day →</Link>
+        </div>}
         {workflow?.proposal && <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4"><p className="text-sm">A proposed plan is waiting for your confirmation.</p><Link to={`/new?date=${date}`} className="text-sm text-primary hover:underline">Review proposal →</Link></div>}
         {workflow?.state === 'planning' && tasks.length > 0 && <p className="mb-5 rounded-xl bg-muted p-4 text-sm leading-6 text-muted-foreground">These tasks are saved for this day. Plan your available time and confirm your priorities to get started.</p>}
         {!tasks.length ? <section className="rounded-2xl border border-dashed border-border px-6 py-16 text-center">
           <ListChecks className="mx-auto mb-5 h-8 w-8 text-muted-foreground" />
           <h2 className="text-xl font-medium">{readOnly ? 'No saved plan for this day' : workflow?.state === 'active' ? 'Nothing planned for this day' : 'Make room for what matters today'}</h2>
-          <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-muted-foreground">{readOnly ? 'Choose another day from your history.' : workflow?.state === 'active' ? 'Your plan is saved with no tasks. Enjoy the space, or adjust your plan if something comes up.' : 'Start with the tasks on your mind. Caprio will help you decide what fits and what can wait.'}</p>
-          <Button asChild className="mt-6"><Link to={readOnly ? '/momentum' : `/new?date=${date}`}>{readOnly ? 'View history' : workflow?.state === 'active' ? 'Adjust plan' : 'Plan my day'}<ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
+          <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-muted-foreground">{readOnly ? 'Choose another day from your history.' : workflow?.state === 'active' ? 'Your plan is saved with no tasks. Enjoy the space, or plan something if it comes up.' : 'Start with the tasks on your mind. Caprio will help you decide what fits and what can wait.'}</p>
+          <Button asChild className="mt-6"><Link to={readOnly ? '/momentum' : `/new?date=${date}`}>{readOnly ? 'View history' : 'Plan my day'}<ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
         </section> : <div className="grid gap-6 lg:grid-cols-[1fr_250px]">
           <div>
             {(reorder.error || toggle.error) && <div className="mb-4"><WorkflowError error={reorder.error || toggle.error} /></div>}
-            <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">Priorities · {active.length} remaining</h2>
-            {active.length ? <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}><SortableContext items={active.map((task) => task.id)} strategy={verticalListSortingStrategy}><div className="space-y-2">{active.map((task) => <TaskCard key={task.id} task={task} readOnly={readOnly || !canComplete || reorder.isPending || toggle.isPending} onToggle={(item) => toggle.mutate({ id: item.id, completed: !item.completed })} sortable />)}</div></SortableContext></DndContext> : <p className="rounded-xl border border-primary/20 bg-primary/5 p-5 text-sm">All your planned tasks are complete. Review your day when you’re ready.</p>}
-            {completed.length > 0 && <section className="mt-7"><h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">Completed · {completed.length}</h2><div className="space-y-2">{completed.map((task) => <TaskCard key={task.id} task={task} readOnly={readOnly || !canComplete || toggle.isPending} onToggle={(item) => toggle.mutate({ id: item.id, completed: !item.completed })} />)}</div></section>}
+            {active.length ? <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}><SortableContext items={active.map((task) => task.id)} strategy={verticalListSortingStrategy}>
+              {carried.length > 0 && <section className="mb-7"><h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">Carried over · {carried.length}</h2><div className="space-y-2">{carried.map(renderCard)}</div></section>}
+              {planned.length > 0 && <section>
+                <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">Priorities · {planned.length} remaining</h2>
+                <div className="space-y-2">{planned.map(renderCard)}</div>
+              </section>}
+            </SortableContext></DndContext> : <p className="rounded-xl border border-primary/20 bg-primary/5 p-5 text-sm">All your planned tasks are complete. Review your day when you’re ready.</p>}
+            {completed.length > 0 && <section className="mt-7"><h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">Completed · {completed.length}</h2><div className="space-y-2">{completed.map((task) => <TaskCard key={task.id} task={task} readOnly={cardReadOnly} onToggle={(item) => toggle.mutate({ id: item.id, completed: !item.completed })} />)}</div></section>}
           </div>
           <aside className="space-y-4">
             <div className="rounded-xl border border-border bg-card p-5"><h2 className="text-sm font-medium">Your day at a glance</h2><p className="mt-4 text-3xl font-medium">{completed.length}<span className="ml-2 text-base text-muted-foreground">/ {tasks.length} done</span></p><p className="mt-2 text-sm text-muted-foreground">{remainingMinutes} estimated minutes remaining</p><div className="mt-4 h-1.5 overflow-hidden rounded-full bg-accent"><div className="h-full rounded-full bg-primary transition-[width] motion-reduce:transition-none" style={{ width: `${completed.length / tasks.length * 100}%` }} /></div></div>

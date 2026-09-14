@@ -4,9 +4,18 @@ import { Button } from '@/components/ui/button';
 import type { Workflow } from '@/lib/api';
 import { dateLabel, followingDate } from './dates';
 
+const KNOWN_ERRORS: Record<string, string> = {
+  'tomorrow is already closed': "Tomorrow is already closed, so these tasks can’t move forward. Drop them from today, or reopen tomorrow before carrying again.",
+};
+
+export function workflowErrorMessage(error: unknown): string {
+  if (error instanceof Error) return KNOWN_ERRORS[error.message] || error.message;
+  return 'Something went wrong. Please try again.';
+}
+
 export function WorkflowError({ error, retry }: { error: unknown; retry?: () => void }) {
   return <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm">
-    <p className="text-destructive">{error instanceof Error ? error.message : 'Something went wrong. Please try again.'}</p>
+    <p className="text-destructive">{workflowErrorMessage(error)}</p>
     {retry && <Button type="button" variant="outline" size="sm" className="mt-3" onClick={retry}>Try again</Button>}
   </div>;
 }
