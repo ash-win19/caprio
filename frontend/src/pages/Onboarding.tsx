@@ -1,3 +1,4 @@
+import { PublicHeader } from '@/components/PublicHeader';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -21,16 +22,9 @@ export default function Onboarding() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 bg-background">
+    <div className="relative min-h-screen flex flex-col items-center justify-center px-4 pb-10 pt-24 bg-background">
+      <PublicHeader step="Setup · 1 of 2" />
       <div className="w-full max-w-[540px]">
-        <div className="flex flex-col items-center mb-8">
-          <span className="text-caption mb-2">Setting up Caprio</span>
-          <div className="flex gap-2">
-            <span className="w-2 h-2 rounded-full bg-primary" />
-            <span className="w-2 h-2 rounded-full bg-border" />
-          </div>
-        </div>
-
         <h1 className="text-heading text-foreground text-center mb-2">What areas of life matter to you?</h1>
         <p className="text-sm text-muted-foreground text-center mb-8">
           Choose what you want to track. You can always edit these later in settings.

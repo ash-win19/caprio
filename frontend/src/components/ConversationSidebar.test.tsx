@@ -17,6 +17,8 @@ vi.mock("@/lib/store", () => ({
   ),
 }));
 
+vi.mock('@/lib/queries', () => ({ useWorkflow: vi.fn((date: string) => ({ data: { date, state: 'planning', tasks: [] } })) }));
+
 const mount = () =>
   render(
     <MemoryRouter>

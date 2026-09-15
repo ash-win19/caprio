@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Logo } from '@/components/Logo';
+import { PublicHeader } from '@/components/PublicHeader';
 import { useAuth0 } from '@auth0/auth0-react';
 
 export default function Signup() {
@@ -13,8 +13,8 @@ export default function Signup() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 bg-background">
-      <Link to="/" aria-label="Caprio home" className="mb-8 inline-flex"><Logo /></Link>
+    <div className="relative min-h-screen flex flex-col items-center justify-center px-4 pb-10 pt-24 bg-background">
+      <PublicHeader />
 
       <div className="w-full max-w-[380px] bg-card border border-border rounded-lg p-6">
         <h1 className="text-heading text-foreground mb-1">Create your account</h1>

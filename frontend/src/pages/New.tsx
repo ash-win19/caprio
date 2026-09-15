@@ -1,3 +1,8 @@
+import { AppShell } from '@/layouts/AppShell';
+import { AppTopBar } from '@/components/AppTopBar';
+import { RecoveryNotice } from '@/components/workflow/RecoveryNotice';
+import { useLocalDay } from '@/lib/useLocalDay';
+import { useDateDraft, useNavigationLock, useNavigationState } from '@/lib/dateDrafts';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -8,7 +13,7 @@ import { ConversationSidebar } from '@/components/ConversationSidebar';
 import { Button } from '@/components/ui/button';
 import { MessageBubble, StoppedNotice, StreamingReply, ThinkingIndicator } from '@/components/workflow/ChatMessages';
 import { DaySummary, WorkflowError, capacityOverMessage, proposalRevisionDiff } from '@/components/workflow/WorkflowUI';
-import { dateLabel, selectedDate } from '@/components/workflow/dates';
+import { selectedDate } from '@/components/workflow/dates';
 import { toast } from '@/hooks/use-toast';
 import { CHAT_MODELS, DEFAULT_CHAT_MODEL, FALLBACK_CHAT_MODEL } from '@/lib/chat-models';
 import { shouldFallbackToGroq } from '@/lib/chat-resilience';
@@ -44,13 +49,16 @@ function ConversationDay({ date, intent, seed }: { date: string; intent: string 
   const queryClient = useQueryClient();
   const workflowQuery = useWorkflow(date);
   const workflow = workflowQuery.data;
-  const [input, setInput] = useState(seed);
-  const [model, setModel] = useState(DEFAULT_CHAT_MODEL);
-  const [pending, setPending] = useState<PendingTurn | null>(null);
+  const [input, setInput] = useDateDraft('composer', date, '');
+  const [model, setModel] = useDateDraft('chat-model', date, DEFAULT_CHAT_MODEL);
+  const [pending, setPending] = useDateDraft<PendingTurn | null>('pending-turn', date, null);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const past = date < localDate();
+  const today = useLocalDay();
+  const past = date < today;
+  const mounted = useRef(true);
+  const consumedSeed = useRef('');
   const readOnly = past || workflow?.state === 'closed';
   const replying = isReplying(pending);
   const settling = pending?.status === 'settling';
@@ -59,8 +67,12 @@ function ConversationDay({ date, intent, seed }: { date: string; intent: string 
   const showInterruptChips = !readOnly && (intent === 'interrupt' || workflow?.state === 'active');
 
   useEffect(() => {
-    if (seed.trim()) setInput(seed);
-  }, [seed]);
+    if (seed.trim() && seed !== consumedSeed.current) {
+      consumedSeed.current = seed;
+      setInput(previous => previous ? `${previous}\n${seed}` : seed);
+    }
+    if (!seed) consumedSeed.current = '';
+  }, [seed, setInput]);
 
   const refresh = () => {
     for (const key of ['workflow', 'tasks', 'inbox', 'bootstrap', 'chat-sessions']) void queryClient.invalidateQueries({ queryKey: [key] });
@@ -68,15 +80,17 @@ function ConversationDay({ date, intent, seed }: { date: string; intent: string 
   const confirm = useMutation({
     mutationFn: () => api.confirmDayPlan({ date, proposalId: workflow!.proposal!.id, version: workflow!.version }),
     onSuccess: (saved) => {
+      if (!mounted.current) return;
       queryClient.setQueryData(['workflow', date], saved);
       refresh();
-      navigate(`/today${date === localDate() ? '' : `?date=${date}`}`);
+      if (mounted.current) navigate(`/today${date === localDate() ? '' : `?date=${date}`}`);
     },
     onError: () => { void workflowQuery.refetch(); },
   });
   const discard = useMutation({
     mutationFn: () => api.discardDayPlan({ date, proposalId: workflow!.proposal!.id, version: workflow!.version }),
     onSuccess: (saved) => {
+      if (!mounted.current) return;
       queryClient.setQueryData(['workflow', date], saved);
       confirm.reset();
       refresh();
@@ -98,8 +112,11 @@ function ConversationDay({ date, intent, seed }: { date: string; intent: string 
         ...request,
         date,
         signal: controller.signal,
-        onDelta: (text) => updatePending(request.requestId, (turn) => ({ ...turn, reply: turn.reply + text, status: 'streaming' })),
+        onDelta: (text) => {
+          if (!controller.signal.aborted && mounted.current) updatePending(request.requestId, (turn) => ({ ...turn, reply: turn.reply + text, status: 'streaming' }));
+        },
       });
+      if (controller.signal.aborted || !mounted.current) return;
       queryClient.setQueryData(['workflow', date], response.workflow);
       updatePending(request.requestId, (turn) => ({ ...turn, reply: response.text, status: 'settling' }));
       refresh();
@@ -130,7 +147,7 @@ function ConversationDay({ date, intent, seed }: { date: string; intent: string 
   // Swap the revealed reply for the saved thread once the last character shows.
   useEffect(() => {
     if (settled) setPending(null);
-  }, [settled]);
+  }, [settled, setPending]);
 
   // The server may have committed the turn even though this client gave up on
   // it. Once the saved thread contains the message, drop the pending copy.
@@ -138,9 +155,16 @@ function ConversationDay({ date, intent, seed }: { date: string; intent: string 
     if (!pending || replying || settling) return;
     const messages = workflow?.messages ?? [];
     if (messages.some((message, index) => index >= pending.savedCount && message.role === 'user' && message.content === pending.content)) setPending(null);
-  }, [workflow?.messages, pending, replying, settling]);
+  }, [workflow?.messages, pending, replying, settling, setPending]);
 
-  useEffect(() => () => abortRef.current?.abort(), []);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      abortRef.current?.abort();
+      setPending(turn => turn && isReplying(turn) ? { ...turn, status: 'stopped' } : turn);
+    };
+  }, [setPending]);
 
   useEffect(() => {
     const container = scrollRef.current;
@@ -176,6 +200,7 @@ function ConversationDay({ date, intent, seed }: { date: string; intent: string 
   const overCapacity = availableMinutes !== null && minutes > availableMinutes;
   const carriedCount = (workflow?.tasks || []).filter((task) => task.deferCount > 0 && !task.completed).length;
   const busy = replying || confirm.isPending || discard.isPending;
+  useNavigationLock(busy, Boolean(input.trim()) || Boolean(pending && !settling));
   // While a reply is still being revealed, the thread shows the messages that
   // existed before it was sent; the pending turn stands in for the rest.
   const savedMessages = workflow?.messages ?? [];
@@ -185,17 +210,15 @@ function ConversationDay({ date, intent, seed }: { date: string; intent: string 
     : null;
   const showDiff = revisionDiff && (revisionDiff.kept.length + revisionDiff.added.length + revisionDiff.deferredOrRemoved.length) > 0;
 
-  return <main className="flex min-w-0 flex-1 flex-col">
-    <header className="flex min-h-16 items-center justify-between gap-3 px-4 pl-16 md:px-8">
-      <div><h1 className="text-sm font-medium">{past ? 'Conversation history' : workflow?.state === 'active' ? 'Adjust your plan' : 'Plan your day'}</h1><p className="mt-0.5 text-xs text-muted-foreground">{dateLabel(date)}</p></div>
-      <Button asChild size="sm" variant="ghost"><Link to={`/today?date=${date}`}>View plan <ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
-    </header>
-    <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6 md:px-8"><div className="mx-auto max-w-2xl space-y-6">
+  return <>
+    <main id="main-content" tabIndex={-1} className="conversation-main workspace-main">
+    <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-6 md:px-8"><div className="mx-auto max-w-2xl space-y-6">
+      {date === today && <RecoveryNotice />}
       {workflowQuery.isLoading ? <p role="status" className="py-12 text-center text-sm text-muted-foreground">Loading your day…</p> : workflowQuery.error ? <WorkflowError error={workflowQuery.error} retry={() => void workflowQuery.refetch()} /> : <>
         {!messages.length && !pending && <div className="flex min-h-[38vh] flex-col items-center justify-center text-center">
           <ListChecks className="mb-5 h-7 w-7 text-primary" />
           <h2 className="text-3xl font-medium">{past ? 'No conversation for this day' : intent === 'interrupt' || workflow?.state === 'active' ? 'What changed?' : 'What needs your attention?'}</h2>
-          <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">{past ? 'Your saved plan and review are available from View plan.' : intent === 'interrupt' || workflow?.state === 'active' ? 'Tell Caprio what shifted — less time, new work, or something to drop. You’ll review a revision before anything is saved.' : 'Tell me your tasks, fixed commitments, and how much time you have. We’ll turn them into a realistic plan.'}</p>
+          <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">{past ? 'Your saved plan and review are available from View day.' : intent === 'interrupt' || workflow?.state === 'active' ? 'Tell Caprio what shifted — less time, new work, or something to drop. You’ll review a revision before anything is saved.' : 'Tell me your tasks, fixed commitments, and how much time you have. We’ll turn them into a realistic plan.'}</p>
           {!past && !!workflow?.tasks.length && <p className="mt-4 text-sm text-primary">{workflow.tasks.length} saved {workflow.tasks.length === 1 ? 'task is' : 'tasks are'} already waiting for this day{carriedCount > 0 ? ` · ${carriedCount} carried from yesterday` : ''}.</p>}
         </div>}
         {messages.map((message) => <MessageBubble key={message.id} role={message.role}>{message.content}</MessageBubble>)}
@@ -234,7 +257,7 @@ function ConversationDay({ date, intent, seed }: { date: string; intent: string 
       </>}
       <div ref={messagesEndRef} />
     </div></div>
-    <div className="bg-background px-4 pb-4 pt-2 md:px-8"><div className="mx-auto max-w-2xl">
+    <div className="conversation-composer bg-background px-4 pb-4 pt-2 md:px-8"><div className="mx-auto max-w-2xl">
       {readOnly ? <div className="flex items-center justify-between gap-3 rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground"><span>{past ? 'Past conversations are read-only.' : 'This day is closed.'}</span><Link to="/new" className="shrink-0 text-primary hover:underline">Go to today</Link></div> : <>
         {!past && carriedCount > 0 && <p role="status" className="mb-3 inline-flex max-w-full items-center rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs text-primary">{carriedCount} carried from yesterday — they’ll be in the proposal unless you drop them</p>}
         {showInterruptChips && <div className="mb-3 flex flex-wrap gap-2" aria-label="Quick interruption prompts">
@@ -253,17 +276,29 @@ function ConversationDay({ date, intent, seed }: { date: string; intent: string 
         <p className="mt-2 text-center text-[11px] text-muted-foreground">Your tasks and constraints guide the plan. You confirm changes before they’re saved.</p>
       </>}
     </div></div>
-  </main>;
+  </main></>;
 }
 
 export default function New() {
   const [params, setParams] = useSearchParams();
-  const date = selectedDate(params.get('date'), localDate());
+  const today = useLocalDay();
+  const date = selectedDate(params.get('date'), today);
   const intent = params.get('intent');
   const seed = params.get('seed') || '';
   const sessions = useChatSessions();
-  return <div className="relative flex h-dvh bg-background">
-    <ConversationSidebar sessions={sessions.data || []} selectedDate={date} isLoading={sessions.isLoading} onSelect={(value) => setParams({ date: value })} onToday={() => setParams({})} />
-    <ConversationDay key={`${date}:${intent || ''}:${seed}`} date={date} intent={intent} seed={seed} />
-  </div>;
+  const workflow = useWorkflow(date);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  useEffect(() => {
+    if (!seed) return;
+    const next = new URLSearchParams(params);
+    next.delete('seed');
+    setParams(next, { replace: true });
+  }, [seed, params, setParams]);
+  const selectDate = (value: string) => {
+    if (!useNavigationState.getState().locked) setParams({ date: value });
+  };
+  return <AppShell conversation onOpenConversations={() => setHistoryOpen(true)} sidebar={<ConversationSidebar externalToggle mobileOpen={historyOpen} onMobileOpenChange={setHistoryOpen} sessions={sessions.data || []} selectedDate={date} isLoading={sessions.isLoading} onSelect={selectDate} onToday={() => selectDate(today)} />}>
+    <AppTopBar title={date < today ? 'Conversation history' : workflow.data?.state === 'active' ? 'Adjust plan' : 'Plan'} date={date} actions={<Button asChild size="sm" variant="outline"><Link to={`/today?date=${date}`}>View day</Link></Button>} />
+    <ConversationDay key={date} date={date} intent={intent} seed={seed} />
+  </AppShell>;
 }

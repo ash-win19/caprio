@@ -1,12 +1,13 @@
 import { Page, PageBody, PageHeader } from '@/components/PageLayout';
-import { useState } from 'react';
+
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ArrowRight, Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useWorkflow } from '@/lib/queries';
-import { localDate, previousDate } from '@/lib/date';
+import { useLocalDay } from '@/lib/useLocalDay';
+import { useDateDraft, useNavigationLock } from '@/lib/dateDrafts';
 import * as api from '@/lib/api';
 import { DaySummary, WorkflowError } from '@/components/workflow/WorkflowUI';
 import { dateLabel, followingDate, selectedDate } from '@/components/workflow/dates';
@@ -18,15 +19,14 @@ const OUTCOMES = [{ action: 'done', label: 'Done', icon: Check }, { action: 'tom
 function DayReview({ date, forceCloseBanner }: { date: string; forceCloseBanner: boolean }) {
   const workflowQuery = useWorkflow(date);
   const queryClient = useQueryClient();
-  const [step, setStep] = useState(0);
-  const [actions, setActions] = useState<Record<string, TaskAction>>({});
-  const [energy, setEnergy] = useState<number | null>(null);
-  const [notes, setNotes] = useState('');
-  const [saved, setSaved] = useState(false);
+  const [step, setStep] = useDateDraft('review-step', date, 0);
+  const [actions, setActions] = useDateDraft<Record<string, TaskAction>>('review-actions', date, {});
+  const [energy, setEnergy] = useDateDraft<number | null>('review-energy', date, null);
+  const [notes, setNotes] = useDateDraft('review-notes', date, '');
+  const [saved, setSaved] = useDateDraft('review-saved', date, false);
   const workflow = workflowQuery.data;
   const tasks = workflow?.tasks || [];
-  const today = localDate();
-  const yesterday = previousDate(today);
+  const today = useLocalDay();
   const destination = followingDate(date);
   const historical = date < today;
   const carryLabel = historical ? `Carry to ${dateLabel(destination)}` : 'Tomorrow';
@@ -36,10 +36,13 @@ function DayReview({ date, forceCloseBanner }: { date: string; forceCloseBanner:
     mutationFn: () => api.closeDay({ date, taskActions: tasks.map((task) => ({ taskId: task.id, action: actionFor(task)! })), notes: notes.trim() || undefined, energyLevel: energy ?? undefined }),
     onSuccess: async () => {
       setSaved(true);
+      setActions({}); setNotes(''); setEnergy(null); setStep(0);
       await Promise.all(['workflow', 'tasks', 'inbox', 'bootstrap', 'chat-sessions'].map((key) => queryClient.invalidateQueries({ queryKey: [key] })));
     },
     onError: () => { void workflowQuery.refetch(); },
   });
+
+  useNavigationLock(close.isPending, workflow?.state !== 'closed' && (Object.keys(actions).length > 0 || Boolean(notes) || energy !== null));
 
   if (workflowQuery.isLoading) return <p role="status" className="py-12 text-sm text-muted-foreground">Loading your day…</p>;
   if (workflowQuery.error) return <WorkflowError error={workflowQuery.error} retry={() => void workflowQuery.refetch()} />;
@@ -52,7 +55,7 @@ function DayReview({ date, forceCloseBanner }: { date: string; forceCloseBanner:
   if (workflow.state !== 'active' && tasks.length === 0) return <section className="rounded-2xl border border-border bg-card p-6"><h2 className="text-lg font-medium">Start with a daily plan</h2><p className="mt-2 text-sm leading-6 text-muted-foreground">Once your plan is confirmed, come here to save what you finished and what should move forward.</p><Button asChild className="mt-5"><Link to={`/new?date=${historical ? today : date}`}>Plan this day</Link></Button></section>;
 
   return <>
-    {(forceCloseBanner || historical) && <div role="status" className="mb-5 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm">{date === yesterday ? 'Close yesterday before planning today' : `Review ${dateLabel(date)} before planning today`}</div>}
+    {(forceCloseBanner || historical) && <div role="status" className="mb-5 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm">{`You are reviewing ${dateLabel(date, true)}. You can return to today at any time.`}</div>}
     <div className="mb-5 flex items-center justify-between gap-4"><p className="text-sm text-muted-foreground">{step === 0 ? 'Choose what happens to each task.' : 'A little context for tomorrow.'}</p><span className="text-xs text-muted-foreground">{step + 1} of 2</span></div>
     {step === 0 ? <>
       <div className="space-y-3">{tasks.map((task) => {
@@ -83,10 +86,12 @@ function DayReview({ date, forceCloseBanner }: { date: string; forceCloseBanner:
 
 export default function Review() {
   const [params] = useSearchParams();
-  const date = selectedDate(params.get('date'), localDate());
+  const today = useLocalDay();
+  const date = selectedDate(params.get('date'), today);
+  const workflow = useWorkflow(date);
   const forceCloseBanner = params.get('reopen') === '1';
   return <Page>
-    <PageHeader title="Review your day"><p className="mt-2 text-sm text-muted-foreground">{dateLabel(date)}</p></PageHeader>
+    <PageHeader title="Review" date={date} maxDate={today} status={workflow.data ? workflow.data.state === 'closed' ? 'Closed' : 'Open' : undefined} actions={<Button asChild variant="outline"><Link to={`/today?date=${date}`}>View day</Link></Button>} />
     <PageBody width="form"><DayReview key={date} date={date} forceCloseBanner={forceCloseBanner} /></PageBody>
   </Page>;
 }

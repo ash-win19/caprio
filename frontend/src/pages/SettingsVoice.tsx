@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 export default function SettingsVoice() {
   return (
     <Page>
-      <PageHeader title="Shortcuts and input" breadcrumb={<Link to="/settings" className="text-sm text-muted-foreground hover:text-foreground">← Settings</Link>} />
+      <PageHeader title="Shortcuts and input" parent={{ label: 'Settings', href: '/settings' }} />
       <PageBody width="form">
       <div className="bg-card border border-border rounded-lg p-4 space-y-3">
         <p className="text-sm">Open your daily conversation with <kbd className="rounded bg-accent px-2 py-1">⌘ / Ctrl + Shift + Space</kbd>.</p>

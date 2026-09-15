@@ -1,3 +1,4 @@
+import { PublicHeader } from '@/components/PublicHeader';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -31,9 +32,9 @@ export default function OnboardingPrefs() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 bg-background">
+    <div className="relative min-h-screen flex items-center justify-center px-4 pb-10 pt-24 bg-background">
+      <PublicHeader step="Setup · 2 of 2" back={{ href: '/onboarding', label: 'Back' }} />
       <div className="w-full max-w-[460px]">
-        <p className="text-caption mb-4">Setting up Caprio · 2 of 2</p>
         <h1 className="text-heading text-foreground mb-3">Make room for your day</h1>
         <p className="text-sm text-muted-foreground mb-8">Tell Caprio what needs doing and how much time you have. Review its suggestions before they become your plan.</p>
         <label className="block text-sm text-foreground mb-2" htmlFor="brief-time">When do you usually plan your day?</label>
