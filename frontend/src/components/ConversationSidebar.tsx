@@ -1,16 +1,15 @@
 import { useMemo, useRef, useState, type RefObject } from "react";
-import { Link } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
 import {
   CalendarDays,
-  Inbox,
-  History,
   Menu,
   MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
   Search,
-  X,
 } from "lucide-react";
+import { NAV_ITEMS, useReviewNav } from "@/lib/navigation";
+import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import type { ChatSession } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
 import { sidebarShortcutLabel, useSidebarFocus, useSidebarShortcut, useSidebarStore } from "@/lib/sidebar";
@@ -23,6 +22,9 @@ interface ConversationSidebarProps {
   isLoading: boolean;
   onSelect: (date: string) => void;
   onToday: () => void;
+  externalToggle?: boolean;
+  mobileOpen?: boolean;
+  onMobileOpenChange?: (open: boolean) => void;
 }
 
 function formatSessionDate(value: string) {
@@ -48,6 +50,7 @@ function SidebarContent({
   collapseButtonRef?: RefObject<HTMLButtonElement>;
 }) {
   const user = useAppStore((state) => state.user);
+  const { reviewPath } = useReviewNav();
   const [query, setQuery] = useState("");
   const visibleSessions = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -69,7 +72,7 @@ function SidebarContent({
 
   return (
     <div className="flex h-full flex-col bg-card">
-      <div className="flex items-center justify-between px-4 pb-3 pt-4">
+      <div className="flex h-14 shrink-0 items-center justify-between px-4">
         <Link to="/today" className="inline-flex" aria-label="Go to today">
           <Logo />
         </Link>
@@ -89,24 +92,13 @@ function SidebarContent({
               <PanelLeftClose className="h-4 w-4" />
             </button>
           )}
-          {onClose && (
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-md p-2 text-muted-foreground transition hover:bg-accent hover:text-foreground"
-              aria-label="Close conversation history"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
         </div>
       </div>
 
       <div className="px-3">
-        <nav aria-label="Workspace" className="mb-3 flex flex-wrap gap-1">
-          <Link to="/today" className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"><CalendarDays className="h-3.5 w-3.5" />Today</Link>
-          <Link to="/capture" className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"><Inbox className="h-3.5 w-3.5" />Inbox</Link>
-          <Link to="/momentum" className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"><History className="h-3.5 w-3.5" />History</Link>
+        <nav aria-label="Primary" className="mb-3 space-y-1">
+          {NAV_ITEMS.map(item => <NavLink key={item.path} to={item.path === '/review' ? reviewPath : item.path} onClick={onClose} className={({ isActive }) => `flex items-center gap-3 rounded-md px-3 py-2 text-sm ${isActive ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent/50'}`}><item.icon size={16} />{item.label}</NavLink>)}
+          <Link to="/settings" onClick={onClose} className="block rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent">Settings</Link>
         </nav>
         <button
           type="button"
@@ -199,7 +191,10 @@ function SidebarContent({
 }
 
 export function ConversationSidebar(props: ConversationSidebarProps) {
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [ownMobileOpen, setOwnMobileOpen] = useState(false);
+  const mobileOpen = props.mobileOpen ?? ownMobileOpen;
+  const setMobileOpen = props.onMobileOpenChange ?? setOwnMobileOpen;
+  const { reviewPath } = useReviewNav();
   const collapsed = useSidebarStore((state) => state.collapsed);
   const setCollapsed = useSidebarStore((state) => state.setCollapsed);
   const desktopOpen = !collapsed;
@@ -209,24 +204,24 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
   const user = useAppStore((state) => state.user);
   const shortcut = sidebarShortcutLabel();
   useSidebarShortcut();
-  useSidebarFocus(collapsed, asideRef, collapseRef, expandRef);
+  useSidebarFocus(collapsed, asideRef, collapseRef, expandRef, props.externalToggle);
 
   return (
     <>
       <aside
         ref={asideRef}
         id="conversation-sidebar"
-        className={`relative hidden h-screen shrink-0 overflow-hidden border-r border-border bg-card transition-[width] duration-300 ease-in-out motion-reduce:transition-none md:block ${desktopOpen ? "w-[280px]" : "w-16"}`}
+        className={`fixed left-0 top-0 z-40 hidden h-dvh overflow-hidden border-r border-border bg-card transition-[width] duration-300 ease-in-out motion-reduce:transition-none md:block ${desktopOpen ? "w-[240px]" : "w-16"}`}
       >
         <div
           aria-hidden={!desktopOpen}
           {...(!desktopOpen ? { inert: "" } : {})}
-          className={`absolute inset-y-0 left-0 w-[279px] transition-opacity duration-200 ease-in-out motion-reduce:transition-none ${desktopOpen ? "opacity-100" : "pointer-events-none opacity-0"}`}
+          className={`absolute inset-y-0 left-0 w-[239px] transition-opacity duration-200 ease-in-out motion-reduce:transition-none ${desktopOpen ? "opacity-100" : "pointer-events-none opacity-0"}`}
         >
           <SidebarContent
             {...props}
             collapseButtonRef={collapseRef}
-            onCollapse={() => setCollapsed(true)}
+            onCollapse={props.externalToggle ? undefined : () => setCollapsed(true)}
           />
         </div>
         <div
@@ -237,7 +232,7 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
           <Link to="/today" aria-label="Go to today" className="p-2">
             <CaprioMark />
           </Link>
-          <button
+          {!props.externalToggle && <button
             ref={expandRef}
             type="button"
             onClick={() => setCollapsed(false)}
@@ -249,10 +244,10 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
             title={`Expand sidebar (${shortcut})`}
           >
             <PanelLeftOpen className="h-5 w-5" />
-          </button>
-          <Link to="/today" aria-label="Today's plan" title="Today's plan" className="mt-3 grid h-10 w-10 place-items-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"><CalendarDays className="h-5 w-5" /></Link>
-          <button type="button" onClick={props.onToday} aria-label="Today's conversation" title="Today's conversation" className="grid h-10 w-10 place-items-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"><MessageSquare className="h-5 w-5" /></button>
-          <Link to="/capture" aria-label="Inbox" title="Inbox" className="grid h-10 w-10 place-items-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"><Inbox className="h-5 w-5" /></Link>
+          </button>}
+          <nav aria-label="Primary" className="mt-3 flex flex-col gap-1">
+            {NAV_ITEMS.map(item => <NavLink key={item.path} to={item.path === '/review' ? reviewPath : item.path} aria-label={item.label} title={item.label} className={({ isActive }) => `grid h-10 w-10 place-items-center rounded-lg ${isActive ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent'}`}><item.icon size={18} /></NavLink>)}
+          </nav>
           <Link
             to="/settings"
             aria-label={user?.name ? `Open ${user.name}'s profile` : "Open profile"}
@@ -264,30 +259,25 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
         </div>
       </aside>
 
-      <div className="absolute left-4 top-4 z-30 md:hidden">
+      {!props.externalToggle && <div className="absolute left-4 top-4 z-30 md:hidden">
         <button
           type="button"
           onClick={() => setMobileOpen(true)}
           className="grid h-10 w-10 place-items-center rounded-lg border border-border bg-card text-foreground shadow-float"
+          id="conversation-history-trigger"
           aria-label="Open conversation history"
         >
           <Menu className="h-5 w-5" />
         </button>
-      </div>
+      </div>}
 
-      {mobileOpen && (
-        <div className="fixed inset-0 z-50 md:hidden">
-          <button
-            type="button"
-            className="absolute inset-0 bg-black/60"
-            onClick={() => setMobileOpen(false)}
-            aria-label="Close conversation history"
-          />
-          <aside className="relative h-full w-[min(88vw,320px)] border-r border-border shadow-2xl">
-            <SidebarContent {...props} onClose={() => setMobileOpen(false)} />
-          </aside>
-        </div>
-      )}
+      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+        <SheetContent side="left" className="w-[min(88vw,320px)] p-0" onCloseAutoFocus={event => { event.preventDefault(); document.getElementById('conversation-history-trigger')?.focus(); }}>
+          <SheetTitle className="sr-only">Conversation history</SheetTitle>
+          <SheetDescription className="sr-only">Browse your planning conversations by day.</SheetDescription>
+          <SidebarContent {...props} onClose={() => setMobileOpen(false)} />
+        </SheetContent>
+      </Sheet>
     </>
   );
 }

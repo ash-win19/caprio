@@ -1,20 +1,11 @@
+import { NAV_ITEMS, useReviewNav } from '@/lib/navigation';
 import { useRef } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
-import { LayoutGrid, Inbox, CheckSquare, History, Settings, MessageSquare, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Settings, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { SIDEBAR_WIDTH_CLASS, sidebarShortcutLabel, useSidebarFocus, useSidebarShortcut, useSidebarStore } from '@/lib/sidebar';
-import { useWorkflow } from '@/lib/queries';
-import { localDate } from '@/lib/date';
 import { UserAvatar } from '@/components/UserAvatar';
 import { CaprioMark, Logo } from '@/components/Logo';
-
-const NAV_ITEMS = [
-  { label: 'Today', path: '/today', icon: LayoutGrid },
-  { label: 'Plan', path: '/new', icon: MessageSquare },
-  { label: 'Inbox', path: '/capture', icon: Inbox },
-  { label: 'Review', path: '/review', icon: CheckSquare },
-  { label: 'History', path: '/momentum', icon: History },
-];
 
 const railLink = ({ isActive }: { isActive: boolean }) =>
   `grid h-10 w-10 place-items-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
@@ -34,20 +25,7 @@ function ReviewBadge({ pending, count, compact = false }: { pending: boolean; co
 }
 
 
-function useReviewNav() {
-  const today = localDate();
-  const todayWorkflow = useWorkflow(today);
-  const reviewDate = todayWorkflow.data?.oldestUnclosedDate || today;
-  const reviewWorkflow = useWorkflow(reviewDate);
-  const recovering = reviewDate < today;
-  const reviewPath = recovering ? `/review?date=${reviewDate}&reopen=1` : '/review';
-  const tasks = reviewWorkflow.data?.tasks || [];
-  const reviewPending = reviewWorkflow.data?.state !== 'closed' && (recovering || reviewWorkflow.data?.state === 'active' || tasks.length > 0);
-  const unfinished = tasks.filter((task) => !task.completed).length;
-  return { reviewPath, reviewPending, unfinished };
-}
-
-export function AppSidebar() {
+export function AppSidebar({ externalToggle = false }: { externalToggle?: boolean }) {
   const user = useAppStore((s) => s.user);
   const collapsed = useSidebarStore((s) => s.collapsed);
   const toggle = useSidebarStore((s) => s.toggle);
@@ -57,7 +35,7 @@ export function AppSidebar() {
   const shortcut = sidebarShortcutLabel();
   const { reviewPath, reviewPending, unfinished } = useReviewNav();
   useSidebarShortcut();
-  useSidebarFocus(collapsed, asideRef, collapseRef, expandRef);
+  useSidebarFocus(collapsed, asideRef, collapseRef, expandRef, externalToggle);
 
   return (
     <aside
@@ -70,11 +48,11 @@ export function AppSidebar() {
         {...(collapsed ? { inert: '' } : {})}
         className={`absolute inset-y-0 left-0 flex w-[239px] flex-col transition-opacity duration-200 ease-in-out motion-reduce:transition-none ${collapsed ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
       >
-        <div className="flex items-center justify-between py-5 pl-5 pr-3">
+        <div className="flex h-14 items-center justify-between pl-5 pr-3">
           <Link to="/today" aria-label="Go to today" className="inline-flex">
             <Logo />
           </Link>
-          <button
+          {!externalToggle && <button
             ref={collapseRef}
             type="button"
             onClick={toggle}
@@ -86,7 +64,7 @@ export function AppSidebar() {
             className={`p-2 ${toggleButton}`}
           >
             <PanelLeftClose className="h-4 w-4" />
-          </button>
+          </button>}
         </div>
 
         <nav aria-label="Primary" className="flex-1 space-y-1 px-3 py-2">
@@ -137,7 +115,7 @@ export function AppSidebar() {
         <Link to="/today" aria-label="Go to today" className="p-2">
           <CaprioMark />
         </Link>
-        <button
+        {!externalToggle && <button
           ref={expandRef}
           type="button"
           onClick={toggle}
@@ -149,7 +127,7 @@ export function AppSidebar() {
           className={`mt-3 grid h-10 w-10 place-items-center rounded-lg ${toggleButton}`}
         >
           <PanelLeftOpen className="h-5 w-5" />
-        </button>
+        </button>}
 
         <nav aria-label="Primary" className="mt-3 flex flex-col items-center gap-1">
           {NAV_ITEMS.map((item) => (
@@ -184,14 +162,14 @@ export function MobileBottomNav() {
   const { reviewPath, reviewPending } = useReviewNav();
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-card border-t border-border z-40 flex justify-around py-2 px-1">
+    <nav aria-label="Mobile primary" className="mobile-bottom-nav md:hidden">
       {items.map((item) => {
         const active = location.pathname.startsWith(item.path);
         return (
           <NavLink
             key={item.path}
             to={item.path === '/review' ? reviewPath : item.path}
-            className={`relative flex flex-col items-center gap-1 px-2 py-1 text-[11px] ${
+            className={`relative flex min-w-0 flex-col items-center justify-center gap-1 px-1 py-1 text-[11px] ${
               active ? 'text-primary' : 'text-muted-foreground'
             }`}
           >

@@ -1,4 +1,5 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { clearDateDrafts } from '@/lib/dateDrafts';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -11,6 +12,7 @@ import Capture from './Capture';
 import Today from './Today';
 import { DaySummary } from '@/components/workflow/WorkflowUI';
 import { dateLabel } from '@/components/workflow/dates';
+import { VoiceWidget } from '@/components/VoiceWidget';
 
 vi.mock('@/lib/api');
 vi.mock('@/hooks/use-toast', () => ({ toast: vi.fn() }));
@@ -35,6 +37,7 @@ function mount(element: ReactElement, path: string) {
 }
 
 beforeEach(() => {
+  clearDateDrafts();
   vi.clearAllMocks();
   workflow = baseWorkflow();
   vi.mocked(api.getWorkflow).mockImplementation(async () => workflow);
@@ -169,6 +172,52 @@ describe('Daily planning workflow', () => {
     expect(screen.getByRole('button', { name: 'Send prompt' })).toBeInTheDocument();
   });
 
+  it('requires stopping a reply before switching dates or pages', async () => {
+    vi.mocked(api.streamChatMessage).mockImplementationOnce(({ signal }) => new Promise((_, reject) => {
+      signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+    }));
+    mount(<New />, '/new');
+    const input = await screen.findByRole('textbox', { name: 'Message about your day' });
+    await waitFor(() => expect(input).toBeEnabled());
+    fireEvent.change(input, { target: { value: 'Keep this request' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send prompt' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Next day' })).toBeDisabled());
+    fireEvent.click(screen.getByRole('link', { name: 'View day' }));
+    expect(screen.queryByText('Saved plan destination')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Stop generating' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Next day' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('link', { name: 'View day' }));
+    expect(await screen.findByText('Saved plan destination')).toBeInTheDocument();
+  });
+
+  it('aborts on unmount and ignores late deltas and success without losing the stopped request', async () => {
+    let deliver!: (text: string) => void;
+    let finish!: (reply: api.ChatReply) => void;
+    let signal!: AbortSignal;
+    vi.mocked(api.streamChatMessage).mockImplementationOnce((request) => new Promise(resolve => {
+      signal = request.signal!;
+      deliver = text => request.onDelta?.(text);
+      finish = resolve;
+    }));
+    const client = mount(<New />, '/new');
+    const input = await screen.findByRole('textbox', { name: 'Message about your day' });
+    await waitFor(() => expect(input).toBeEnabled());
+    fireEvent.change(input, { target: { value: 'Keep the interrupted request' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send prompt' }));
+    await screen.findByRole('button', { name: 'Stop generating' });
+    cleanup();
+    expect(signal.aborted).toBe(true);
+    await act(async () => {
+      deliver('Late response');
+      finish({ text: 'Late response', workflow: { ...workflow, messages: [{ id: 'late', role: 'assistant', content: 'Late response' }] } });
+    });
+    expect(client.getQueryData<api.Workflow>(['workflow', today])?.messages).toEqual([]);
+    mount(<New />, '/new');
+    expect(await screen.findByText('Keep the interrupted request')).toBeInTheDocument();
+    expect(screen.getByText('Reply stopped. Nothing was saved.')).toBeInTheDocument();
+    expect(screen.queryByText('Late response')).not.toBeInTheDocument();
+  });
+
   it('discards a proposal through the server without confirming tasks', async () => {
     workflow = { ...workflow, proposal: proposal() };
     vi.mocked(api.discardDayPlan).mockImplementation(async () => { workflow = { ...workflow, proposal: null }; return workflow; });
@@ -219,6 +268,24 @@ describe('Daily planning workflow', () => {
     expect(api.closeDay).not.toHaveBeenCalled();
   });
 
+  it('protects a pending review save from date controls and the global planning shortcut', async () => {
+    workflow = { ...workflow, state: 'active', tasks: [task('report')] };
+    let finish!: (review: Awaited<ReturnType<typeof api.closeDay>>) => void;
+    vi.mocked(api.closeDay).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    mount(<><Review /><VoiceWidget /></>, '/review');
+    fireEvent.click(await screen.findByRole('button', { name: 'Done: Finish report' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close day' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Previous day' })).toBeDisabled());
+    expect(screen.getByRole('button', { name: 'Plan my day' })).toBeDisabled();
+    fireEvent.keyDown(window, { code: 'Space', ctrlKey: true, shiftKey: true });
+    expect(screen.getByRole('button', { name: 'Saving review…' })).toBeInTheDocument();
+    workflow = { ...workflow, state: 'closed', review: { completedCount: 1, carriedToTomorrowCount: 0, droppedCount: 0, notes: null, energyLevel: null } };
+    await act(async () => finish({ ...workflow.review!, nextDate: nextDate(today) }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Plan my day' })).toBeEnabled());
+    expect(api.closeDay).toHaveBeenCalledTimes(1);
+  });
+
   it('saves an inbox task without immediately adding it to today', async () => {
     vi.mocked(api.createTask).mockResolvedValue(task('report'));
     mount(<Capture />, '/capture');
@@ -244,19 +311,19 @@ describe('Daily planning workflow', () => {
     workflow = { ...workflow, state: 'active' };
     mount(<Today />, '/today');
     expect(await screen.findByRole('heading', { name: 'Nothing planned for this day' })).toBeInTheDocument();
-    const interruptLinks = screen.getAllByRole('link', { name: /^Something changed$/i });
+    const interruptLinks = screen.getAllByRole('link', { name: /^Adjust plan$/i });
     expect(interruptLinks.length).toBeGreaterThan(0);
     expect(interruptLinks.every((link) => link.getAttribute('href') === `/new?date=${today}&intent=interrupt`)).toBe(true);
-    expect(screen.queryByRole('link', { name: 'Review day' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /Close the day/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Review day →' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Review day/i })).not.toBeInTheDocument();
   });
 
   it('nudges closing an active day with unfinished work', async () => {
     workflow = { ...workflow, state: 'active', tasks: [task('report')] };
     vi.mocked(api.getTodayTasks).mockResolvedValue([{ id: 'report', title: 'Finish report', urgency: 'medium', category: 'Uncategorized', completed: false, addedToday: true, carriedOver: false, order: 0 }]);
     mount(<Today />, '/today');
-    expect(await screen.findByRole('link', { name: /Close the day/i })).toHaveAttribute('href', `/review?date=${today}`);
-    expect(screen.getByRole('link', { name: 'Review day' })).toHaveAttribute('href', `/review?date=${today}`);
+    expect(await screen.findByRole('link', { name: /Review day/i })).toHaveAttribute('href', `/review?date=${today}`);
+    expect(screen.getByRole('link', { name: 'Review day →' })).toHaveAttribute('href', `/review?date=${today}`);
   });
 
   it('groups carried-over tasks separately on Today', async () => {
@@ -313,7 +380,7 @@ describe('Daily planning workflow', () => {
     const yesterday = previousDate(today);
     workflow = { ...workflow, date: yesterday, state: 'active', tasks: [{ ...task('meeting'), plannedForDate: yesterday }] };
     mount(<Review />, `/review?date=${yesterday}&reopen=1`);
-    expect(await screen.findByText('Close yesterday before planning today')).toBeInTheDocument();
+    expect(await screen.findByText(/You are reviewing .*You can return to today/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: `Carry to ${dateLabel(today)}: Team meeting` })).toBeInTheDocument();
     expect(screen.queryByText('This day is in your history')).not.toBeInTheDocument();
   });
@@ -350,10 +417,10 @@ describe('Daily planning workflow', () => {
     workflow = { ...workflow, state: 'active', tasks: [task('report')] };
     vi.mocked(api.getTodayTasks).mockResolvedValue([{ id: 'report', title: 'Finish report', urgency: 'medium', category: 'Uncategorized', completed: false, addedToday: true, carriedOver: false, order: 0 }]);
     mount(<Today />, '/today');
-    const cta = await screen.findByRole('link', { name: /^Something changed$/i });
+    const cta = await screen.findByRole('link', { name: /^Adjust plan$/i });
     expect(cta).toHaveAttribute('href', `/new?date=${today}&intent=interrupt`);
     expect(screen.getByRole('link', { name: 'Something changed →' })).toHaveAttribute('href', `/new?date=${today}&intent=interrupt`);
-    expect(screen.getByRole('link', { name: 'Review day' })).toHaveAttribute('href', `/review?date=${today}`);
+    expect(screen.getByRole('link', { name: 'Review day →' })).toHaveAttribute('href', `/review?date=${today}`);
   });
 
   it('shows a kept/added/deferred diff when revising an active day proposal', async () => {

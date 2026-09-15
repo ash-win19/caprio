@@ -47,8 +47,8 @@ const App = () => (
               <Route path="/settings/categories" element={<SettingsCategories />} />
               <Route path="/settings/notifications" element={<SettingsNotifications />} />
               <Route path="/settings/voice" element={<SettingsVoice />} />
+              <Route path="*" element={<NotFound />} />
             </Route>
-            <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthGuard>
       </BrowserRouter>

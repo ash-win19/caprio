@@ -1,3 +1,5 @@
+import { RecoveryNotice } from '@/components/workflow/RecoveryNotice';
+import { useLocalDay } from '@/lib/useLocalDay';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowRight, GripVertical, Inbox, ListChecks } from 'lucide-react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
@@ -5,11 +7,11 @@ import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove, s
 import { CSS } from '@dnd-kit/utilities';
 import { useTasks, useToggleTask, useReorderTasks, useWorkflow } from '@/lib/queries';
 import { CATEGORY_COLORS, type Task } from '@/lib/types';
-import { localDate } from '@/lib/date';
+import { useNavigationLock } from '@/lib/dateDrafts';
 import { Button } from '@/components/ui/button';
 import { Page, PageHeader } from '@/components/PageLayout';
 import { DaySummary, WorkflowError } from '@/components/workflow/WorkflowUI';
-import { dateLabel, selectedDate } from '@/components/workflow/dates';
+import { selectedDate } from '@/components/workflow/dates';
 
 function TaskCard({ task, readOnly, sortable = false, onToggle }: { task: Task; readOnly: boolean; sortable?: boolean; onToggle: (task: Task) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: task.id, disabled: readOnly || !sortable });
@@ -29,7 +31,8 @@ function TaskCard({ task, readOnly, sortable = false, onToggle }: { task: Task; 
 
 export default function Today() {
   const [params] = useSearchParams();
-  const date = selectedDate(params.get('date'), localDate());
+  const today = useLocalDay();
+  const date = selectedDate(params.get('date'), today);
   const tasksQuery = useTasks(date);
   const workflowQuery = useWorkflow(date);
   const reorder = useReorderTasks();
@@ -41,8 +44,8 @@ export default function Today() {
   const planned = active.filter((task) => !task.carriedOver);
   const completed = tasks.filter((task) => task.completed);
   const workflow = workflowQuery.data;
-  const isToday = date === localDate();
-  const readOnly = date < localDate() || workflow?.state === 'closed';
+  const isToday = date === today;
+  const readOnly = date < today || workflow?.state === 'closed';
   const canComplete = isToday;
   const dayInProgress = isToday && workflow?.state === 'active';
   const interruptHref = `/new?date=${date}&intent=interrupt`;
@@ -50,6 +53,7 @@ export default function Today() {
   const availableMinutes = workflow?.availableMinutes ?? workflow?.proposal?.availableMinutes ?? null;
   const overCapacity = availableMinutes !== null && remainingMinutes > availableMinutes;
   const busy = reorder.isPending || toggle.isPending;
+  useNavigationLock(busy);
   const cardReadOnly = readOnly || !canComplete || busy;
 
   const handleDragEnd = ({ active: dragged, over }: DragEndEvent) => {
@@ -67,24 +71,21 @@ export default function Today() {
   const adjustmentHref = dayInProgress ? interruptHref : `/new?date=${date}`;
 
   return <Page>
-    <PageHeader title={isToday ? 'Today' : 'Your daily plan'} actions={!readOnly && <>
-      {dayInProgress
-        ? <Button asChild><Link to={interruptHref}>Something changed</Link></Button>
-        : <Button asChild variant="outline"><Link to={`/new?date=${date}`}>Plan this day</Link></Button>}
-      {isToday && tasks.length > 0 && <Button asChild variant="outline"><Link to={`/review?date=${date}`}>Review day</Link></Button>}
-    </>}>
-      <p className="mt-2 text-sm text-muted-foreground">{dateLabel(date)}</p>
+    <PageHeader title={isToday ? 'Today' : 'Daily plan'} date={date} status={workflow ? { planning: 'Planning', active: 'Active', closed: 'Closed' }[workflow.state] : undefined} actions={workflow && (workflow.state === 'closed'
+      ? <Button asChild variant="outline"><Link to={`/review?date=${date}`}>View review</Link></Button>
+      : !readOnly ? <Button asChild variant={dayInProgress ? 'default' : 'outline'}><Link to={dayInProgress ? interruptHref : `/new?date=${date}`}>{dayInProgress ? 'Adjust plan' : 'Plan day'}</Link></Button> : null)}>
       {workflow?.state !== 'closed' && tasks.length > 0 && (
         <p className={`mt-2 text-sm ${overCapacity ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'}`}>
           {remainingMinutes} min remaining{availableMinutes !== null ? ` · ${availableMinutes} min available` : ''}{overCapacity ? ' · over capacity' : ''}
         </p>
       )}
     </PageHeader>
+    {isToday && <RecoveryNotice />}
     {tasksQuery.isLoading || workflowQuery.isLoading ? <p role="status" className="py-16 text-center text-sm text-muted-foreground">Loading your plan…</p> : tasksQuery.error || workflowQuery.error ? <WorkflowError error={tasksQuery.error || workflowQuery.error} retry={() => { void tasksQuery.refetch(); void workflowQuery.refetch(); }} /> : <>
       {workflow?.state === 'closed' ? <DaySummary workflow={workflow} /> : <>
         {dayInProgress && tasks.length > 0 && <div className="page-notice" role="status">
           <p className="text-sm">Ready to close the day? Choose Done, Tomorrow, or Drop for each unfinished task.</p>
-          <Link to={`/review?date=${date}`} className="shrink-0 text-sm font-medium text-primary hover:underline">Close the day →</Link>
+          <Link to={`/review?date=${date}`} className="shrink-0 text-sm font-medium text-primary hover:underline">Review day →</Link>
         </div>}
         {workflow?.proposal && <div className="page-notice">
           <p className="text-sm">A proposed plan is waiting for your confirmation.</p>

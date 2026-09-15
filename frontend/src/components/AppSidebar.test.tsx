@@ -98,9 +98,9 @@ describe('AppSidebar', () => {
 
   it('moves the page content with the sidebar', () => {
     render(<MemoryRouter initialEntries={['/today']}><Routes><Route element={<AppLayout />}><Route path="/today" element={<p>Plan for today</p>} /></Route></Routes></MemoryRouter>);
-    expect(screen.getByRole('main')).toHaveClass('md:ml-[240px]');
+    expect(screen.getByRole('main').closest('.app-workspace')).toHaveClass('md:ml-[240px]');
     fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
-    expect(screen.getByRole('main')).toHaveClass('md:ml-16');
+    expect(screen.getByRole('main').closest('.app-workspace')).toHaveClass('md:ml-16');
     expect(screen.getByText('Plan for today')).toBeInTheDocument();
   });
 

@@ -56,9 +56,11 @@ export function useSidebarFocus(
   container: RefObject<HTMLElement>,
   collapseButton: RefObject<HTMLButtonElement>,
   expandButton: RefObject<HTMLButtonElement>,
+  externalToggle = false,
 ) {
   useLayoutEffect(() => {
     if (!container.current?.contains(document.activeElement)) return;
-    (collapsed ? expandButton : collapseButton).current?.focus();
-  }, [collapsed, container, collapseButton, expandButton]);
+    if (externalToggle) document.getElementById('sidebar-toggle')?.focus();
+    else (collapsed ? expandButton : collapseButton).current?.focus();
+  }, [collapsed, container, collapseButton, expandButton, externalToggle]);
 }

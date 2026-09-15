@@ -162,24 +162,23 @@ describe('AuthGuard morning reopen routing', () => {
     });
   });
 
-  it('sends authenticated home open to review when yesterday is still active', async () => {
+  it('opens Today on login even when an older day needs review', async () => {
     vi.mocked(api.getWorkflow).mockImplementation(async (date = today) => ({ ...workflow(date), oldestUnclosedDate: yesterday }));
     mount('/');
-    await waitFor(() => expect(screen.getByTestId('review-page')).toBeInTheDocument());
-    expect(screen.queryByTestId('new-page')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('today-page')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('today-page')).toBeInTheDocument());
+    expect(screen.queryByTestId('review-page')).not.toBeInTheDocument();
   });
 
-  it('blocks /new for today until yesterday is closed', async () => {
+  it('allows deliberate planning with unfinished older days', async () => {
     vi.mocked(api.getWorkflow).mockImplementation(async (date = today) => ({ ...workflow(date), oldestUnclosedDate: yesterday }));
     mount('/new');
-    await waitFor(() => expect(screen.getByTestId('review-page')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('new-page')).toBeInTheDocument());
   });
 
-  it('opens /new when today has no confirmed plan', async () => {
+  it('opens Today even before a plan is confirmed', async () => {
     vi.mocked(api.getWorkflow).mockImplementation(async (date = today) => workflow(date, 'planning'));
     mount('/');
-    await waitFor(() => expect(screen.getByTestId('new-page')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('today-page')).toBeInTheDocument());
   });
 
   it('opens /today when today is already active', async () => {
@@ -188,19 +187,19 @@ describe('AuthGuard morning reopen routing', () => {
     await waitFor(() => expect(screen.getByTestId('today-page')).toBeInTheDocument());
   });
 
-  it('routes to the actual oldest date after a multi-day absence', async () => {
+  it('does not redirect a Today link after a multi-day absence', async () => {
     const missed = previousDate(previousDate(previousDate(today)));
     vi.mocked(api.getWorkflow).mockResolvedValue({ ...workflow(today), oldestUnclosedDate: missed });
     mount('/today');
-    expect(await screen.findByTestId('review-page')).toHaveTextContent(`date=${missed}&reopen=1`);
+    expect(await screen.findByTestId('today-page')).toBeInTheDocument();
+    expect(screen.queryByTestId('review-page')).not.toBeInTheDocument();
   });
 
-  it('does not silently choose a route when recovery loading fails', async () => {
+  it('lets the destination page handle a workflow outage without a routing loop', async () => {
     vi.mocked(api.getWorkflow).mockRejectedValue(new Error('Workflow unavailable'));
     mount('/');
-    expect(await screen.findByRole('alert', {}, { timeout: 4000 })).toHaveTextContent('Unable to find your current plan');
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
-    expect(screen.queryByTestId('new-page')).not.toBeInTheDocument();
+    expect(await screen.findByTestId('today-page')).toBeInTheDocument();
+    expect(screen.queryByTestId('review-page')).not.toBeInTheDocument();
   });
 
   it('keeps a deliberately selected historical day usable while recovery is unavailable', async () => {

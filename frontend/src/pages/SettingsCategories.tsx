@@ -1,7 +1,6 @@
 import { Page, PageBody, PageHeader } from '@/components/PageLayout';
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
 import { GripVertical, Trash2, Plus } from 'lucide-react';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
@@ -75,7 +74,7 @@ export default function SettingsCategories() {
 
   return (
     <Page>
-      <PageHeader title="Life categories" breadcrumb={<Link to="/settings" className="text-sm text-muted-foreground hover:text-foreground">← Settings</Link>}><p className="mt-2 text-sm text-muted-foreground">Drag to reorder. These appear across all views.</p></PageHeader>
+      <PageHeader title="Categories" parent={{ label: 'Settings', href: '/settings' }}><p className="mt-2 text-sm text-muted-foreground">Drag to reorder. These appear across all views.</p></PageHeader>
       <PageBody width="form">
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>

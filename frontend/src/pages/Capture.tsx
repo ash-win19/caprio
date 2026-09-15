@@ -1,3 +1,4 @@
+import { useNavigationLock } from '@/lib/dateDrafts';
 import { Page, PageBody, PageHeader } from '@/components/PageLayout';
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
@@ -24,6 +25,7 @@ export default function Capture() {
   const [urgency, setUrgency] = useState<Urgency>('medium');
   const [filter, setFilter] = useState('');
   const [notice, setNotice] = useState('');
+  useNavigationLock(create.isPending || remove.isPending || promote.isPending);
   const tasks = inbox.data || [];
   const visible = filter ? tasks.filter((task) => task.categoryId === filter) : tasks;
   const targetDate = workflow.data?.state === 'closed' ? followingDate(localDate()) : localDate();
@@ -44,7 +46,7 @@ export default function Capture() {
   };
 
   return <Page>
-    <PageHeader title="Inbox" actions={<Button onClick={() => { create.reset(); setShowForm(true); }}><Plus size={16} className="mr-2" />Add task</Button>}>
+    <PageHeader title="Inbox" actions={<Button onClick={() => { create.reset(); setShowForm(true); document.getElementById('inbox-title')?.focus(); }}><Plus size={16} className="mr-2" />Add task</Button>}>
       <p className="mt-2 text-sm leading-6 text-muted-foreground">Keep tasks here until you’re ready to plan them.</p>
     </PageHeader>
     <PageBody width="list">

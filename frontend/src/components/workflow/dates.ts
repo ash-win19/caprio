@@ -1,7 +1,7 @@
 import { isValidDate, nextDate } from '@/lib/date';
 
-export function dateLabel(date: string) {
-  return new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+export function dateLabel(date: string, year = false) {
+  return new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', ...(year ? { year: 'numeric' } : {}) });
 }
 
 export const followingDate = nextDate;

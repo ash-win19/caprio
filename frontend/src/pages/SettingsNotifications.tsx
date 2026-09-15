@@ -1,6 +1,5 @@
 import { Page, PageBody, PageHeader } from '@/components/PageLayout';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/lib/store';
@@ -26,7 +25,7 @@ export default function SettingsNotifications() {
   };
   return (
     <Page>
-      <PageHeader title="Planning preferences" breadcrumb={<Link to="/settings" className="text-sm text-muted-foreground hover:text-foreground">← Settings</Link>} />
+      <PageHeader title="Planning preferences" parent={{ label: 'Settings', href: '/settings' }} />
       <PageBody width="form">
       <div className="bg-card border border-border rounded-lg p-4">
         <label htmlFor="planning-time" className="text-sm block mb-3">When do you usually plan your day?</label>

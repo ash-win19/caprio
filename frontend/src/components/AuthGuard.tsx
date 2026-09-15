@@ -4,9 +4,9 @@ import { useAuth0 } from '@auth0/auth0-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { activateAccount } from '@/lib/accountSession';
 import { useAppStore } from '@/lib/store';
-import { bootstrap, getWorkflow, setAccessTokenProvider } from '@/lib/api';
-import { localDate } from '@/lib/date';
-import { morningHomePath, shouldForceOpenDayReview } from '@/lib/homePath';
+import { bootstrap, setAccessTokenProvider } from '@/lib/api';
+import { useLocalDay } from '@/lib/useLocalDay';
+import { clearDateDrafts } from '@/lib/dateDrafts';
 import { QUERY_KEYS } from '@/lib/queries';
 
 const PUBLIC_ROUTES = ['/', '/login', '/signup', '/landing'];
@@ -20,11 +20,12 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   const [preparedAccount, setPreparedAccount] = useState<string | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
   const previousAccount = useRef<string | null>(null);
-  const date = localDate();
+  const date = useLocalDay();
 
   useLayoutEffect(() => {
     if (previousAccount.current !== account) {
       client.clear();
+      clearDateDrafts();
       previousAccount.current = account;
     }
     if (!account) {
@@ -68,14 +69,6 @@ export function AuthGuard({ children }: { children: ReactNode }) {
     staleTime: 60_000,
   });
 
-  const routingReady = Boolean(account && preparedAccount === account && session.data?.onboardingComplete);
-  const todayWorkflow = useQuery({
-    queryKey: [...QUERY_KEYS.workflow, date],
-    queryFn: () => getWorkflow(date),
-    enabled: routingReady,
-    retry: 1,
-    staleTime: 60_000,
-  });
 
   useEffect(() => {
     if (!session.data || !account || preparedAccount !== account) return;
@@ -102,30 +95,9 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   }
   if (!session.data.onboardingComplete && !location.pathname.startsWith('/onboarding')) return <Navigate to="/onboarding" replace />;
 
-  const requestedDate = new URLSearchParams(location.search).get('date');
-  const needsMorningRoute = PUBLIC_ROUTES.includes(location.pathname) || location.pathname.startsWith('/onboarding')
-    || ((location.pathname === '/new' || location.pathname === '/today') && (!requestedDate || requestedDate === date));
-  const workflowsPending = routingReady && todayWorkflow.isPending;
-  if (session.data.onboardingComplete && workflowsPending && needsMorningRoute) {
-    return <SessionStatus>Loading your day...</SessionStatus>;
-  }
-
-  if (routingReady && todayWorkflow.error && needsMorningRoute) {
-    return <SessionStatus><p role="alert">Unable to find your current plan and unfinished days.</p><button className="mt-4 underline" onClick={() => void todayWorkflow.refetch()}>Try again</button></SessionStatus>;
-  }
-
-  const home = morningHomePath({
-    today: date,
-    oldestUnclosedDate: todayWorkflow.data?.oldestUnclosedDate,
-    todayState: todayWorkflow.data?.state,
-  });
-
   if (session.data.onboardingComplete && (PUBLIC_ROUTES.includes(location.pathname) || location.pathname.startsWith('/onboarding'))) {
-    return <Navigate to={home} replace />;
+    return <Navigate to="/today" replace />;
   }
-
-  const forced = shouldForceOpenDayReview(location.pathname, location.search, date, todayWorkflow.data?.oldestUnclosedDate);
-  if (forced) return <Navigate to={forced} replace />;
 
   return <>{children}</>;
 }
