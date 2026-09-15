@@ -85,6 +85,15 @@ async function box(locator: Locator) {
   return bounds!;
 }
 
+// Compare geometry in one frame so entrance motion cannot skew two reads.
+async function verticalGap(page: Page, first: string, second: string, stacked = false) {
+  return page.evaluate(({ first, second, stacked }) => {
+    const a = document.querySelector(first)!.getBoundingClientRect();
+    const b = document.querySelector(second)!.getBoundingClientRect();
+    return b.y - a.y - (stacked ? a.height : 0);
+  }, { first, second, stacked });
+}
+
 async function noOverflow(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   const bounds = await page.locator('main').evaluate((main) => [...main.querySelectorAll('*')]
@@ -107,7 +116,7 @@ for (const collapsed of [false, true]) {
       return { x: rect.x, y: rect.y, width: rect.width, bottom: rect.bottom, inset: style.paddingLeft, background: style.backgroundColor };
     }));
     expect(cards).toHaveLength(3);
-    expect(cards[0].y).toBeCloseTo(task.y, 0);
+    await expect.poll(() => verticalGap(page, '.task-stack > div', '.overview-card')).toBeCloseTo(0, 0);
     expect(cards[0].x - task.x - task.width).toBeCloseTo(24, 0);
     for (const [index, card] of cards.entries()) {
       expect(card.x).toBeCloseTo(cards[0].x, 0);
@@ -127,10 +136,9 @@ test('the grid responds to sidebar width at the same viewport', async ({ page })
   await page.goto('/today');
   const rail = page.getByRole('complementary', { name: 'Day overview' });
   await expect(rail).toBeVisible();
-  const main = page.locator('.dashboard-main');
-  expect((await box(rail)).y).toBeCloseTo((await box(main)).y, 0);
+  await expect.poll(() => verticalGap(page, '.dashboard-main', '.dashboard-aside')).toBeCloseTo(0, 0);
   await page.getByRole('button', { name: /Expand sidebar/ }).click();
-  await expect.poll(async () => (await box(rail)).y - (await box(main)).y - (await box(main)).height).toBeCloseTo(24, 0);
+  await expect.poll(() => verticalGap(page, '.dashboard-main', '.dashboard-aside', true)).toBeCloseTo(24, 0);
   await noOverflow(page);
 });
 
@@ -143,8 +151,7 @@ for (const width of [320, 390, 768]) {
     await page.goto('/today');
     const rail = page.getByRole('complementary', { name: 'Day overview' });
     await expect(rail).toBeVisible();
-    const main = await box(page.locator('.dashboard-main'));
-    expect((await box(rail)).y - main.y - main.height).toBeCloseTo(24, 0);
+    await expect.poll(() => verticalGap(page, '.dashboard-main', '.dashboard-aside', true)).toBeCloseTo(24, 0);
     await noOverflow(page);
     const inbox = rail.getByRole('link', { name: /Open inbox/ });
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
@@ -202,9 +209,8 @@ test('carried, completed, and proposed tasks preserve the first row alignment', 
   await page.goto('/today');
   await expect(page.getByRole('heading', { name: 'Carried over · 1' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Completed · 1' })).toBeVisible();
-  expect((await box(page.locator('.task-stack > div').first())).y).toBeCloseTo((await box(page.locator('.overview-card').first())).y, 0);
-  const notices = page.locator('.page-notice');
-  expect((await box(notices.nth(1))).y - (await box(notices.first())).y - (await box(notices.first())).height).toBeCloseTo(24, 0);
+  await expect.poll(() => verticalGap(page, '.task-stack > div', '.overview-card')).toBeCloseTo(0, 0);
+  await expect.poll(() => verticalGap(page, '.page-notice', '.page-notice + .page-notice', true)).toBeCloseTo(24, 0);
   await expect(page.getByRole('progressbar', { name: 'Tasks completed' })).toHaveAttribute('aria-valuenow', '1');
   await noOverflow(page);
 });
@@ -248,7 +254,7 @@ test('loading and mutation errors occupy a full row without offsetting the overv
   const error = page.getByRole('alert');
   await expect(error).toContainText('Could not save completion');
   expect((await box(error)).width).toBeCloseTo((await box(page.locator('.page-shell'))).width, 0);
-  expect((await box(page.locator('.task-stack > div').first())).y).toBeCloseTo((await box(page.locator('.overview-card').first())).y, 0);
+  await expect.poll(() => verticalGap(page, '.task-stack > div', '.overview-card')).toBeCloseTo(0, 0);
 });
 
 test('a completed plan and a historical plan retain the grid and their available actions', async ({ page }) => {
@@ -256,7 +262,7 @@ test('a completed plan and a historical plan retain the grid and their available
   await mockDay(page, { tasks: tasksForDay().map((task) => ({ ...task, completed: true })) });
   await page.goto('/today');
   await expect(page.getByText('All your planned tasks are complete. Review your day when you’re ready.')).toBeVisible();
-  expect((await box(page.locator('.dashboard-main .page-section > p'))).y).toBeCloseTo((await box(page.locator('.overview-card').first())).y, 0);
+  await expect.poll(() => verticalGap(page, '.dashboard-main .page-section > p', '.overview-card')).toBeCloseTo(0, 0);
   await expect(page.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '3');
   await page.goto('/today?date=2026-09-12');
   await expect(page.getByRole('heading', { name: 'Your daily plan' })).toBeVisible();

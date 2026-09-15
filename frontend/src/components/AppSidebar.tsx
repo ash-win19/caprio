@@ -4,7 +4,7 @@ import { LayoutGrid, Inbox, CheckSquare, History, Settings, MessageSquare, Panel
 import { useAppStore } from '@/lib/store';
 import { SIDEBAR_WIDTH_CLASS, sidebarShortcutLabel, useSidebarFocus, useSidebarShortcut, useSidebarStore } from '@/lib/sidebar';
 import { useWorkflow } from '@/lib/queries';
-import { localDate, previousDate } from '@/lib/date';
+import { localDate } from '@/lib/date';
 import { UserAvatar } from '@/components/UserAvatar';
 import { CaprioMark, Logo } from '@/components/Logo';
 
@@ -36,13 +36,14 @@ function ReviewBadge({ pending, count, compact = false }: { pending: boolean; co
 
 function useReviewNav() {
   const today = localDate();
-  const yesterday = previousDate(today);
   const todayWorkflow = useWorkflow(today);
-  const yesterdayWorkflow = useWorkflow(yesterday);
-  const reopenYesterday = yesterdayWorkflow.data?.state === 'active';
-  const reviewPath = reopenYesterday ? `/review?date=${yesterday}&reopen=1` : '/review';
-  const reviewPending = reopenYesterday || todayWorkflow.data?.state === 'active';
-  const unfinished = ((reopenYesterday ? yesterdayWorkflow.data?.tasks : todayWorkflow.data?.tasks) || []).filter((task) => !task.completed).length;
+  const reviewDate = todayWorkflow.data?.oldestUnclosedDate || today;
+  const reviewWorkflow = useWorkflow(reviewDate);
+  const recovering = reviewDate < today;
+  const reviewPath = recovering ? `/review?date=${reviewDate}&reopen=1` : '/review';
+  const tasks = reviewWorkflow.data?.tasks || [];
+  const reviewPending = reviewWorkflow.data?.state !== 'closed' && (recovering || reviewWorkflow.data?.state === 'active' || tasks.length > 0);
+  const unfinished = tasks.filter((task) => !task.completed).length;
   return { reviewPath, reviewPending, unfinished };
 }
 

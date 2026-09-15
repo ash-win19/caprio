@@ -8,6 +8,7 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    public code?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -42,14 +43,16 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promi
 
   if (response.status === 401) {
     window.dispatchEvent(new Event('caprio:session-expired'));
-    throw new ApiError(401, 'Your session expired. Sign in again to continue.');
+    throw new ApiError(401, 'Your session expired. Sign in again to continue.', 'auth');
   }
 
   if (response.status >= 500) {
     let message = 'Internal server error';
+    let code: string | undefined;
     try {
       if (typeof response.json === 'function') {
         const errorData = await response.json();
+        code = typeof errorData?.code === 'string' ? errorData.code : undefined;
         if (typeof errorData?.error === 'string' && errorData.error.trim()) {
           message = errorData.error;
         }
@@ -65,12 +68,12 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promi
         variant: 'destructive',
       });
     }
-    throw new ApiError(response.status, message);
+    throw new ApiError(response.status, message, code);
   }
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new ApiError(response.status, errorData.error || 'Request failed');
+    throw new ApiError(response.status, errorData.error || 'Request failed', typeof errorData.code === 'string' ? errorData.code : undefined);
   }
 
   return response;
@@ -340,6 +343,8 @@ export interface DayReview {
 }
 
 export interface Workflow {
+  oldestUnclosedDate?: string | null;
+  taskDetailsAvailable?: boolean;
   date: string;
   state: 'planning' | 'active' | 'closed';
   version: number;
@@ -448,7 +453,7 @@ export async function streamChatMessage({
     } else if (event === 'done') {
       result.reply = data as unknown as ChatReply;
     } else if (event === 'error') {
-      throw new ApiError(typeof data.status === 'number' ? data.status : 500, typeof data.error === 'string' ? data.error : 'Request failed');
+      throw new ApiError(typeof data.status === 'number' ? data.status : 500, typeof data.error === 'string' ? data.error : 'Request failed', typeof data.code === 'string' ? data.code : undefined);
     }
   });
   if (response.body) {

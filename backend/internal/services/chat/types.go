@@ -21,10 +21,16 @@ var ErrClosed = errors.New("this day is closed; start the next day's plan")
 var ErrUnavailable = errors.New("the planning assistant is not configured")
 var ErrModelCapacity = errors.New("the planning model is overloaded or timed out; try again or switch models")
 
-type ValidationError struct{ Message string }
+type ValidationError struct {
+	Code    string
+	Message string
+}
 
 func (e *ValidationError) Error() string       { return e.Message }
-func invalid(format string, args ...any) error { return &ValidationError{fmt.Sprintf(format, args...)} }
+func invalid(format string, args ...any) error { return invalidCode("validation", format, args...) }
+func invalidCode(code, format string, args ...any) error {
+	return &ValidationError{Code: code, Message: fmt.Sprintf(format, args...)}
+}
 
 type ProposalTask struct {
 	ID          *uuid.UUID `json:"id,omitempty"`
@@ -55,15 +61,17 @@ type Review struct {
 	EnergyLevel            *int32 `json:"energyLevel"`
 }
 type Workflow struct {
-	Date             string                  `json:"date"`
-	State            string                  `json:"state"`
-	Version          int32                   `json:"version"`
-	Messages         []generated.ChatMessage `json:"messages"`
-	Proposal         *Proposal               `json:"proposal"`
-	AvailableMinutes *int32                  `json:"availableMinutes"`
-	Tasks            []generated.Task        `json:"tasks"`
-	Backlog          []generated.Task        `json:"backlog"`
-	Review           *Review                 `json:"review"`
+	Date                 string                  `json:"date"`
+	State                string                  `json:"state"`
+	Version              int32                   `json:"version"`
+	Messages             []generated.ChatMessage `json:"messages"`
+	Proposal             *Proposal               `json:"proposal"`
+	AvailableMinutes     *int32                  `json:"availableMinutes"`
+	Tasks                []generated.Task        `json:"tasks"`
+	Backlog              []generated.Task        `json:"backlog"`
+	Review               *Review                 `json:"review"`
+	OldestUnclosedDate   *string                 `json:"oldestUnclosedDate"`
+	TaskDetailsAvailable bool                    `json:"taskDetailsAvailable"`
 }
 
 func ParseDate(value string) (pgtype.Date, error) {
@@ -161,7 +169,7 @@ func ParseAgentReply(text string, tasks, backlog []generated.Task, categories []
 	}
 	for id := range required {
 		if !seen[id] {
-			return nil, invalid("proposal omitted an unfinished task")
+			return nil, invalidCode("plan_incomplete", "proposal omitted an unfinished task")
 		}
 	}
 	if err := CapacityError(reply.AvailableMinutes, total); err != nil {
@@ -184,7 +192,7 @@ func TodayDuration(tasks []ProposalTask) int32 {
 // CapacityError is the hard gate: known available minutes cannot be exceeded.
 func CapacityError(available *int32, planned int32) error {
 	if available != nil && planned > *available {
-		return invalid("proposed tasks exceed the available time")
+		return invalidCode("over_capacity", "proposed tasks exceed the available time: %d minutes planned, %d minutes available", planned, *available)
 	}
 	return nil
 }

@@ -54,6 +54,10 @@ describe('API Client', () => {
   });
 
   describe('Error Handling', () => {
+    it('preserves a validation code from a JSON error response', async () => {
+      vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ error: 'Incomplete plan', code: 'plan_incomplete' }), { status: 400 }));
+      await expect(api.sendChatMessage('Plan')).rejects.toMatchObject({ status: 400, code: 'plan_incomplete', message: 'Incomplete plan' });
+    });
     it('should handle 500 errors', async () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
@@ -165,6 +169,11 @@ describe('API Client', () => {
       vi.mocked(fetch).mockResolvedValue(streamed('event: delta\ndata: {"text":"partial"}\n\n', 'event: error\ndata: {"error":"the plan changed","status":409}\n\n'));
 
       await expect(api.streamChatMessage({ content: 'Hello' })).rejects.toMatchObject({ status: 409, message: 'the plan changed' });
+    });
+
+    it('preserves a validation code after receiving partial streamed output', async () => {
+      vi.mocked(fetch).mockResolvedValue(streamed('event: delta\ndata: {"text":"partial"}\n\n', 'event: error\ndata: {"error":"Too much work","status":400,"code":"over_capacity"}\n\n'));
+      await expect(api.streamChatMessage({ content: 'Plan' })).rejects.toMatchObject({ status: 400, code: 'over_capacity', message: 'Too much work' });
     });
 
     it('rejects when the stream ends without a result', async () => {

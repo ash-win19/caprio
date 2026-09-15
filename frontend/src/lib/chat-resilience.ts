@@ -13,6 +13,8 @@ function errorMessage(error: unknown): string {
 
 /** True when a chat failure looks like model/provider overload, timeout, or 503. */
 export function isModelCapacityError(error: unknown): boolean {
+  if (error && typeof error === 'object' && 'code' in error &&
+      ['plan_incomplete', 'over_capacity', 'validation', 'auth', 'conflict'].includes(String(error.code))) return false;
   const message = errorMessage(error);
   if (/not configured/i.test(message)) return false;
 

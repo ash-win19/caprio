@@ -265,6 +265,7 @@ func TestConfirmRejectsOverCapacityProposal(t *testing.T) {
 	require.ErrorContains(t, err, "exceed the available time")
 	var validation *ValidationError
 	require.ErrorAs(t, err, &validation)
+	require.Equal(t, "over_capacity", validation.Code)
 	unchanged, err := s.Get(ctx, user, date)
 	require.NoError(t, err)
 	require.NotNil(t, unchanged.Proposal)
@@ -302,7 +303,7 @@ func TestClosePersistsOutcomesAndCarriesExactlyOnce(t *testing.T) {
 			require.Equal(t, int32(1), task.DeferCount)
 		}
 	}
-	_, err = s.store.Pool.Exec(ctx, `UPDATE tasks SET title='Later edit' WHERE id=$1`, carry.ID)
+	_, err = s.store.Pool.Exec(ctx, `UPDATE tasks SET title='Later edit',completed=true,status='completed' WHERE id=$1`, carry.ID)
 	require.NoError(t, err)
 	past, err := s.Get(ctx, user, date)
 	require.NoError(t, err)
