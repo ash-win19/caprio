@@ -118,6 +118,6 @@ No backend, schema, migration, lifecycle validation or idempotency contract chan
 
 ## Implementation verification
 
-Passed 100 frontend unit tests and 24 Chromium browser tests. The browser suite covers every workspace route at 320, 390, 768 and 1024px, existing 1440px page alignment, 200% root text size, a 390×480 reduced viewport, date selection, back/forward history, focus return and per-date draft restoration. Unit regressions cover account changes, midnight, calendar boundaries, navigation during generation, and late responses after abort.
+Passed 101 frontend unit tests and 24 Chromium browser tests. The browser suite covers every workspace route at 320, 390, 768 and 1024px, existing 1440px page alignment, 200% root text size, a 390×480 reduced viewport, date selection, back/forward history, focus return and per-date draft restoration. Unit regressions cover account changes, midnight, calendar boundaries, navigation during generation, and late responses after abort.
 
 The explicit application TypeScript check, lint and production build pass. Lint reports 15 existing warnings; the existing bundle-size advisory remains. No physical mobile keyboard was used in these checks.

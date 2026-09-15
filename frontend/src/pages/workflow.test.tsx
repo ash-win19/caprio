@@ -12,6 +12,7 @@ import Capture from './Capture';
 import Today from './Today';
 import { DaySummary } from '@/components/workflow/WorkflowUI';
 import { dateLabel } from '@/components/workflow/dates';
+import { VoiceWidget } from '@/components/VoiceWidget';
 
 vi.mock('@/lib/api');
 vi.mock('@/hooks/use-toast', () => ({ toast: vi.fn() }));
@@ -265,6 +266,24 @@ describe('Daily planning workflow', () => {
     expect(await screen.findByText('This day hasn’t started yet')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
     expect(api.closeDay).not.toHaveBeenCalled();
+  });
+
+  it('protects a pending review save from date controls and the global planning shortcut', async () => {
+    workflow = { ...workflow, state: 'active', tasks: [task('report')] };
+    let finish!: (review: Awaited<ReturnType<typeof api.closeDay>>) => void;
+    vi.mocked(api.closeDay).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    mount(<><Review /><VoiceWidget /></>, '/review');
+    fireEvent.click(await screen.findByRole('button', { name: 'Done: Finish report' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close day' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Previous day' })).toBeDisabled());
+    expect(screen.getByRole('button', { name: 'Plan my day' })).toBeDisabled();
+    fireEvent.keyDown(window, { code: 'Space', ctrlKey: true, shiftKey: true });
+    expect(screen.getByRole('button', { name: 'Saving review…' })).toBeInTheDocument();
+    workflow = { ...workflow, state: 'closed', review: { completedCount: 1, carriedToTomorrowCount: 0, droppedCount: 0, notes: null, energyLevel: null } };
+    await act(async () => finish({ ...workflow.review!, nextDate: nextDate(today) }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Plan my day' })).toBeEnabled());
+    expect(api.closeDay).toHaveBeenCalledTimes(1);
   });
 
   it('saves an inbox task without immediately adding it to today', async () => {
