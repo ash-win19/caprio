@@ -1,36 +1,34 @@
-import { previousDate } from './date';
+import { isValidDate } from './date';
 
 export type WorkflowState = 'planning' | 'active' | 'closed';
 
-/** First meaningful open for local today: close yesterday, else plan or execute. */
-export function morningHomePath({
-  today,
-  yesterdayState,
-  todayState,
-}: {
+function recoveryPath(today: string, oldestUnclosedDate?: string | null): string | null {
+  return oldestUnclosedDate && isValidDate(oldestUnclosedDate) && oldestUnclosedDate < today
+    ? `/review?date=${oldestUnclosedDate}&reopen=1`
+    : null;
+}
+
+/** Saved tasks can need review without constituting a confirmed plan. */
+export function morningHomePath({ today, oldestUnclosedDate, todayState }: {
   today: string;
-  yesterdayState?: WorkflowState | null;
+  oldestUnclosedDate?: string | null;
   todayState?: WorkflowState | null;
 }): string {
-  if (yesterdayState === 'active') {
-    return `/review?date=${previousDate(today)}&reopen=1`;
-  }
-  if (todayState === 'active') return '/today';
+  const recovery = recoveryPath(today, oldestUnclosedDate);
+  if (recovery) return recovery;
+  if (todayState === 'active' || todayState === 'closed') return '/today';
   return '/new';
 }
 
-/** Block planning/executing today while yesterday is still open. */
-export function shouldForceYesterdayReview(
+/** Resolve older work before entering today's planning or execution pages. */
+export function shouldForceOpenDayReview(
   pathname: string,
   search: string,
   today: string,
-  yesterdayState?: WorkflowState | null,
+  oldestUnclosedDate?: string | null,
 ): string | null {
-  if (yesterdayState !== 'active') return null;
-  const params = new URLSearchParams(search);
-  const date = params.get('date');
-  const onTodayPath = pathname === '/today' || pathname === '/new';
-  if (!onTodayPath) return null;
+  if (pathname !== '/today' && pathname !== '/new') return null;
+  const date = new URLSearchParams(search).get('date');
   if (date && date !== today) return null;
-  return `/review?date=${previousDate(today)}&reopen=1`;
+  return recoveryPath(today, oldestUnclosedDate);
 }

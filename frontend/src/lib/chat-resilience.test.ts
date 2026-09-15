@@ -4,6 +4,11 @@ import { FALLBACK_CHAT_MODEL } from '@/lib/chat-models';
 import { isModelCapacityError, shouldFallbackToGroq } from '@/lib/chat-resilience';
 
 describe('chat resilience', () => {
+  it('never retries validation, capacity, authentication, or conflict errors on another provider', () => {
+    for (const code of ['plan_incomplete', 'over_capacity', 'validation', 'auth', 'conflict']) {
+      expect(shouldFallbackToGroq(new ApiError(400, 'capacity unavailable', code), 'google/gemini-3.7-flash')).toBe(false);
+    }
+  });
   it('detects capacity-like API failures', () => {
     expect(isModelCapacityError(new ApiError(503, 'the planning model is overloaded or timed out; try again or switch models'))).toBe(true);
     expect(isModelCapacityError(new ApiError(502, 'bad gateway'))).toBe(true);

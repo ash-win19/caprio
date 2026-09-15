@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthGuard } from './AuthGuard';
 import { useAuth0 } from '@auth0/auth0-react';
@@ -66,6 +66,11 @@ function workflow(date: string, state: 'planning' | 'active' | 'closed' = 'plann
   return { date, state, version: 1, messages: [], proposal: null, availableMinutes: null, tasks: [], backlog: [], review: null };
 }
 
+function ReviewDestination() {
+  const location = useLocation();
+  return <div data-testid="review-page">Review {location.search}</div>;
+}
+
 function mount(path: string) {
   return render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
@@ -77,7 +82,7 @@ function mount(path: string) {
             <Route path="/signup" element={<div data-testid="signup-page">Signup</div>} />
             <Route path="/new" element={<div data-testid="new-page">Plan</div>} />
             <Route path="/today" element={<div data-testid="today-page">Today</div>} />
-            <Route path="/review" element={<div data-testid="review-page">Review</div>} />
+            <Route path="/review" element={<ReviewDestination />} />
           </Routes>
         </AuthGuard>
       </MemoryRouter>
@@ -158,7 +163,7 @@ describe('AuthGuard morning reopen routing', () => {
   });
 
   it('sends authenticated home open to review when yesterday is still active', async () => {
-    vi.mocked(api.getWorkflow).mockImplementation(async (date = today) => workflow(date, date === yesterday ? 'active' : 'planning'));
+    vi.mocked(api.getWorkflow).mockImplementation(async (date = today) => ({ ...workflow(date), oldestUnclosedDate: yesterday }));
     mount('/');
     await waitFor(() => expect(screen.getByTestId('review-page')).toBeInTheDocument());
     expect(screen.queryByTestId('new-page')).not.toBeInTheDocument();
@@ -166,7 +171,7 @@ describe('AuthGuard morning reopen routing', () => {
   });
 
   it('blocks /new for today until yesterday is closed', async () => {
-    vi.mocked(api.getWorkflow).mockImplementation(async (date = today) => workflow(date, date === yesterday ? 'active' : 'planning'));
+    vi.mocked(api.getWorkflow).mockImplementation(async (date = today) => ({ ...workflow(date), oldestUnclosedDate: yesterday }));
     mount('/new');
     await waitFor(() => expect(screen.getByTestId('review-page')).toBeInTheDocument());
   });
@@ -181,5 +186,27 @@ describe('AuthGuard morning reopen routing', () => {
     vi.mocked(api.getWorkflow).mockImplementation(async (date = today) => workflow(date, date === today ? 'active' : 'closed'));
     mount('/');
     await waitFor(() => expect(screen.getByTestId('today-page')).toBeInTheDocument());
+  });
+
+  it('routes to the actual oldest date after a multi-day absence', async () => {
+    const missed = previousDate(previousDate(previousDate(today)));
+    vi.mocked(api.getWorkflow).mockResolvedValue({ ...workflow(today), oldestUnclosedDate: missed });
+    mount('/today');
+    expect(await screen.findByTestId('review-page')).toHaveTextContent(`date=${missed}&reopen=1`);
+  });
+
+  it('does not silently choose a route when recovery loading fails', async () => {
+    vi.mocked(api.getWorkflow).mockRejectedValue(new Error('Workflow unavailable'));
+    mount('/');
+    expect(await screen.findByRole('alert', {}, { timeout: 4000 })).toHaveTextContent('Unable to find your current plan');
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    expect(screen.queryByTestId('new-page')).not.toBeInTheDocument();
+  });
+
+  it('keeps a deliberately selected historical day usable while recovery is unavailable', async () => {
+    vi.mocked(api.getWorkflow).mockRejectedValue(new Error('Workflow unavailable'));
+    mount(`/today?date=${yesterday}`);
+    expect(await screen.findByTestId('today-page')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });

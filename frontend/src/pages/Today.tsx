@@ -71,7 +71,7 @@ export default function Today() {
       {dayInProgress
         ? <Button asChild><Link to={interruptHref}>Something changed</Link></Button>
         : <Button asChild variant="outline"><Link to={`/new?date=${date}`}>Plan this day</Link></Button>}
-      {dayInProgress && tasks.length > 0 && <Button asChild variant="outline"><Link to={`/review?date=${date}`}>Review day</Link></Button>}
+      {isToday && tasks.length > 0 && <Button asChild variant="outline"><Link to={`/review?date=${date}`}>Review day</Link></Button>}
     </>}>
       <p className="mt-2 text-sm text-muted-foreground">{dateLabel(date)}</p>
       {workflow?.state !== 'closed' && tasks.length > 0 && (

@@ -32,7 +32,10 @@ func workflowStatus(err error) (int, string) {
 	var validation *chat.ValidationError
 	switch {
 	case errors.As(err, &validation):
-		return http.StatusBadRequest, err.Error()
+		if validation.Code == "plan_incomplete" {
+			return http.StatusBadRequest, "The proposed plan is incomplete. Include every unfinished saved task or explicitly move it to the inbox."
+		}
+		return http.StatusBadRequest, validation.Message
 	case errors.Is(err, chat.ErrConflict), errors.Is(err, chat.ErrClosed):
 		return http.StatusConflict, err.Error()
 	case errors.Is(err, chat.ErrUnavailable):
@@ -47,9 +50,28 @@ func workflowStatus(err error) (int, string) {
 	}
 }
 
+func workflowCode(err error) string {
+	var validation *chat.ValidationError
+	switch {
+	case errors.As(err, &validation):
+		if validation.Code != "" {
+			return validation.Code
+		}
+		return "validation"
+	case errors.Is(err, chat.ErrConflict), errors.Is(err, chat.ErrClosed):
+		return "conflict"
+	case errors.Is(err, chat.ErrUnavailable), errors.Is(err, chat.ErrModelCapacity):
+		return "model_unavailable"
+	case errors.Is(err, pgx.ErrNoRows):
+		return "not_found"
+	default:
+		return "internal"
+	}
+}
+
 func workflowError(c *gin.Context, err error) {
 	status, message := workflowStatus(err)
-	c.JSON(status, gin.H{"error": message})
+	c.JSON(status, gin.H{"error": message, "code": workflowCode(err)})
 }
 func queryDate(c *gin.Context) (pgtype.Date, error) {
 	return chat.ParseDate(c.DefaultQuery("date", time.Now().UTC().Format("2006-01-02")))
@@ -146,7 +168,7 @@ func (h *ChatHandler) StreamMessage(c *gin.Context) {
 			return
 		}
 		status, message := workflowStatus(err)
-		stream.send("error", gin.H{"error": message, "status": status})
+		stream.send("error", gin.H{"error": message, "status": status, "code": workflowCode(err)})
 		return
 	}
 	stream.send("done", result)

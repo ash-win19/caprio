@@ -71,6 +71,7 @@ func (s *Service) Close(ctx context.Context, userID uuid.UUID, req CloseRequest)
 	}
 	nextDate := pgtype.Date{Time: date.Time.AddDate(0, 0, 1), Valid: true}
 	result := &CloseResult{NextDate: nextDate.Time.Format("2006-01-02")}
+	changed := false
 	err = s.store.WithUserTx(ctx, userID, func(tx pgx.Tx, q *generated.Queries) error {
 		if err := ensureDay(ctx, tx, userID, date); err != nil {
 			return err
@@ -128,6 +129,12 @@ func (s *Service) Close(ctx context.Context, userID uuid.UUID, req CloseRequest)
 		if err != nil {
 			return err
 		}
+		if result.CarriedToTomorrowCount > 0 {
+			// New arrivals invalidate the destination draft, but do not confirm it.
+			if _, err := tx.Exec(ctx, `UPDATE daily_plans SET proposal=NULL,proposal_snapshot=NULL,version=version+1,updated_at=clock_timestamp() WHERE user_id=$1 AND plan_date=$2`, userID, nextDate); err != nil {
+				return err
+			}
+		}
 		// Preserve the original day's task records for history, even after a
 		// carried task is completed or edited on a later day.
 		for i := range w.Tasks {
@@ -150,7 +157,17 @@ func (s *Service) Close(ctx context.Context, userID uuid.UUID, req CloseRequest)
 			return fmt.Errorf("save review: %w", err)
 		}
 		result.Workflow, err = load(ctx, tx, userID, date)
+		changed = err == nil
 		return err
 	})
+	if err == nil && changed {
+		logWorkflowEvent(ctx, "day_closed", userID, result.Workflow, len(result.Workflow.Tasks),
+			"review_id", result.Session.ID.String(), "completed_count", result.CompletedCount,
+			"carried_count", result.CarriedToTomorrowCount, "dropped_count", result.DroppedCount)
+		if result.CarriedToTomorrowCount > 0 {
+			logWorkflowEvent(ctx, "tasks_carried", userID, result.Workflow, int(result.CarriedToTomorrowCount),
+				"review_id", result.Session.ID.String(), "destination_date", result.NextDate)
+		}
+	}
 	return result, err
 }

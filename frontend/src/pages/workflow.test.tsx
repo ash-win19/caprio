@@ -9,6 +9,8 @@ import New from './New';
 import Review from './Review';
 import Capture from './Capture';
 import Today from './Today';
+import { DaySummary } from '@/components/workflow/WorkflowUI';
+import { dateLabel } from '@/components/workflow/dates';
 
 vi.mock('@/lib/api');
 vi.mock('@/hooks/use-toast', () => ({ toast: vi.fn() }));
@@ -40,6 +42,44 @@ beforeEach(() => {
   vi.mocked(api.bootstrap).mockResolvedValue({ user: { id: 'user', name: 'Ashwin', email: 'user@example.com' }, onboardingComplete: true, preferences: { briefTime: '08:00', nudgeFrequency: 'light', proactiveReprioritization: false, eodReminder: false, eodTime: '18:00', micSensitivity: 50, language: 'en', saveTranscripts: false }, categories: [], todayTasks: [], backlog: [], streak: 0 });
   vi.mocked(api.getTodayTasks).mockResolvedValue([]);
   vi.mocked(api.getInboxTasks).mockResolvedValue([]);
+});
+
+describe('Missed-day recovery and archived outcomes', () => {
+  it('explains missing legacy task details without inventing historical names', () => {
+    workflow = { ...workflow, state: 'closed', taskDetailsAvailable: false, tasks: [], review: { completedCount: 2, carriedToTomorrowCount: 0, droppedCount: 1, notes: '', energyLevel: null } };
+    mount(<DaySummary workflow={workflow} />, '/review');
+    expect(screen.getByText(/Task details were not recorded/)).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Done' })).not.toBeInTheDocument();
+  });
+
+  it('continues an older carry through the next date’s Review', () => {
+    const date = previousDate(previousDate(previousDate(today)));
+    workflow = { ...workflow, date, state: 'closed', tasks: [], review: { completedCount: 0, carriedToTomorrowCount: 1, droppedCount: 0, notes: '', energyLevel: null } };
+    mount(<DaySummary workflow={workflow} />, `/review?date=${date}`);
+    expect(screen.getByRole('link', { name: `Review ${dateLabel(nextDate(date))}` })).toHaveAttribute('href', `/review?date=${nextDate(date)}&reopen=1`);
+  });
+
+  it('allows review of an older task-only day and identifies its carry destination', async () => {
+    const missed = previousDate(previousDate(previousDate(today)));
+    workflow = { ...workflow, date: missed, state: 'planning', tasks: [{ ...task('report'), plannedForDate: missed }] };
+    mount(<Review />, `/review?date=${missed}&reopen=1`);
+    expect(await screen.findByRole('button', { name: /Drop: Finish report/ })).toBeEnabled();
+    expect(screen.getByRole('button', { name: `Carry to ${dateLabel(nextDate(missed))}: Finish report` })).toBeEnabled();
+    expect(api.closeDay).not.toHaveBeenCalled();
+  });
+
+  it('shows exact archived task names grouped by their closing outcome', () => {
+    const date = previousDate(today);
+    workflow = { ...workflow, date, state: 'closed', tasks: [
+      { ...task('report', true, 2), title: 'Finished report' },
+      { ...task('meeting', false, 1), title: 'Carried presentation', plannedForDate: today },
+      { ...task('drop', false, 2), title: 'Dropped research', status: 'dropped' },
+    ], review: { completedCount: 1, carriedToTomorrowCount: 1, droppedCount: 1, notes: '', energyLevel: null } };
+    mount(<DaySummary workflow={workflow} />, '/review');
+    expect(screen.getByRole('region', { name: 'Done' })).toHaveTextContent('Finished report');
+    expect(screen.getByRole('region', { name: `Carried to ${dateLabel(today)}` })).toHaveTextContent('Carried presentation');
+    expect(screen.getByRole('region', { name: 'Dropped' })).toHaveTextContent('Dropped research');
+  });
 });
 
 describe('Daily planning workflow', () => {
@@ -235,9 +275,9 @@ describe('Daily planning workflow', () => {
   it('explains one-hop carry and drop outcomes on Review', async () => {
     workflow = { ...workflow, state: 'active', tasks: [task('meeting')] };
     mount(<Review />, '/review');
-    expect(await screen.findByText(/one hop only/i)).toBeInTheDocument();
-    expect(screen.getByText(/without carrying it forward, it’s gone/i)).toBeInTheDocument();
-    expect(screen.getByText(/Drop removes it from your plan/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Tomorrow moves the task to/i)).toBeInTheDocument();
+    expect(screen.getByText(/Moving it again requires another explicit carry choice/i)).toBeInTheDocument();
+    expect(screen.getByText(/Drop removes it from the plan/i)).toBeInTheDocument();
   });
 
   it('surfaces a human-readable error when tomorrow is already closed', async () => {
@@ -247,8 +287,9 @@ describe('Daily planning workflow', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Tomorrow: Team meeting' }));
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     fireEvent.click(screen.getByRole('button', { name: 'Close day' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(/Tomorrow is already closed/i);
-    expect(screen.getByRole('alert')).toHaveTextContent(/can’t move forward/i);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/next calendar day is already closed/i);
+    expect(screen.getByRole('alert')).toHaveTextContent(/Choose Done or Drop/i);
+    expect(screen.getByRole('alert')).not.toHaveTextContent(/reopen tomorrow/i);
   });
   it('shows a carried-from-yesterday chip above the plan composer', async () => {
     workflow = { ...workflow, tasks: [task('report', false, 1)] };
@@ -258,11 +299,11 @@ describe('Daily planning workflow', () => {
     expect(input.getAttribute('placeholder') || '').toMatch(/carried task/i);
   });
 
-  it('warns last-chance and highlights Drop for already carried tasks on Review', async () => {
+  it('warns about postponement and highlights Drop for already carried tasks on Review', async () => {
     workflow = { ...workflow, state: 'active', tasks: [task('report', false, 1)] };
     mount(<Review />, '/review');
-    expect(await screen.findByText(/Last chance/i)).toBeInTheDocument();
-    expect(screen.getByText(/won’t carry a third day/i)).toBeInTheDocument();
+    expect(await screen.findByText(/postponed before/i)).toBeInTheDocument();
+    expect(screen.getByText(/explicitly carry it one more day/i)).toBeInTheDocument();
     const drop = screen.getByRole('button', { name: 'Drop: Finish report' });
     expect(drop).toHaveAttribute('aria-pressed', 'false');
     expect(drop.className).toMatch(/amber/);
@@ -273,7 +314,7 @@ describe('Daily planning workflow', () => {
     workflow = { ...workflow, date: yesterday, state: 'active', tasks: [{ ...task('meeting'), plannedForDate: yesterday }] };
     mount(<Review />, `/review?date=${yesterday}&reopen=1`);
     expect(await screen.findByText('Close yesterday before planning today')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Tomorrow: Team meeting' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: `Carry to ${dateLabel(today)}: Team meeting` })).toBeInTheDocument();
     expect(screen.queryByText('This day is in your history')).not.toBeInTheDocument();
   });
 

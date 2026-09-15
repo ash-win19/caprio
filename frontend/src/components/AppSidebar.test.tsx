@@ -134,6 +134,7 @@ describe('AppSidebar', () => {
       data: {
         date,
         state: date === yesterday ? 'active' : 'planning',
+        oldestUnclosedDate: date === today ? yesterday : null,
         version: 1,
         messages: [],
         proposal: null,
@@ -148,5 +149,16 @@ describe('AppSidebar', () => {
     mountSidebar();
     expect(screen.getByRole('link', { name: /Review/ })).toHaveAttribute('href', `/review?date=${yesterday}&reopen=1`);
     expect(screen.getByLabelText('1 unfinished')).toBeInTheDocument();
+  });
+
+  it('does not count archived carries as an unfinished review', () => {
+    vi.mocked(useWorkflow).mockImplementation((date: string) => ({
+      data: { date, state: 'closed', version: 1, messages: [], proposal: null, availableMinutes: null,
+        tasks: [{ id: 'archived-carry', completed: false }], backlog: [], review: null },
+      isLoading: false, error: null,
+    } as ReturnType<typeof useWorkflow>));
+    mountSidebar();
+    expect(screen.queryByLabelText('1 unfinished')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Review' })).toHaveAttribute('href', '/review');
   });
 });

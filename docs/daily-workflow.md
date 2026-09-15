@@ -44,6 +44,16 @@ stateDiagram-v2
 9. Review requires an outcome for every task. Completed tasks stay done; unfinished tasks are completed, carried to the next day, or dropped together in one transaction.
 10. Closing archives the exact task outcomes and makes the day read-only. The next-day link preserves the selected planning date.
 
+Saved tasks alone do not confirm a day. Manual or carried tasks remain visible and reviewable while the workflow stays `planning`; only explicit proposal confirmation changes it to `active`. A confirmed empty day remains active until reviewed.
+
+The workflow response includes `oldestUnclosedDate`, the earliest earlier date with an active plan or saved planned/completed tasks and no closed review. Morning routing and the Review sidebar link lead to that date before today's plan. Recovery works through one explicit calendar-day carry at a time, including missed weekends. Historical reviews show the actual destination date. A carry clears an outdated destination proposal and preserves its confirmation state; carrying into a closed destination rejects the whole review.
+
+Closed summaries group task names from the immutable archive by Done, Carried, and Dropped. `taskDetailsAvailable: false` identifies older reviews without an archive; their saved totals remain visible, but current live tasks are never substituted for historical details.
+
+Workflow errors retain an `error` message and add a stable `code`: `plan_incomplete`, `over_capacity`, `validation`, `conflict`, `model_unavailable`, `not_found`, or `internal`. Streaming failures carry the same code and an HTTP-style `status` in the error event. Authentication retains HTTP 401/403 handling; the client labels expired sessions `auth`. Plan validation failures preserve saved work and never trigger model fallback.
+
+Fresh committed transitions log `plan_confirmed`, `day_closed`, and, when nonzero, `tasks_carried`. Records include account/date/version identifiers and counts, plus proposal or review IDs. They exclude task text and notes. Replays and rollbacks emit no success records. These operational logs are best effort; they do not provide durable exactly-once delivery across a process crash.
+
 ## Agent boundary
 
 [`src/mastra/agents/daily-planner.md`](../src/mastra/agents/daily-planner.md) is the canonical instruction contract for the single MVP planner. Build scripts embed it into the Mastra agent, and `npm run verify:planner` checks that the built instructions match the Markdown and that only the general planner is registered.

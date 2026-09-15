@@ -65,13 +65,31 @@ func load(ctx context.Context, conn generated.DBTX, userID uuid.UUID, date pgtyp
 	if err != nil {
 		return nil, err
 	}
-	if w.State == "closed" && len(closedTasks) > 0 {
-		if err := json.Unmarshal(closedTasks, &w.Tasks); err != nil {
-			return nil, err
+	w.TaskDetailsAvailable = true
+	if w.State == "closed" {
+		w.Tasks = []generated.Task{}
+		w.TaskDetailsAvailable = len(closedTasks) > 0 && string(closedTasks) != "null"
+		if w.TaskDetailsAvailable {
+			if err := json.Unmarshal(closedTasks, &w.Tasks); err != nil {
+				return nil, err
+			}
 		}
 	}
-	if w.State == "planning" && len(w.Tasks) > 0 {
-		w.State = "active"
+	// Saved tasks do not confirm a plan. They can still require an explicit
+	// closeout even when a legacy/manual/carry-only day has no plan row.
+	err = conn.QueryRow(ctx, `
+		WITH candidates AS (
+			SELECT plan_date AS day FROM daily_plans
+			WHERE user_id=$1 AND plan_date<$2 AND state='active'
+			UNION
+			SELECT planned_for_date AS day FROM tasks
+			WHERE user_id=$1 AND planned_for_date<$2 AND status IN ('planned','completed')
+		)
+		SELECT min(c.day)::text FROM candidates c
+		LEFT JOIN daily_plans p ON p.user_id=$1 AND p.plan_date=c.day
+		WHERE p.state IS DISTINCT FROM 'closed'`, userID, date).Scan(&w.OldestUnclosedDate)
+	if err != nil {
+		return nil, err
 	}
 	w.Backlog, err = q.ListBacklogTasks(ctx, userID)
 	if err != nil {
@@ -162,7 +180,7 @@ func (s *Service) ProcessStream(ctx context.Context, req ProcessRequest, onDelta
 		}
 		reply, err := ParseAgentReply(response.Message, w.Tasks, w.Backlog, categories)
 		if err != nil {
-			return fmt.Errorf("assistant response failed validation: %v", err)
+			return fmt.Errorf("assistant response failed validation: %w", err)
 		}
 		var proposal []byte
 		if reply.Phase == "proposal" {
@@ -189,6 +207,7 @@ func (s *Service) ProcessStream(ctx context.Context, req ProcessRequest, onDelta
 
 func (s *Service) Confirm(ctx context.Context, userID uuid.UUID, date pgtype.Date, proposalID uuid.UUID, version int32) (*Workflow, error) {
 	var result *Workflow
+	changed := false
 	err := s.store.WithUserTx(ctx, userID, func(tx pgx.Tx, q *generated.Queries) error {
 		w, err := load(ctx, tx, userID, date)
 		if err != nil {
@@ -242,8 +261,12 @@ func (s *Service) Confirm(ctx context.Context, userID uuid.UUID, date pgtype.Dat
 			return err
 		}
 		result, err = load(ctx, tx, userID, date)
+		changed = err == nil
 		return err
 	})
+	if err == nil && changed {
+		logWorkflowEvent(ctx, "plan_confirmed", userID, result, len(result.Tasks), "proposal_id", proposalID.String())
+	}
 	return result, err
 }
 
