@@ -23,7 +23,7 @@ Implement the five remaining coding tasks against merged main `e5e53a4`. Preserv
 3. Actionable validation errors
 
 - Preserve the underlying validation error from model parsing. Return a stable code with a safe message in both JSON errors and SSE error events.
-- Distinguish `plan_incomplete`, `over_capacity`, generic `validation`, `conflict`, `auth`, `model_unavailable`, and unexpected `internal` failures. Known capacity messages state the proposed and available minutes. Preserve existing HTTP semantics and message fields.
+- Use the canonical workflow codes `plan_incomplete`, `over_capacity`, `validation`, `conflict`, `model_unavailable`, `not_found`, and `internal`. Authentication remains separate HTTP 401/403 handling with `auth` as the client-side expired-session category. Known capacity messages state the proposed and available minutes. Preserve existing HTTP semantics and message fields.
 - Extend the frontend ApiError with an optional code and use it before legacy text matching. User capacity errors do not trigger provider fallback.
 - A rejected model reply commits no messages, draft, task change, or request record. Existing saved state and retryable input remain intact.
 - Validate omitted tasks, over-capacity, malformed JSON, direct confirm capacity rejection, JSON responses, SSE after partial output, and frontend rendering/transport of codes.
