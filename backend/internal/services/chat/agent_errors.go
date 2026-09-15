@@ -21,6 +21,7 @@ func classifyAgentError(err error) error {
 		"timed out",
 		"deadline exceeded",
 		"overload",
+		"currently experiencing high demand",
 		"rate limit",
 		"too many requests",
 	} {
