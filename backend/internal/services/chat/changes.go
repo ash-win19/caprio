@@ -447,6 +447,9 @@ func receipt(ctx context.Context, conn generated.DBTX, user uuid.UUID, b changeB
 				noun = "task"
 			}
 			r.Summary = fmt.Sprintf("%s %d %s", action, len(r.Changes), noun)
+			if action == "Moved from Inbox" {
+				r.Summary = fmt.Sprintf("Moved %d %s from Inbox", len(r.Changes), noun)
+			}
 		}
 	}
 	if b.Undone {
