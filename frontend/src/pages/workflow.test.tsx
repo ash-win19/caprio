@@ -318,23 +318,23 @@ describe('Daily planning workflow', () => {
     expect(screen.queryByRole('link', { name: /Review day/i })).not.toBeInTheDocument();
   });
 
-  it('nudges closing an active day with unfinished work', async () => {
+  it('offers review without leading the active day with a closeout prompt', async () => {
     workflow = { ...workflow, state: 'active', tasks: [task('report')] };
     vi.mocked(api.getTodayTasks).mockResolvedValue([{ id: 'report', title: 'Finish report', urgency: 'medium', category: 'Uncategorized', completed: false, addedToday: true, carriedOver: false, order: 0 }]);
     mount(<Today />, '/today');
     expect(await screen.findByRole('link', { name: /Review day/i })).toHaveAttribute('href', `/review?date=${today}`);
-    expect(screen.getByRole('link', { name: 'Review day →' })).toHaveAttribute('href', `/review?date=${today}`);
+    expect(screen.getByRole('link', { name: 'Review day' })).toHaveAttribute('href', `/review?date=${today}`);
   });
 
-  it('groups carried-over tasks separately on Today', async () => {
+  it('identifies carried tasks in the ordered Today list', async () => {
     workflow = { ...workflow, state: 'active' };
     vi.mocked(api.getTodayTasks).mockResolvedValue([
       { id: 'carry', title: 'Finish report', urgency: 'medium', category: 'Uncategorized', completed: false, addedToday: false, carriedOver: true, order: 0 },
       { id: 'fresh', title: 'Team meeting', urgency: 'medium', category: 'Uncategorized', completed: false, addedToday: true, carriedOver: false, order: 1 },
     ]);
     mount(<Today />, '/today');
-    expect(await screen.findByRole('heading', { name: /Carried over/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /Priorities/i })).toBeInTheDocument();
+    expect(await screen.findByText('Carried over')).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Remaining tasks' })).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: 'Mark Finish report complete' })).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: 'Mark Team meeting complete' })).toBeInTheDocument();
   });
@@ -410,17 +410,18 @@ describe('Daily planning workflow', () => {
       { id: 'meeting', title: 'Team meeting', urgency: 'medium', category: 'Uncategorized', completed: false, addedToday: true, carriedOver: false, order: 1, duration: 30 },
     ]);
     mount(<Today />, '/today');
-    expect(await screen.findByText(/60 min remaining · 45 min available · over capacity/i)).toBeInTheDocument();
+    expect(await screen.findByText(/60 estimated min left · 45 min planned capacity · over capacity/i)).toBeInTheDocument();
   });
 
-  it('shows Something changed CTA on an active today with unfinished work', async () => {
+  it('keeps one adjustment action and a separate review action on an active Today', async () => {
     workflow = { ...workflow, state: 'active', tasks: [task('report')] };
     vi.mocked(api.getTodayTasks).mockResolvedValue([{ id: 'report', title: 'Finish report', urgency: 'medium', category: 'Uncategorized', completed: false, addedToday: true, carriedOver: false, order: 0 }]);
     mount(<Today />, '/today');
     const cta = await screen.findByRole('link', { name: /^Adjust plan$/i });
     expect(cta).toHaveAttribute('href', `/new?date=${today}&intent=interrupt`);
-    expect(screen.getByRole('link', { name: 'Something changed →' })).toHaveAttribute('href', `/new?date=${today}&intent=interrupt`);
-    expect(screen.getByRole('link', { name: 'Review day →' })).toHaveAttribute('href', `/review?date=${today}`);
+    expect(screen.queryByRole('link', { name: 'Something changed →' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: /^Adjust plan$/i })).toHaveLength(1);
+    expect(screen.getByRole('link', { name: 'Review day' })).toHaveAttribute('href', `/review?date=${today}`);
   });
 
   it('shows a kept/added/deferred diff when revising an active day proposal', async () => {

@@ -3,8 +3,8 @@ import { cn } from '@/lib/utils';
 import { AppTopBar } from './AppTopBar';
 
 /** Shared page edges and container queries for routes inside AppLayout. */
-export function Page({ children }: { children: ReactNode }) {
-  return <div className="page-shell"><div className="page-grid">{children}</div></div>;
+export function Page({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn('page-shell', className)}><div className="page-grid">{children}</div></div>;
 }
 
 export function PageHeader({ children, ...props }: ComponentProps<typeof AppTopBar> & { children?: ReactNode }) {

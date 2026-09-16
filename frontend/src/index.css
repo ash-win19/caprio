@@ -154,16 +154,44 @@
     container: page / inline-size;
   }
 
-  .page-grid,
-  .dashboard-grid {
+  .today-page { max-width: 64rem; }
+  .today-work { min-width: 0; }
+  .today-list-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; }
+  .today-progress { min-width: 9rem; }
+  .today-capacity { margin-block: 1rem 1.25rem; font-size: 0.8125rem; line-height: 1.5; }
+  .today-plan-notice { @apply rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground; display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+  .today-plan-notice a { @apply inline-flex min-h-8 items-center gap-2 text-foreground underline underline-offset-4; }
+  .today-task-list { @apply overflow-hidden rounded-xl border border-border bg-card; }
+  .today-task-row { min-width: 0; overflow-wrap: anywhere; background: hsl(var(--card)); }
+  .today-task-row + .today-task-row { border-top: 1px solid hsl(var(--border)); }
+  .today-task-row:focus { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
+  .today-task-line { display: flex; align-items: flex-start; gap: 0.25rem; padding: 0.5rem 0.75rem; }
+  .today-task-check { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 2.75rem; height: 2.75rem; cursor: pointer; }
+  .today-task-title { font-size: 1rem; font-weight: 500; line-height: 1.5; }
+  .today-task-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; margin-top: 0.25rem; font-size: 0.75rem; line-height: 1.5; color: hsl(var(--muted-foreground)); }
+  .today-task-note > summary { @apply text-xs text-muted-foreground hover:text-foreground; display: inline-flex; min-height: 2rem; align-items: center; gap: 0.25rem; cursor: pointer; list-style: none; }
+  .today-task-note > summary::-webkit-details-marker, .today-completed > summary::-webkit-details-marker { display: none; }
+  .today-task-note[open] > summary svg, .today-completed[open] > summary svg { transform: rotate(180deg); }
+  .today-task-tools { display: flex; flex-shrink: 0; }
+  .today-task-tool { @apply flex items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary; width: 2.75rem; height: 2.75rem; }
+  .today-task-tool.touch-none { display: none; }
+  .today-completed { margin-top: 1.25rem; }
+  .today-completed > summary { @apply text-sm text-muted-foreground hover:text-foreground; display: flex; min-height: 2.75rem; align-items: center; gap: 0.5rem; cursor: pointer; list-style: none; }
+  .today-task-note > summary:focus-visible, .today-completed > summary:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 3px; border-radius: 0.25rem; }
+  .today-review-entry { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1.5rem; padding-block: 1.25rem; border-top: 1px solid hsl(var(--border)); }
+  .today-review-entry > div { flex: 1 1 16rem; }
+  .today-review-ready { @apply rounded-xl border border-primary/20 bg-primary/5 px-5; }
+  .today-empty { @apply rounded-xl border border-dashed border-border px-6 py-10; margin-top: 1.5rem; }
+  @media (min-width: 768px) { .today-task-tool.touch-none { display: flex; } }
+
+  .page-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: var(--page-gap);
     align-items: start;
   }
 
-  .page-grid > *,
-  .dashboard-grid > * {
+  .page-grid > * {
     grid-column: 1 / -1;
     min-width: 0;
     overflow-wrap: anywhere;
@@ -188,15 +216,6 @@
     margin: 0;
   }
 
-  .task-groups { display: grid; gap: var(--page-gap); }
-  .task-stack { display: grid; gap: 0.75rem; min-width: 0; }
-  .overview-stack { display: grid; gap: 1rem; min-width: 0; }
-  .overview-card {
-    @apply rounded-xl border border-border bg-card;
-    min-width: 0;
-    padding: var(--summary-card-inset);
-  }
-
   .page-notice {
     @apply rounded-xl border border-primary/30 bg-primary/5 p-4;
     display: flex;
@@ -213,14 +232,11 @@
 
   @container page (min-width: 60rem) {
     .page-grid,
-    .dashboard-grid,
     .page-header { grid-template-columns: repeat(12, minmax(0, 1fr)); }
     .page-header { column-gap: var(--page-gap); }
     .page-heading,
-    .page-body-list,
-    .dashboard-main { grid-column: 1 / 9; }
-    .page-actions,
-    .dashboard-aside { grid-column: 9 / -1; }
+    .page-body-list { grid-column: 1 / 9; }
+    .page-actions { grid-column: 9 / -1; }
     .page-body-form { grid-column: 1 / 7; max-width: none; }
   }
 }
