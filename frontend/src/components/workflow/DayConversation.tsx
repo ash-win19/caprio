@@ -126,7 +126,9 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
         return;
       }
       updatePending(request.requestId, (turn) => ({ ...turn, status: 'failed', error }));
-      void workflowQuery.refetch();
+      // A response can disappear after commit. Recover both the receipt and
+      // the checklist, including a checklist already mounted beside chat.
+      refresh();
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
     }
@@ -138,7 +140,7 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
     abortRef.current = null;
     controller.abort();
     setPending((turn) => (turn && isReplying(turn) ? { ...turn, status: 'stopped' } : turn));
-    void workflowQuery.refetch();
+    refresh();
   };
 
   // Swap the revealed reply for the saved thread once the last character shows.
@@ -293,4 +295,3 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
     </div></div>
   </section></>;
 }
-
