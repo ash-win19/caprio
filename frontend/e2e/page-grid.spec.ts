@@ -128,10 +128,9 @@ test('completing and restoring a task preserves focus, progress and explicit rev
   await page.screenshot({ path: info.outputPath('today-complete.png'), fullPage: true, animations: 'disabled' });
 });
 
-test('keyboard and pointer reordering preserve the displayed order across carried and new tasks', async ({ page }) => {
+test('keyboard and pointer reordering preserve the displayed order of today tasks', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   const tasks = tasksForDay();
-  tasks[1].deferCount = 1;
   const writes = await mockDay(page, { tasks });
   await page.goto('/today');
   const rows = page.getByRole('list', { name: 'Remaining tasks' }).locator('li');
@@ -139,6 +138,7 @@ test('keyboard and pointer reordering preserve the displayed order across carrie
   const handle = page.getByRole('button', { name: `Reorder ${titles[0]}` });
   await handle.focus();
   await handle.press('Space');
+  await expect(page.locator('[role="status"][aria-live="assertive"]')).toContainText('over droppable area task-0');
   await handle.press('ArrowDown');
   await expect(page.locator('[role="status"][aria-live="assertive"]')).toContainText('over droppable area task-1');
   await handle.press('Space');
@@ -151,9 +151,43 @@ test('keyboard and pointer reordering preserve the displayed order across carrie
   await expect(page.getByRole('button', { name: `Task actions for ${titles[1]}` })).toBeFocused();
   await page.reload();
   await expect(rows.nth(1)).toContainText(titles[1]);
-  await expect(rows.nth(1)).toContainText('Carried over');
   expect(writes.filter(write => write.path === '/api/tasks/reorder')).toHaveLength(2);
 });
+
+for (const width of [390, 1440]) {
+  test(`carried work stays in a separate expandable section at ${width}px`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 1050 });
+    const tasks = tasksForDay();
+    tasks[0].title = 'Ship the conversational workflow';
+    tasks[0].duration = 120;
+    tasks[1].title = 'Fix Headlines publishing';
+    tasks[1].deferCount = 1;
+    tasks[1].duration = 120;
+    tasks[2].title = 'Restore Headlines brand behavior';
+    tasks[2].deferCount = 4;
+    tasks[2].duration = 120;
+    const writes = await mockDay(page, { tasks, carryoverOrigins: { 'task-1': '2026-09-13', 'task-2': '2026-09-10' } });
+    await page.goto('/today');
+    const carried = page.locator('.today-carried');
+    await expect(carried).toBeVisible();
+    await expect(carried).not.toHaveAttribute('open');
+    await expect(carried.locator(':scope > summary')).toContainText('1 from yesterday · 1 from earlier days');
+    await expect(page.getByRole('list', { name: 'Remaining tasks' }).locator('li')).toHaveCount(1);
+    await page.screenshot({ path: info.outputPath(`carryovers-collapsed-${width}.png`), fullPage: true, animations: 'disabled' });
+    await carried.locator(':scope > summary').click();
+    await expect(page.getByRole('list', { name: 'Carried forward tasks' }).locator('li')).toHaveCount(2);
+    await expect(carried).toContainText('Since Sep 10');
+    await noOverflow(page);
+    await page.screenshot({ path: info.outputPath(`carryovers-expanded-${width}.png`), fullPage: true, animations: 'disabled' });
+    await page.getByRole('checkbox', { name: 'Mark Fix Headlines publishing complete' }).click();
+    await expect(page.getByRole('list', { name: 'Carried forward tasks' }).locator('li')).toHaveCount(1);
+    await expect(carried.locator(':scope > summary')).toContainText('1 from earlier days');
+    expect(writes.filter(write => write.path === '/api/tasks/task-1')).toHaveLength(1);
+    await page.reload();
+    await expect(carried.locator(':scope > summary')).toContainText('1 from earlier days');
+    await expect(page.locator('.today-completed')).toContainText('Completed · 1');
+  });
+}
 
 test('failed completion restores the task and keeps the failure visible', async ({ page }) => {
   await mockDay(page);
@@ -215,7 +249,7 @@ test('mobile tasks offer a pointer reorder alternative and disclose missing esti
   const pending = new Promise<void>(resolve => { release = resolve; });
   await page.route('**/api/tasks/reorder', async route => { await pending; await route.fallback(); });
   await page.goto('/today');
-  await expect(page.locator('.today-capacity')).toContainText('180 estimated min left · 1 task without an estimate');
+  await expect(page.locator('.today-capacity')).toContainText('180 min estimated remaining · 1 task without an estimate');
   await expect(page.getByRole('button', { name: `Reorder ${titles[0]}` })).not.toBeVisible();
   await page.getByRole('button', { name: `Task actions for ${titles[0]}` }).click();
   await page.getByRole('menuitem', { name: 'Move down' }).click();

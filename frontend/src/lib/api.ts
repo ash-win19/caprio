@@ -335,6 +335,8 @@ export interface PlanProposal {
 }
 
 export interface DayReview {
+  carriedToDate?: string;
+  automatic?: boolean;
   completedCount: number;
   carriedToTomorrowCount: number;
   droppedCount: number;
@@ -343,6 +345,7 @@ export interface DayReview {
 }
 
 export interface Workflow {
+  carryoverOrigins?: Record<string, string>;
   oldestUnclosedDate?: string | null;
   taskDetailsAvailable?: boolean;
   date: string;
@@ -358,6 +361,14 @@ export interface Workflow {
 
 export async function getWorkflow(date = localDate()): Promise<Workflow> {
   return (await fetchWithAuth(`/api/workflow?date=${date}`)).json();
+}
+
+export async function rolloverDay(signal?: AbortSignal): Promise<Workflow> {
+  return (await fetchWithAuth('/api/day/rollover', {
+    method: 'POST',
+    signal,
+    body: JSON.stringify({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
+  })).json();
 }
 
 export async function getChatSessions(): Promise<ChatSession[]> {

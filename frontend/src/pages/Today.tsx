@@ -13,6 +13,7 @@ import { RecoveryNotice } from '@/components/workflow/RecoveryNotice';
 import { DaySummary, WorkflowError } from '@/components/workflow/WorkflowUI';
 import { selectedDate } from '@/components/workflow/dates';
 import type { Task } from '@/lib/types';
+import { previousDate } from '@/lib/date';
 
 const EMPTY_TASKS: Task[] = [];
 
@@ -27,8 +28,12 @@ export default function Today() {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const tasks = tasksQuery.data ?? EMPTY_TASKS;
   const active = tasks.filter(task => !task.completed);
+  const fresh = active.filter(task => !task.carriedOver);
+  const carried = active.filter(task => task.carriedOver);
   const completed = tasks.filter(task => task.completed);
   const workflow = workflowQuery.data;
+  const fromYesterday = carried.filter(task => workflow?.carryoverOrigins?.[task.id] === previousDate(date)).length;
+  const fromEarlier = carried.length - fromYesterday;
   const isToday = date === today;
   const readOnly = date < today || workflow?.state === 'closed';
   const dayInProgress = isToday && workflow?.state === 'active';
@@ -36,7 +41,6 @@ export default function Today() {
   const remainingMinutes = active.reduce((sum, task) => sum + (task.duration || 0), 0);
   const unestimatedCount = active.filter(task => task.duration == null).length;
   const availableMinutes = workflow?.availableMinutes ?? workflow?.proposal?.availableMinutes ?? null;
-  const overCapacity = availableMinutes !== null && remainingMinutes > availableMinutes;
   const busy = reorder.isPending || toggle.isPending;
   const cardReadOnly = readOnly || !isToday || busy;
   const focusAfterTaskAction = useRef<({ id: string; date: string } & (
@@ -55,17 +59,20 @@ export default function Today() {
     const next = intent.kind === 'toggle' && changed.completed ? remaining[Math.min(intent.index, remaining.length - 1)] : changed;
     const control = intent.kind === 'move' ? intent.control : 'check';
     const target = next ? `today-${busy ? 'row' : control}-${next.id}` : 'today-completed-toggle';
-    document.getElementById(target)?.focus({ preventScroll: true });
+    const element = document.getElementById(target);
+    const section = element?.closest('details');
+    if (section && !section.open) section.open = true;
+    element?.focus({ preventScroll: true });
     if (!busy) focusAfterTaskAction.current = null;
   }, [tasks, busy, date]);
 
   const moveTask = (from: number, to: number, control: 'actions' | 'reorder') => {
-    if (cardReadOnly || from === to || from < 0 || to < 0 || to >= active.length) return;
-    focusAfterTaskAction.current = { kind: 'move', id: active[from].id, date, control };
-    reorder.mutate([...arrayMove(active, from, to), ...completed].map((task, sortOrder) => ({ id: task.id, sortOrder })));
+    if (cardReadOnly || from === to || from < 0 || to < 0 || to >= fresh.length) return;
+    focusAfterTaskAction.current = { kind: 'move', id: fresh[from].id, date, control };
+    reorder.mutate([...arrayMove(fresh, from, to), ...carried, ...completed].map((task, sortOrder) => ({ id: task.id, sortOrder })));
   };
   const handleDragEnd = ({ active: dragged, over }: DragEndEvent) => {
-    if (over) moveTask(active.findIndex(task => task.id === dragged.id), active.findIndex(task => task.id === over.id), 'reorder');
+    if (over) moveTask(fresh.findIndex(task => task.id === dragged.id), fresh.findIndex(task => task.id === over.id), 'reorder');
   };
   const toggleTask = (task: Task) => {
     if (cardReadOnly) return;
@@ -92,11 +99,11 @@ export default function Today() {
             </div>
           </div>}
         </div>
-        {tasks.length > 0 && <p className={`today-capacity ${overCapacity ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'}`}>
-          {remainingMinutes} estimated min left{unestimatedCount > 0 ? ` · ${unestimatedCount} ${unestimatedCount === 1 ? 'task' : 'tasks'} without an estimate` : ''}{availableMinutes !== null ? ` · ${availableMinutes} min planned capacity` : ''}{overCapacity ? ' · over capacity' : ''}
+        {tasks.length > 0 && <p className="today-capacity text-muted-foreground">
+          {remainingMinutes} min estimated remaining{unestimatedCount > 0 ? ` · ${unestimatedCount} ${unestimatedCount === 1 ? 'task' : 'tasks'} without an estimate` : ''}{availableMinutes !== null ? ` · ${availableMinutes} min available` : ''}
         </p>}
         {workflow?.proposal && <div className="today-plan-notice"><p>Plan changes are waiting for your confirmation.</p><Link to={`/new?date=${date}`}>Review proposal<ArrowRight size={14} aria-hidden /></Link></div>}
-        {workflow?.state === 'planning' && tasks.length > 0 && <p className="today-plan-notice">These tasks are saved. Use Plan day to set your available time and confirm the plan.</p>}
+        {workflow?.state === 'planning' && tasks.length > 0 && <p className="today-plan-notice">These tasks are saved. You can check them off or use Plan day to add more.</p>}
         {(reorder.error || toggle.error) && <WorkflowError error={reorder.error || toggle.error} />}
         {!tasks.length ? <section className="today-empty">
           <ListChecks className="mb-4 h-7 w-7 text-muted-foreground" />
@@ -104,11 +111,21 @@ export default function Today() {
           <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">{readOnly ? 'Choose another day from your history.' : workflow?.state === 'active' ? 'Your plan is saved with no tasks. Enjoy the space, or adjust it if something comes up.' : 'Start with the tasks on your mind. Caprio will help you decide what fits and what can wait.'}</p>
           <Button asChild className="mt-5"><Link to={readOnly ? '/momentum' : dayInProgress ? interruptHref : `/new?date=${date}`}>{readOnly ? 'View history' : dayInProgress ? 'Adjust plan' : 'Plan day'}<ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
         </section> : <>
-          {active.length > 0 && <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <SortableContext items={active.map(task => task.id)} strategy={verticalListSortingStrategy}>
-              <ol aria-label="Remaining tasks" className="today-task-list">{active.map((task, index) => <TodayTaskRow key={task.id} task={task} readOnly={cardReadOnly} sortable={isToday && !readOnly} onToggle={toggleTask} canMoveUp={index > 0} canMoveDown={index < active.length - 1} onMove={direction => moveTask(index, index + direction, 'actions')} />)}</ol>
+          {fresh.length > 0 && <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={fresh.map(task => task.id)} strategy={verticalListSortingStrategy}>
+              <ol aria-label="Remaining tasks" className="today-task-list">{fresh.map((task, index) => <TodayTaskRow key={task.id} task={task} readOnly={cardReadOnly} sortable={isToday && !readOnly} onToggle={toggleTask} canMoveUp={index > 0} canMoveDown={index < fresh.length - 1} onMove={direction => moveTask(index, index + direction, 'actions')} />)}</ol>
             </SortableContext>
           </DndContext>}
+          {carried.length > 0 && <details key={`carried-${date}`} className="today-carried">
+            <summary id="today-carried-toggle">
+              <ChevronDown size={18} aria-hidden />
+              <span className="min-w-0 flex-1"><span className="block font-medium text-foreground">Carried forward <span className="ml-2 rounded-full bg-accent px-2 py-0.5 text-xs tabular-nums">{carried.length}</span></span><span className="mt-1 block text-xs text-muted-foreground">{[fromYesterday > 0 && `${fromYesterday} from yesterday`, fromEarlier > 0 && `${fromEarlier} from earlier days`].filter(Boolean).join(' · ')}</span></span>
+              <span className="text-xs text-muted-foreground tabular-nums">{carried.reduce((sum, task) => sum + (task.duration || 0), 0)} min est.</span>
+            </summary>
+            <div className="today-carried-body"><p className="mb-4 text-sm leading-6 text-muted-foreground">Unchecked tasks stay here as days pass. Finish them when you’re ready.</p>
+              <ol aria-label="Carried forward tasks" className="today-task-list">{carried.map(task => <TodayTaskRow key={task.id} task={task} carriedFrom={workflow?.carryoverOrigins?.[task.id]} readOnly={cardReadOnly} onToggle={toggleTask} />)}</ol>
+            </div>
+          </details>}
           {completed.length > 0 && <details key={date} className="today-completed">
             <summary id="today-completed-toggle"><ChevronDown size={16} aria-hidden /><span>Completed · {completed.length}</span></summary>
             <ol aria-label="Completed tasks" className="today-task-list mt-3">{completed.map(task => <TodayTaskRow key={task.id} task={task} readOnly={cardReadOnly} onToggle={toggleTask} />)}</ol>

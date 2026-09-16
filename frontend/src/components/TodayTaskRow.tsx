@@ -4,8 +4,9 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { CATEGORY_COLORS, type Task } from '@/lib/types';
+import { dateLabel } from './workflow/dates';
 
-export function TodayTaskRow({ task, readOnly, sortable = false, canMoveUp = false, canMoveDown = false, onToggle, onMove }: {
+export function TodayTaskRow({ task, readOnly, sortable = false, canMoveUp = false, canMoveDown = false, onToggle, onMove, carriedFrom }: {
   task: Task;
   readOnly: boolean;
   sortable?: boolean;
@@ -13,6 +14,7 @@ export function TodayTaskRow({ task, readOnly, sortable = false, canMoveUp = fal
   canMoveDown?: boolean;
   onToggle: (task: Task) => void;
   onMove?: (direction: -1 | 1) => void;
+  carriedFrom?: string;
 }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: task.id, disabled: readOnly || !sortable });
   const movedFromMenu = useRef(false);
@@ -31,7 +33,7 @@ export function TodayTaskRow({ task, readOnly, sortable = false, canMoveUp = fal
         <div className="today-task-meta">
           <span className="inline-flex items-center gap-1.5"><span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: CATEGORY_COLORS[task.category] || '#888888' }} aria-hidden />{task.category}</span>
           {task.duration != null && <span>{task.duration} min</span>}
-          {task.carriedOver && <span className="rounded bg-accent px-2 py-0.5 text-foreground">Carried over</span>}
+          {task.carriedOver && <span className="rounded bg-accent px-2 py-0.5 text-foreground">{carriedFrom ? <time dateTime={carriedFrom} title={dateLabel(carriedFrom, true)}>Since {new Date(`${carriedFrom}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</time> : 'Carried forward'}</span>}
         </div>
         {task.priorityReason && !task.completed && <details className="today-task-note">
           <summary><span>Plan note</span><ChevronDown size={13} aria-hidden /></summary>

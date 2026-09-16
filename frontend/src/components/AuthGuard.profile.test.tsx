@@ -22,6 +22,7 @@ vi.mock('@/lib/api', async (load) => {
   const original = await load<typeof import('@/lib/api')>();
   return {
     ...original,
+    rolloverDay: vi.fn(),
     bootstrap: vi.fn(async () => ({
       user: { id: 'user-a', name: 'User A', email: 'a@example.com' },
       onboardingComplete: true,

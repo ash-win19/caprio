@@ -45,7 +45,7 @@ test('review outcomes and notes stay with their selected date until explicitly c
   await page.locator('summary').filter({ hasText: 'Add a reflection' }).click();
   await page.getByRole('textbox', { name: /Notes for tomorrow/ }).fill('Keep these notes for this day');
   await page.getByRole('button', { name: 'Previous day' }).click();
-  await expect(page.getByRole('button', { name: 'Continue', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Continue', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Next day' }).click();
   await expect(page.getByRole('textbox', { name: /Notes for tomorrow/ })).toHaveValue('Keep these notes for this day');
   await page.getByRole('link', { name: 'View day', exact: true }).click();

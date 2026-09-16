@@ -164,6 +164,14 @@
   .today-list-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; }
   .today-progress { min-width: 9rem; }
   .today-capacity { margin-block: 1rem 1.25rem; font-size: 0.8125rem; line-height: 1.5; }
+  .today-carried { margin-top: 1.5rem; border: 1px solid hsl(var(--border)); border-radius: 1rem; background: hsl(var(--card)); }
+  .today-carried > summary { display: flex; align-items: center; gap: 0.75rem; padding: 1.1rem 1.25rem; min-height: 4.5rem; cursor: pointer; list-style: none; }
+  .today-carried > summary::-webkit-details-marker { display: none; }
+  .today-carried > summary > svg { flex-shrink: 0; color: hsl(var(--muted-foreground)); transform: rotate(-90deg); transition: transform 160ms; }
+  .today-carried[open] > summary > svg { transform: rotate(0); }
+  .today-carried > summary:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 3px; border-radius: 1rem; }
+  .today-carried-body { padding: 0 1.25rem 1.25rem; }
+  .today-carried .today-task-row { background: hsl(var(--background)); }
   .today-plan-notice { @apply rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground; display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
   .today-plan-notice a { @apply inline-flex min-h-8 items-center gap-2 text-foreground underline underline-offset-4; }
   .today-task-list { @apply overflow-hidden rounded-xl border border-border bg-card; }

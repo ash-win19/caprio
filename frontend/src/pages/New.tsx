@@ -11,7 +11,7 @@ import { SpeechMicButton } from '@/components/agents/SpeechMicButton';
 import { ConversationSidebar } from '@/components/ConversationSidebar';
 import { Button } from '@/components/ui/button';
 import { MessageBubble, StoppedNotice, StreamingReply, ThinkingIndicator } from '@/components/workflow/ChatMessages';
-import { DaySummary, WorkflowError, capacityOverMessage, proposalRevisionDiff } from '@/components/workflow/WorkflowUI';
+import { DaySummary, WorkflowError, proposalRevisionDiff } from '@/components/workflow/WorkflowUI';
 import { selectedDate } from '@/components/workflow/dates';
 import { toast } from '@/hooks/use-toast';
 import { CHAT_MODELS, DEFAULT_CHAT_MODEL, FALLBACK_CHAT_MODEL } from '@/lib/chat-models';
@@ -200,7 +200,6 @@ function ConversationDay({ date, intent, seed }: { date: string; intent: string 
   const proposedBacklog = proposal?.tasks.filter((task) => task.disposition === 'backlog') || [];
   const minutes = proposedToday.reduce((sum, task) => sum + task.duration, 0);
   const availableMinutes = proposal?.availableMinutes ?? null;
-  const overCapacity = availableMinutes !== null && minutes > availableMinutes;
   const carriedCount = (workflow?.tasks || []).filter((task) => task.deferCount > 0 && !task.completed).length;
   const busy = replying || confirm.isPending || discard.isPending;
   useNavigationLock(busy, Boolean(input.trim()) || Boolean(pending && !settling));
@@ -221,7 +220,7 @@ function ConversationDay({ date, intent, seed }: { date: string; intent: string 
           <ListChecks className="mb-5 h-7 w-7 text-primary" />
           <h2 className="text-3xl font-medium">{past ? 'No conversation for this day' : intent === 'interrupt' || workflow?.state === 'active' ? 'What changed?' : 'What needs your attention?'}</h2>
           <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">{past ? 'Your saved plan and review are available from View day.' : intent === 'interrupt' || workflow?.state === 'active' ? 'Tell Caprio what shifted — less time, new work, or something to drop. You’ll review a revision before anything is saved.' : 'Tell me your tasks, fixed commitments, and how much time you have. We’ll turn them into a realistic plan.'}</p>
-          {!past && !!workflow?.tasks.length && <p className="mt-4 text-sm text-primary">{workflow.tasks.length} saved {workflow.tasks.length === 1 ? 'task is' : 'tasks are'} already waiting for this day{carriedCount > 0 ? ` · ${carriedCount} carried from yesterday` : ''}.</p>}
+          {!past && !!workflow?.tasks.length && <p className="mt-4 text-sm text-primary">{workflow.tasks.length} saved {workflow.tasks.length === 1 ? 'task is' : 'tasks are'} already waiting for this day{carriedCount > 0 ? ` · ${carriedCount} carried forward` : ''}.</p>}
         </div>}
         {proposal && !pending && !readOnly && messages.length > 0 ? <details id="proposal-context" className="workspace-details scroll-mt-4 rounded-xl border border-border px-4 py-2">
           <summary>Conversation · {messages.length} {messages.length === 1 ? 'message' : 'messages'}<ChevronDown size={14} aria-hidden /></summary>
@@ -240,10 +239,10 @@ function ConversationDay({ date, intent, seed }: { date: string; intent: string 
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground"><Clock3 className="h-3.5 w-3.5" />{minutes} min planned</span>
             {availableMinutes !== null
-              ? <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs ${overCapacity ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400' : 'bg-primary/10 text-primary'}`}>{availableMinutes} min available</span>
-              : <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">Available time not set — tell Caprio how much time you have</span>}
+              ? <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">{availableMinutes} min available</span>
+              : null}
           </div>
-          {overCapacity && availableMinutes !== null && <p role="alert" className="mt-3 text-sm text-amber-700 dark:text-amber-400">{capacityOverMessage(minutes, availableMinutes)}</p>}
+          <p className="mt-3 text-sm text-muted-foreground">Time estimates are a guide. You can keep every task, even if you need more time.</p>
           {showDiff && <div role="region" aria-label="Proposal changes" className="mt-5 space-y-3 rounded-xl border border-border bg-background p-4">
             <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Compared with your current plan</h3>
             {revisionDiff!.kept.length > 0 && <details className="workspace-details"><summary>Kept · {revisionDiff!.kept.length}<ChevronDown size={14} aria-hidden /></summary><ul className="mt-1.5 space-y-1">{revisionDiff!.kept.map(title => <li key={`kept-${title}`} className="text-sm">{title}</li>)}</ul></details>}
@@ -256,7 +255,7 @@ function ConversationDay({ date, intent, seed }: { date: string; intent: string 
           </div>)}
           <p className="mt-5 text-xs leading-5 text-muted-foreground">Confirming saves this plan. Completed tasks stay completed.</p>
           {(confirm.error || discard.error) && <div className="mt-4"><WorkflowError error={confirm.error || discard.error} /></div>}
-          <div className="mt-4 flex flex-wrap gap-2"><Button onClick={() => confirm.mutate()} disabled={busy || overCapacity}>{confirm.isPending ? 'Saving plan…' : 'Confirm plan'}<ArrowRight className="ml-2 h-4 w-4" /></Button><Button variant="outline" onClick={revise} disabled={busy}>Revise proposal</Button><Button variant="ghost" onClick={() => discard.mutate()} disabled={busy}>{discard.isPending ? 'Discarding…' : 'Discard proposal'}</Button></div>
+          <div className="mt-4 flex flex-wrap gap-2"><Button onClick={() => confirm.mutate()} disabled={busy}>{confirm.isPending ? 'Saving plan…' : 'Confirm plan'}<ArrowRight className="ml-2 h-4 w-4" /></Button><Button variant="outline" onClick={revise} disabled={busy}>Revise proposal</Button><Button variant="ghost" onClick={() => discard.mutate()} disabled={busy}>{discard.isPending ? 'Discarding…' : 'Discard proposal'}</Button></div>
         </section>}
         {workflow?.state === 'closed' && <DaySummary workflow={workflow} />}
       </>}
@@ -264,7 +263,7 @@ function ConversationDay({ date, intent, seed }: { date: string; intent: string 
     </div></div>
     <div className="conversation-composer bg-background px-4 pb-4 pt-2 md:px-8"><div className="mx-auto max-w-2xl">
       {readOnly ? <div className="flex items-center justify-between gap-3 rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground"><span>{past ? 'Past conversations are read-only.' : 'This day is closed.'}</span><Link to="/new" className="shrink-0 text-primary hover:underline">Go to today</Link></div> : <>
-        {!past && carriedCount > 0 && <p role="status" className="mb-3 inline-flex max-w-full items-center rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs text-primary">{carriedCount} carried from yesterday — they’ll be in the proposal unless you drop them</p>}
+        {!past && carriedCount > 0 && <p role="status" className="mb-3 inline-flex max-w-full items-center rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs text-primary">{carriedCount} carried forward. They stay in your plan until you finish or remove them.</p>}
         {showInterruptChips && !pending && !input && !proposal && <div className="mb-3 flex flex-wrap gap-2" aria-label="Quick interruption prompts">
           {INTERRUPT_CHIPS.map((chip) => (
             <button

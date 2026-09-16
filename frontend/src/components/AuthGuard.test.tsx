@@ -14,6 +14,7 @@ vi.mock('@auth0/auth0-react', () => ({
 
 vi.mock('@/lib/api', () => ({
   bootstrap: vi.fn(),
+  rolloverDay: vi.fn(),
   getWorkflow: vi.fn(),
   setAccessTokenProvider: vi.fn(() => vi.fn()),
 }));

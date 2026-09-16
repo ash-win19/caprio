@@ -24,6 +24,7 @@ export async function mockDay(page: Page, options: {
   proposal?: Workflow['proposal'];
   messages?: Workflow['messages'];
   oldestUnclosedDate?: string;
+  carryoverOrigins?: Record<string, string>;
 } = {}) {
   const tasks = options.tasks ?? tasksForDay();
   const writes: Array<{ path: string; body: unknown }> = [];
@@ -36,6 +37,10 @@ export async function mockDay(page: Page, options: {
   await page.route('**/api/**', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
+    if (url.pathname === '/api/day/rollover') {
+      await route.fulfill({ json: null });
+      return;
+    }
     if (request.method() !== 'GET') {
       const body = request.postDataJSON();
       writes.push({ path: url.pathname, body });
@@ -69,6 +74,7 @@ export async function mockDay(page: Page, options: {
         version: 1, messages: options.messages ?? [], proposal: options.proposal ?? null, availableMinutes: 220,
         tasks, backlog: [], review: options.state === 'closed'
           ? { completedCount: 1, carriedToTomorrowCount: 1, droppedCount: 1, notes: null, energyLevel: null } : null,
+        carryoverOrigins: options.carryoverOrigins ?? {},
       } });
     } else if (url.pathname === '/api/tasks') {
       await route.fulfill({ json: { tasks } });

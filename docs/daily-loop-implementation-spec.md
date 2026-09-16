@@ -1,3 +1,7 @@
+# Superseded capacity and carry behavior
+
+As of September 16, estimates are informational and unchecked tasks carry forward automatically. The original strict capacity and explicit repeated-carry requirements below are historical. See [daily-workflow.md](daily-workflow.md) for the current contract.
+
 Daily loop implementation spec, September 14, 2026
 
 Implement the five remaining coding tasks against merged main `e5e53a4`. Preserve React → Go → Mastra, explicit confirmation of chat proposals, immutable closed days, and one calendar day per explicit carry. This work uses the schema through migration 9; no new migration is required.

@@ -49,7 +49,7 @@ func TestParseAgentReply(t *testing.T) {
 		"duplicate task":          func(r *AgentReply) { r.Tasks[1].ID = &current.ID },
 		"missing unfinished task": func(r *AgentReply) { r.Tasks = r.Tasks[1:] },
 		"foreign category":        func(r *AgentReply) { r.Tasks[0].CategoryID = ptr(uuid.New()) },
-		"over capacity":           func(r *AgentReply) { r.AvailableMinutes = ptr(int32(30)) },
+		"negative available time": func(r *AgentReply) { r.AvailableMinutes = ptr(int32(-1)) },
 		"negative duration":       func(r *AgentReply) { r.Tasks[0].Duration = -1 },
 		"unsupported urgency":     func(r *AgentReply) { r.Tasks[0].Urgency = "critical" },
 		"unsupported disposition": func(r *AgentReply) { r.Tasks[0].Disposition = "delete" },
@@ -62,11 +62,6 @@ func TestParseAgentReply(t *testing.T) {
 			change(&r)
 			err := parse(encode(t, r))
 			require.Error(t, err)
-			if name == "over capacity" {
-				require.ErrorContains(t, err, "exceed the available time")
-				var validation *ValidationError
-				require.ErrorAs(t, err, &validation)
-			}
 		})
 	}
 	require.Error(t, parse(encode(t, valid)+" trailing text"))
@@ -75,6 +70,24 @@ func TestParseAgentReply(t *testing.T) {
 	require.Error(t, parse("```json\n"+encode(t, valid)+"\n```"))
 	_, err := ParseAgentReply(`{"message":"Nothing planned today.","phase":"proposal","availableMinutes":0,"tasks":[]}`, nil, nil, nil)
 	require.NoError(t, err)
+}
+
+func TestTaskEstimatesDoNotLimitProposal(t *testing.T) {
+	for _, available := range []*int32{nil, ptr(int32(0)), ptr(int32(120))} {
+		reply := AgentReply{Message: "Review all five tasks.", Phase: "proposal", AvailableMinutes: available}
+		for _, title := range []string{"Ship workflow", "Fix publishing", "Restore brand", "Research decks", "Prepare demo"} {
+			task := planTask(title)
+			task.Duration = 120
+			reply.Tasks = append(reply.Tasks, task)
+		}
+		parsed, err := ParseAgentReply(encode(t, reply), nil, nil, nil)
+		require.NoError(t, err)
+		require.Len(t, parsed.Tasks, 5)
+		for _, task := range parsed.Tasks {
+			require.Equal(t, "today", task.Disposition)
+			require.EqualValues(t, 120, task.Duration)
+		}
+	}
 }
 
 func TestCloseRequiresEveryOutcomeOnce(t *testing.T) {
@@ -247,30 +260,44 @@ func TestClarifyingPreservesProposalAndDiscardPreservesTasks(t *testing.T) {
 	require.ErrorIs(t, err, ErrConflict)
 }
 
-func TestConfirmRejectsOverCapacityProposal(t *testing.T) {
+func TestConfirmKeepsAllRequestedTasksWhenEstimatesExceedAvailableTime(t *testing.T) {
 	s, a, user, date := testService(t)
 	ctx := context.Background()
-	w := propose(t, s, a, user, date, planTask("Report"), planTask("Exercise"))
-	require.NotNil(t, w.Proposal)
-	require.NoError(t, CapacityError(w.Proposal.AvailableMinutes, TodayDuration(w.Proposal.Tasks)))
-	// Tamper with the stored draft so confirm sees an over-capacity plan the
-	// agent would no longer be allowed to emit.
-	over := *w.Proposal
-	over.AvailableMinutes = ptr(int32(30))
-	raw, err := json.Marshal(&over)
+	done := createTask(t, s, user, date, "Earlier work")
+	_, err := s.store.Pool.Exec(ctx, `UPDATE tasks SET completed=true,status='completed',completed_at=clock_timestamp() WHERE id=$1`, done.ID)
 	require.NoError(t, err)
-	_, err = s.store.Pool.Exec(ctx, `UPDATE daily_plans SET proposal=$3 WHERE user_id=$1 AND plan_date=$2`, user, date, raw)
+	_, err = s.store.Pool.Exec(ctx, `INSERT INTO daily_plans(user_id,plan_date,state,available_minutes) VALUES ($1,$2,'active',120)`, user, date)
 	require.NoError(t, err)
-	_, err = s.Confirm(ctx, user, date, w.Proposal.ID, w.Version)
-	require.ErrorContains(t, err, "exceed the available time")
-	var validation *ValidationError
-	require.ErrorAs(t, err, &validation)
-	require.Equal(t, "over_capacity", validation.Code)
-	unchanged, err := s.Get(ctx, user, date)
+	reply := AgentReply{Message: "Review all five tasks.", Phase: "proposal", AvailableMinutes: ptr(int32(120))}
+	for _, title := range []string{"Ship workflow", "Fix publishing", "Restore brand", "Research decks", "Prepare demo"} {
+		task := planTask(title)
+		task.Duration = 120
+		reply.Tasks = append(reply.Tasks, task)
+	}
+	a.response = encode(t, reply)
+	draft, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "Add these five tasks, two hours each.", RequestID: uuid.New()})
 	require.NoError(t, err)
-	require.NotNil(t, unchanged.Proposal)
-	require.Empty(t, unchanged.Tasks)
-	require.Nil(t, unchanged.AvailableMinutes)
+	require.Len(t, draft.Workflow.Tasks, 1, "chat must wait for confirmation before adding tasks")
+	w := draft.Workflow
+	confirmed, err := s.Confirm(ctx, user, date, w.Proposal.ID, w.Version)
+	require.NoError(t, err)
+	require.Len(t, confirmed.Tasks, 6)
+	require.Empty(t, confirmed.Backlog)
+	require.Equal(t, ptr(int32(120)), confirmed.AvailableMinutes)
+	var unfinished int
+	for _, task := range confirmed.Tasks {
+		if task.ID == done.ID {
+			require.True(t, task.Completed)
+			continue
+		}
+		unfinished++
+		require.Equal(t, generated.TaskStatusPlanned, task.Status)
+		require.Equal(t, ptr(int32(120)), task.Duration)
+	}
+	require.Equal(t, 5, unfinished)
+	replayed, err := s.Confirm(ctx, user, date, w.Proposal.ID, w.Version)
+	require.NoError(t, err)
+	require.Equal(t, confirmed.Tasks, replayed.Tasks)
 }
 
 func TestClosePersistsOutcomesAndCarriesExactlyOnce(t *testing.T) {

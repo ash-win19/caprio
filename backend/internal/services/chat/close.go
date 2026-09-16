@@ -65,11 +65,23 @@ func validateClose(req CloseRequest, tasks []generated.Task) error {
 }
 
 func (s *Service) Close(ctx context.Context, userID uuid.UUID, req CloseRequest) (*CloseResult, error) {
+	return s.close(ctx, userID, req, nil)
+}
+
+// A destination makes this an automatic rollover. Outcomes are derived from
+// the saved checkboxes under the same account lock as task edits.
+func (s *Service) close(ctx context.Context, userID uuid.UUID, req CloseRequest, destination *pgtype.Date) (*CloseResult, error) {
 	date, err := ParseDate(req.Date)
 	if err != nil {
 		return nil, err
 	}
 	nextDate := pgtype.Date{Time: date.Time.AddDate(0, 0, 1), Valid: true}
+	if destination != nil {
+		nextDate = *destination
+		if !nextDate.Time.After(date.Time) {
+			return nil, invalid("carry destination must follow the original day")
+		}
+	}
 	result := &CloseResult{NextDate: nextDate.Time.Format("2006-01-02")}
 	changed := false
 	err = s.store.WithUserTx(ctx, userID, func(tx pgx.Tx, q *generated.Queries) error {
@@ -84,9 +96,23 @@ func (s *Service) Close(ctx context.Context, userID uuid.UUID, req CloseRequest)
 			result.Workflow = w
 			if w.Review != nil {
 				result.Review = *w.Review
+				if w.Review.CarriedToDate != "" {
+					result.NextDate = w.Review.CarriedToDate
+				}
 			}
 			result.Session, err = q.GetStandupByUserAndDate(ctx, generated.GetStandupByUserAndDateParams{UserID: userID, SessionDate: date})
 			return err
+		}
+		if destination != nil {
+			result.Automatic = true
+			req.TaskActions = make([]TaskAction, 0, len(w.Tasks))
+			for _, task := range w.Tasks {
+				action := "tomorrow"
+				if task.Completed || task.Status == generated.TaskStatusCompleted {
+					action = "done"
+				}
+				req.TaskActions = append(req.TaskActions, TaskAction{TaskID: task.ID, Action: action})
+			}
 		}
 		if err := validateClose(req, w.Tasks); err != nil {
 			return err
@@ -96,7 +122,8 @@ func (s *Service) Close(ctx context.Context, userID uuid.UUID, req CloseRequest)
 			actions[a.TaskID] = a.Action
 			switch a.Action {
 			case "done":
-				err = q.CloseTaskDone(ctx, generated.CloseTaskDoneParams{ID: a.TaskID, UserID: userID})
+				// Preserve when the user actually checked off completed work.
+				_, err = tx.Exec(ctx, `UPDATE tasks SET completed=true,status='completed',completed_at=COALESCE(completed_at,clock_timestamp()),updated_at=clock_timestamp() WHERE id=$1 AND user_id=$2`, a.TaskID, userID)
 				result.CompletedCount++
 			case "tomorrow":
 				// Do not silently add carryovers to an already closed next day.
@@ -104,6 +131,9 @@ func (s *Service) Close(ctx context.Context, userID uuid.UUID, req CloseRequest)
 				err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM daily_plans WHERE user_id=$1 AND plan_date=$2 AND state='closed')`, userID, nextDate).Scan(&closed)
 				if err == nil && closed {
 					return invalid("tomorrow is already closed")
+				}
+				if err == nil {
+					_, err = tx.Exec(ctx, `INSERT INTO task_carryovers(task_id,first_planned_date) SELECT id,planned_for_date FROM tasks WHERE id=$1 AND user_id=$2 ON CONFLICT DO NOTHING`, a.TaskID, userID)
 				}
 				if err == nil {
 					err = q.CloseTaskTomorrow(ctx, generated.CloseTaskTomorrowParams{ID: a.TaskID, UserID: userID, PlannedForDate: nextDate})
@@ -130,6 +160,7 @@ func (s *Service) Close(ctx context.Context, userID uuid.UUID, req CloseRequest)
 			return err
 		}
 		if result.CarriedToTomorrowCount > 0 {
+			result.CarriedToDate = result.NextDate
 			// New arrivals invalidate the destination draft, but do not confirm it.
 			if _, err := tx.Exec(ctx, `UPDATE daily_plans SET proposal=NULL,proposal_snapshot=NULL,version=version+1,updated_at=clock_timestamp() WHERE user_id=$1 AND plan_date=$2`, userID, nextDate); err != nil {
 				return err
