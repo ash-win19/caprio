@@ -2,6 +2,8 @@
 
 Research date: September 15, 2026. Scope: Plan, Inbox, Review, History, and Settings. Today remains the subject of PR #49 and its separate research report.
 
+Follow-up product decision: the user preferred the previous model picker inside the conversation composer. Restore that picker and remove the separate AI model disclosure. This supersedes the model-picker recommendation below; the other workspace changes remain in place.
+
 The recommendation is to give each page one clear job. Plan helps people decide what fits. Inbox captures work before that decision. Review records outcomes. History retrieves those records. Settings changes behavior that exists. Each page should show the information needed for its job first, with secondary detail available through clearly labeled controls.
 
 This report combines current first-party product documentation, original UX guidance, accessibility guidance, and a code audit. It does not include interviews, product analytics, or observed usability sessions. Recommendations below are design judgments to validate, not measured improvements. The audit describes the baseline inspected before this redesign, at commit `ee1ae446f00631909ed8f853fca788cc30b9de54`.
