@@ -9,7 +9,6 @@ import { DEFAULT_CATEGORIES } from '@/lib/types';
 import { invalidatePlanningQueries } from '@/lib/queries';
 
 export default function OnboardingPrefs() {
-  const [briefTime, setBriefTime] = useState('08:00');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
@@ -21,7 +20,7 @@ export default function OnboardingPrefs() {
     setError('');
     try {
       const selectedCategories = (categories.length ? categories : DEFAULT_CATEGORIES).filter(category => user?.categories.includes(category.name));
-      await completeOnboarding({ briefTime, proactiveReprioritization: false }, selectedCategories);
+      await completeOnboarding({ proactiveReprioritization: false }, selectedCategories);
       await invalidatePlanningQueries(client);
       navigate('/new');
     } catch (error) {
@@ -37,11 +36,9 @@ export default function OnboardingPrefs() {
       <div className="w-full max-w-[460px]">
         <h1 className="text-heading text-foreground mb-3">Make room for your day</h1>
         <p className="text-sm text-muted-foreground mb-8">Tell Caprio what needs doing and how much time you have. Review its suggestions before they become your plan.</p>
-        <label className="block text-sm text-foreground mb-2" htmlFor="brief-time">When do you usually plan your day?</label>
-        <input id="brief-time" type="time" value={briefTime} onChange={event => setBriefTime(event.target.value)} className="rounded-lg border border-border bg-card px-3 py-2 mb-3 text-foreground" />
-        <p className="text-xs text-muted-foreground mb-8">This saves your preference. Automatic reminders are not part of this version.</p>
+        <div className="mb-6"><h2 className="mb-3 text-sm font-medium">Your categories</h2><div className="flex flex-wrap gap-2">{user?.categories.map(name => <span key={name} className="rounded-md border border-border bg-card px-3 py-2 text-sm">{name}</span>)}</div><p className="mt-3 text-xs text-muted-foreground">You can change these in Settings anytime.</p></div>
         {error && <p role="alert" className="text-sm text-destructive mb-4">{error}</p>}
-        <Button onClick={handleStart} disabled={saving || !briefTime} className="w-full">{saving ? 'Saving...' : 'Plan my day'}</Button>
+        <Button onClick={handleStart} disabled={saving} className="w-full">{saving ? 'Saving...' : 'Plan my day'}</Button>
       </div>
     </div>
   );

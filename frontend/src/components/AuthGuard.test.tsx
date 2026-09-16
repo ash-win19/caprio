@@ -169,6 +169,12 @@ describe('AuthGuard morning reopen routing', () => {
     expect(screen.queryByTestId('review-page')).not.toBeInTheDocument();
   });
 
+  it('opens Plan after setup is complete', async () => {
+    mount('/onboarding/prefs');
+    expect(await screen.findByTestId('new-page')).toBeInTheDocument();
+    expect(screen.queryByTestId('today-page')).not.toBeInTheDocument();
+  });
+
   it('allows deliberate planning with unfinished older days', async () => {
     vi.mocked(api.getWorkflow).mockImplementation(async (date = today) => ({ ...workflow(date), oldestUnclosedDate: yesterday }));
     mount('/new');
