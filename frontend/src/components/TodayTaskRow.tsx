@@ -37,8 +37,7 @@ export function TodayTaskRow({ task, readOnly, sortable = false, canMoveUp = fal
         </div>
         {(task.description || task.priorityReason) && <details className="today-task-note">
           <summary><span>Plan note</span><ChevronDown size={13} aria-hidden /></summary>
-          {task.description && <p className="mt-1 max-w-prose whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{task.description}</p>}
-          {task.priorityReason && task.priorityReason !== task.description && <p className="mt-1 max-w-prose text-sm leading-6 text-muted-foreground">{task.priorityReason}</p>}
+          <p className="mt-1 max-w-prose whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{task.description || task.priorityReason}</p>
         </details>}
       </div>
       {sortable && <div className="today-task-tools">
