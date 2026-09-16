@@ -23,7 +23,7 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     origins,
 		AllowMethods:     []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "X-Caprio-Timezone"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 	}))
@@ -44,6 +44,15 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 		api.Use(middleware.DevBypass(store.Queries))
 	}
 
+	api.Use(func(c *gin.Context) {
+		ctx, err := chat.WithTimezone(c.Request.Context(), c.GetHeader("X-Caprio-Timezone"))
+		if err != nil {
+			c.AbortWithStatusJSON(400, gin.H{"error": "Invalid timezone", "code": "validation"})
+			return
+		}
+		c.Request = c.Request.WithContext(ctx)
+		c.Next()
+	})
 	var agent chat.Agent
 	if cfg.MastraURL != "" {
 		agent = mastra.NewClient(cfg.MastraURL)
@@ -67,6 +76,7 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 		api.POST("/day/plan/confirm", chatH.Confirm)
 		api.POST("/day/plan/discard", chatH.Discard)
 		api.POST("/day/rollover", chatH.Rollover)
+		api.POST("/task-changes/:id/undo", chatH.Undo)
 
 		api.GET("/tasks", tasks.List)
 		api.POST("/tasks", tasks.Create)

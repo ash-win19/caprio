@@ -31,7 +31,7 @@ test('planner drafts survive date selection, browser history and page navigation
   await expect(input).toHaveValue('Keep my unsubmitted planning notes');
   await page.goForward();
   await expect(input).toHaveValue('A separate draft for tomorrow');
-  await page.getByRole('link', { name: 'View day', exact: true }).click();
+  await page.getByRole('link', { name: 'View tasks', exact: true }).click();
   await page.goBack();
   await expect(input).toHaveValue('A separate draft for tomorrow');
   expect(writes).toEqual([]);

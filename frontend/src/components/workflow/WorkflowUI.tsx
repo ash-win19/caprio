@@ -147,9 +147,24 @@ export function DaySummary({ workflow }: { workflow: Workflow }) {
         {tasks.length > 0 ? <ul className="space-y-2">{tasks.map(task => <li key={task.id} className="rounded-lg bg-muted px-3 py-2 text-sm">{task.title}</li>)}</ul> : <p className="text-xs text-muted-foreground">No tasks</p>}
       </section>)}</div>}
     <p className="mb-5 text-sm text-muted-foreground">{carriedCount > 0 ? `Carried tasks are saved for ${dateLabel(destination)}. Unchecked tasks continue forward until you finish or remove them.` : 'Nothing was carried from this day.'}</p>
+    <ReviewHistory workflow={workflow} />
     <div className="flex flex-wrap gap-3">
       <Button asChild><Link to={nextPath}>{nextLabel} <ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
       <Button asChild variant="outline"><Link to="/momentum">View history</Link></Button>
     </div>
+  </section>;
+}
+
+export function ReviewHistory({ workflow }: { workflow: Workflow }) {
+  const reviews = workflow.state === 'closed' ? workflow.reviewHistory?.slice(0, -1) : workflow.reviewHistory;
+  if (!reviews?.length) return null;
+  return <section aria-label="Earlier reviews" className="my-6 space-y-3">
+    <h3 className="text-sm font-medium">Earlier reviews</h3>
+    {reviews.map((entry, index) => <details key={entry.id} className="workspace-details rounded-xl border border-border p-4">
+      <summary>Review {index + 1}<span className="ml-2 text-xs text-muted-foreground">{entry.review.completedCount} completed · {entry.review.carriedToTomorrowCount} carried</span></summary>
+      <p className="mt-3 text-xs text-muted-foreground">Saved {new Date(entry.createdAt).toLocaleString()}. This records the day at that review.</p>
+      {entry.review.notes && <p className="mt-2 whitespace-pre-wrap text-sm">{entry.review.notes}</p>}
+      {entry.taskDetailsAvailable ? <ul className="mt-3 space-y-2 text-sm">{entry.tasks.map(task => <li key={task.id}>{task.title}<span className="ml-2 text-xs text-muted-foreground">{task.completed ? 'Completed' : task.status === 'dropped' ? 'Dropped' : `Carried to ${dateLabel(task.plannedForDate)}`}</span></li>)}</ul> : <p className="mt-2 text-sm text-muted-foreground">Task details were not recorded for this review.</p>}
+    </details>)}
   </section>;
 }

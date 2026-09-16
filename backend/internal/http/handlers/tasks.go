@@ -25,6 +25,9 @@ func todayDate() pgtype.Date {
 func badTask(message string) error { return &chat.ValidationError{Message: message} }
 
 func dayIsOpen(ctx context.Context, tx pgx.Tx, userID uuid.UUID, date pgtype.Date) error {
+	if err := chat.WritableDate(ctx, date); err != nil {
+		return err
+	}
 	var closed bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM daily_plans WHERE user_id=$1 AND plan_date=$2 AND state='closed')`, userID, date).Scan(&closed); err != nil {
 		return err
@@ -406,7 +409,7 @@ func (h *TaskHandler) mutate(ctx context.Context, userID uuid.UUID, fn func(pgx.
 		if err := fn(tx, q); err != nil {
 			return err
 		}
-		_, err := tx.Exec(ctx, `UPDATE daily_plans SET proposal=NULL,proposal_snapshot=NULL,version=version+1,updated_at=clock_timestamp() WHERE user_id=$1 AND state <> 'closed' AND proposal IS NOT NULL`, userID)
+		_, err := tx.Exec(ctx, `UPDATE daily_plans SET proposal=NULL,proposal_snapshot=NULL,version=version+1,updated_at=clock_timestamp() WHERE user_id=$1 AND state <> 'closed'`, userID)
 		return err
 	})
 }

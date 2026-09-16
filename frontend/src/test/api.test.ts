@@ -102,6 +102,7 @@ describe('API Client', () => {
             content: 'Hello',
             date: '2026-09-06',
             requestId: '92fc090b-0111-42cc-9a34-a8c0052205e9',
+            contractVersion: 2,
           }),
         })
       );
@@ -145,7 +146,7 @@ describe('API Client', () => {
         expect.stringContaining('/api/chat/stream'),
         expect.objectContaining({
           method: 'POST',
-          body: JSON.stringify({ content: 'Hello', date: '2026-09-06', requestId: '92fc090b-0111-42cc-9a34-a8c0052205e9' }),
+          body: JSON.stringify({ content: 'Hello', date: '2026-09-06', requestId: '92fc090b-0111-42cc-9a34-a8c0052205e9', contractVersion: 2 }),
         }),
       );
       expect(deltas).toEqual(['How much', ' time?']);

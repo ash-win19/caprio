@@ -114,12 +114,12 @@ test('completing and restoring a task preserves focus, progress and explicit rev
   await expect(page.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '1');
   const completed = page.locator('.today-completed');
   await expect(completed).not.toHaveAttribute('open');
-  await completed.locator('summary').click();
+  await completed.locator(':scope > summary').click();
   await page.getByRole('checkbox', { name: `Mark ${titles[0]} incomplete` }).click();
   await expect(page.getByRole('checkbox', { name: `Mark ${titles[0]} complete` })).toBeFocused();
   for (const title of titles) await page.getByRole('checkbox', { name: `Mark ${title} complete` }).click();
   await expect(page.getByRole('heading', { name: 'Your tasks are complete' })).toBeVisible();
-  await expect(page.locator('.today-completed summary')).toBeFocused();
+  await expect(page.locator('.today-completed > summary')).toBeFocused();
   await expect(page.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '3');
   await expect(page).toHaveURL('/today');
   await expect(page.locator('.today-review-ready').getByRole('link', { name: 'Review day' })).toBeVisible();

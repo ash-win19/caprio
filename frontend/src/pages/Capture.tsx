@@ -46,7 +46,7 @@ export default function Capture() {
       onSuccess: () => { setDraft(previous => ({ ...previous, title: '' })); setNotice('Task saved to your inbox.'); inputRef.current?.focus(); },
     });
   };
-  const discussHref = (taskTitle: string) => `/new?date=${targetDate}&intent=interrupt&seed=${encodeURIComponent(`Consider adding to ${targetLabel}: ${taskTitle}`)}`;
+  const discussHref = (task: Task) => `/new?date=${targetDate}&intent=interrupt&taskId=${encodeURIComponent(task.id)}&seed=${encodeURIComponent(`Consider adding to ${targetLabel}: ${task.title}`)}`;
 
   return <Page className="[overflow-wrap:anywhere]">
     <PageHeader title="Inbox"><p className="text-sm text-muted-foreground">Save a task now. Decide when to do it later.</p></PageHeader>
@@ -72,7 +72,7 @@ export default function Capture() {
         <div className="min-w-0 flex-[1_1_15rem]"><h3 className="break-words text-base font-medium">{task.title}</h3><p className="mt-1 text-xs text-muted-foreground">{task.category}{task.duration ? ` · ${task.duration} min` : ''}{task.urgency === 'high' ? ' · High urgency' : ''}</p>{task.priorityReason && <details className="workspace-details workspace-details-compact mt-1"><summary>Plan note<ChevronDown size={13} aria-hidden /></summary><p className="mt-1 text-sm leading-6 text-muted-foreground">{task.priorityReason}</p></details>}</div>
         <div className="flex max-w-full flex-wrap items-center gap-1">
           <Button variant="outline" className="h-11" disabled={busy || !workflow.data} onClick={() => { setNotice(''); focusCapture.current = true; promote.mutate({ id: task.id, updates: { status: 'planned', plannedForDate: targetDate } }, { onSuccess: () => { setNotice(`${task.title} added to ${targetLabel}'s plan.`); inputRef.current?.focus(); } }); }}>Add to {targetLabel}<ArrowRight size={14} className="ml-2" /></Button>
-          <DropdownMenu><DropdownMenuTrigger asChild><Button id={`inbox-actions-${task.id}`} size="icon" variant="ghost" className="h-11 w-11" disabled={busy} aria-label={`More options for ${task.title}`}><MoreHorizontal size={18} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem asChild><Link to={discussHref(task.title)}>Discuss in Plan</Link></DropdownMenuItem><DropdownMenuItem onSelect={() => { remove.reset(); lastDeleteId.current = task.id; setDeleteTarget(task); }}><Trash2 size={14} className="mr-2" />Delete task</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
+          <DropdownMenu><DropdownMenuTrigger asChild><Button id={`inbox-actions-${task.id}`} size="icon" variant="ghost" className="h-11 w-11" disabled={busy} aria-label={`More options for ${task.title}`}><MoreHorizontal size={18} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem asChild><Link to={discussHref(task)}>Discuss in Plan</Link></DropdownMenuItem><DropdownMenuItem onSelect={() => { remove.reset(); lastDeleteId.current = task.id; setDeleteTarget(task); }}><Trash2 size={14} className="mr-2" />Delete task</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
         </div>
       </li>)}</ul>}
       {!!tasks.length && <div className="mt-5 flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-muted-foreground">Add to {targetLabel} saves immediately.</p><Link to={`/new?date=${targetDate}`} className="inline-flex min-h-11 items-center gap-2 text-sm underline underline-offset-4">Plan with my inbox<ArrowRight size={14} /></Link></div>}

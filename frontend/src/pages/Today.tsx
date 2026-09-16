@@ -10,14 +10,14 @@ import { Button } from '@/components/ui/button';
 import { Page, PageHeader } from '@/components/PageLayout';
 import { TodayTaskRow } from '@/components/TodayTaskRow';
 import { RecoveryNotice } from '@/components/workflow/RecoveryNotice';
-import { DaySummary, WorkflowError } from '@/components/workflow/WorkflowUI';
+import { DaySummary, ReviewHistory, WorkflowError } from '@/components/workflow/WorkflowUI';
 import { selectedDate } from '@/components/workflow/dates';
 import type { Task } from '@/lib/types';
 import { previousDate } from '@/lib/date';
 
 const EMPTY_TASKS: Task[] = [];
 
-export default function Today() {
+export default function Today({ embedded = false }: { embedded?: boolean }) {
   const [params] = useSearchParams();
   const today = useLocalDay();
   const date = selectedDate(params.get('date'), today);
@@ -82,9 +82,9 @@ export default function Today() {
   const allComplete = tasks.length > 0 && active.length === 0;
 
   return <Page className="today-page">
-    <PageHeader title={isToday ? 'Today' : 'Daily plan'} date={date} status={workflow ? { planning: 'Planning', active: 'Active', closed: 'Closed' }[workflow.state] : undefined} actions={workflow && (workflow.state === 'closed'
-      ? <Button asChild variant="outline"><Link to={`/review?date=${date}`}>View review</Link></Button>
-      : !readOnly ? <Button asChild variant="outline"><Link to={dayInProgress ? interruptHref : `/new?date=${date}`}>{dayInProgress ? 'Adjust plan' : 'Plan day'}</Link></Button> : null)} />
+    {!embedded && <PageHeader title={isToday ? 'Today' : 'Daily plan'} date={date} status={workflow ? { planning: 'Planning', active: 'Active', closed: 'Closed' }[workflow.state] : undefined} actions={workflow && (workflow.state === 'closed'
+      ? <div className="flex gap-2"><Button asChild variant="outline"><Link to={`/review?date=${date}`}>View review</Link></Button>{isToday && <Button asChild><Link to={interruptHref}>Add tasks</Link></Button>}</div>
+      : !readOnly ? <Button asChild variant="outline"><Link to={dayInProgress ? interruptHref : `/new?date=${date}`}>{dayInProgress ? 'Adjust plan' : 'Plan day'}</Link></Button> : null)} />}
     {tasksQuery.isLoading || workflowQuery.isLoading ? <p role="status" className="py-16 text-center text-sm text-muted-foreground">Loading your plan…</p> : tasksQuery.error || workflowQuery.error ? <WorkflowError error={tasksQuery.error || workflowQuery.error} retry={() => { void tasksQuery.refetch(); void workflowQuery.refetch(); }} /> : workflow?.state === 'closed' ? <DaySummary workflow={workflow} /> : <>
       <section className="today-work" aria-labelledby="today-tasks-heading">
         <div className="today-list-heading">
@@ -108,7 +108,7 @@ export default function Today() {
         {!tasks.length ? <section className="today-empty">
           <ListChecks className="mb-4 h-7 w-7 text-muted-foreground" />
           <h3 className="text-xl font-medium">{readOnly ? 'No saved plan for this day' : workflow?.state === 'active' ? 'Nothing planned for this day' : 'Make room for what matters today'}</h3>
-          <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">{readOnly ? 'Choose another day from your history.' : workflow?.state === 'active' ? 'Your plan is saved with no tasks. Enjoy the space, or adjust it if something comes up.' : 'Start with the tasks on your mind. Caprio will help you decide what fits and what can wait.'}</p>
+          <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">{readOnly ? 'Choose another day from your history.' : workflow?.state === 'active' ? 'Your plan is saved with no tasks. Enjoy the space, or adjust it if something comes up.' : 'Start with the tasks on your mind. They will appear here as you add them.'}</p>
           <Button asChild className="mt-5"><Link to={readOnly ? '/momentum' : dayInProgress ? interruptHref : `/new?date=${date}`}>{readOnly ? 'View history' : dayInProgress ? 'Adjust plan' : 'Plan day'}<ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
         </section> : <>
           {fresh.length > 0 && <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -140,6 +140,7 @@ export default function Today() {
         </>}
       </section>
     </>}
-    {isToday && <RecoveryNotice />}
+    {workflow && workflow.state !== 'closed' && <ReviewHistory workflow={workflow} />}
+    {isToday && !embedded && <RecoveryNotice />}
   </Page>;
 }

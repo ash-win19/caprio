@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type SetStateAction } from 'react';
+import { useCallback, useEffect, useRef, useState, useId, type SetStateAction } from 'react';
 import { create } from 'zustand';
 
 // Session memory only. Clear on account changes; never write private drafts to storage.
@@ -23,11 +23,15 @@ export function useDateDraft<T>(kind: string, date: string, initial: T) {
 
 export const useNavigationState = create<{ locked: boolean }>(() => ({ locked: false }));
 
+const navigationLocks = new Map<string, boolean>();
 export function useNavigationLock(locked: boolean, hasDraft = false) {
+  const id = useId();
   useEffect(() => {
-    useNavigationState.setState({ locked });
-    return () => { useNavigationState.setState({ locked: false }); };
-  }, [locked]);
+    navigationLocks.set(id, locked);
+    const refresh = () => useNavigationState.setState({ locked: [...navigationLocks.values()].some(Boolean) });
+    refresh();
+    return () => { navigationLocks.delete(id); refresh(); };
+  }, [id, locked]);
   useEffect(() => {
     if (!locked && !hasDraft) return;
     const preventLoss = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };

@@ -42,16 +42,20 @@ type ProposalTask struct {
 	Reason      string     `json:"reason"`
 }
 type AgentReply struct {
-	Message          string         `json:"message"`
-	Phase            string         `json:"phase"`
-	AvailableMinutes *int32         `json:"availableMinutes"`
-	Tasks            []ProposalTask `json:"tasks"`
+	ContractVersion  int             `json:"contractVersion,omitempty"`
+	Operations       []TaskOperation `json:"operations,omitempty"`
+	Message          string          `json:"message"`
+	Phase            string          `json:"phase"`
+	AvailableMinutes *int32          `json:"availableMinutes"`
+	Tasks            []ProposalTask  `json:"tasks"`
 }
 type Proposal struct {
-	ID               uuid.UUID      `json:"id"`
-	Summary          string         `json:"summary"`
-	AvailableMinutes *int32         `json:"availableMinutes"`
-	Tasks            []ProposalTask `json:"tasks"`
+	TaskTitles       map[string]string `json:"taskTitles,omitempty"`
+	Operations       []TaskOperation   `json:"operations,omitempty"`
+	ID               uuid.UUID         `json:"id"`
+	Summary          string            `json:"summary"`
+	AvailableMinutes *int32            `json:"availableMinutes"`
+	Tasks            []ProposalTask    `json:"tasks"`
 }
 type Review struct {
 	CarriedToDate          string `json:"carriedToDate,omitempty"`
@@ -62,7 +66,17 @@ type Review struct {
 	Notes                  string `json:"notes"`
 	EnergyLevel            *int32 `json:"energyLevel"`
 }
+type ReviewRecord struct {
+	ID                   uuid.UUID        `json:"id"`
+	CreatedAt            string           `json:"createdAt"`
+	Review               Review           `json:"review"`
+	Tasks                []generated.Task `json:"tasks"`
+	TaskDetailsAvailable bool             `json:"taskDetailsAvailable"`
+}
+
 type Workflow struct {
+	ChangeReceipts       []ChangeReceipt         `json:"changeReceipts"`
+	ReviewHistory        []ReviewRecord          `json:"reviewHistory"`
 	CarryoverOrigins     map[string]string       `json:"carryoverOrigins"`
 	Date                 string                  `json:"date"`
 	State                string                  `json:"state"`
@@ -115,6 +129,15 @@ func ParseAgentReply(text string, tasks, backlog []generated.Task, categories []
 	}
 	if reply.AvailableMinutes != nil && (*reply.AvailableMinutes < 0 || *reply.AvailableMinutes > 1440) {
 		return nil, invalid("availableMinutes must be between 0 and 1440")
+	}
+	if len(reply.Operations) > 0 || reply.Phase == "actions" {
+		if reply.ContractVersion != 2 || len(reply.Tasks) != 0 || (reply.Phase != "actions" && reply.Phase != "proposal") {
+			return nil, invalid("invalid operation contract")
+		}
+		if err := validateOperations(reply.Operations, "", false); err != nil {
+			return nil, err
+		}
+		return &reply, nil
 	}
 	if reply.Phase == "clarifying" {
 		if reply.Tasks == nil || len(reply.Tasks) != 0 {
