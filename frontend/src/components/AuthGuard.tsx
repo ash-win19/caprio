@@ -4,7 +4,7 @@ import { useAuth0 } from '@auth0/auth0-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { activateAccount } from '@/lib/accountSession';
 import { useAppStore } from '@/lib/store';
-import { bootstrap, setAccessTokenProvider } from '@/lib/api';
+import { bootstrap, rolloverDay, setAccessTokenProvider } from '@/lib/api';
 import { useLocalDay } from '@/lib/useLocalDay';
 import { clearDateDrafts } from '@/lib/dateDrafts';
 import { QUERY_KEYS } from '@/lib/queries';
@@ -63,7 +63,15 @@ export function AuthGuard({ children }: { children: ReactNode }) {
 
   const session = useQuery({
     queryKey: [...QUERY_KEYS.bootstrap, date],
-    queryFn: () => bootstrap(date),
+    queryFn: async ({ signal }) => {
+      const rolledOver = await rolloverDay(signal);
+      if (signal.aborted) throw new DOMException('The account session changed.', 'AbortError');
+      if (rolledOver) {
+        client.setQueryData([...QUERY_KEYS.workflow, rolledOver.date], rolledOver);
+        await Promise.all([QUERY_KEYS.tasks, QUERY_KEYS.sessions].map(queryKey => client.invalidateQueries({ queryKey })));
+      }
+      return bootstrap(date);
+    },
     enabled: Boolean(account && preparedAccount === account),
     retry: 1,
     staleTime: 60_000,

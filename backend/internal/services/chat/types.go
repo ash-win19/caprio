@@ -54,6 +54,8 @@ type Proposal struct {
 	Tasks            []ProposalTask `json:"tasks"`
 }
 type Review struct {
+	CarriedToDate          string `json:"carriedToDate,omitempty"`
+	Automatic              bool   `json:"automatic,omitempty"`
 	CompletedCount         int32  `json:"completedCount"`
 	CarriedToTomorrowCount int32  `json:"carriedToTomorrowCount"`
 	DroppedCount           int32  `json:"droppedCount"`
@@ -61,6 +63,7 @@ type Review struct {
 	EnergyLevel            *int32 `json:"energyLevel"`
 }
 type Workflow struct {
+	CarryoverOrigins     map[string]string       `json:"carryoverOrigins"`
 	Date                 string                  `json:"date"`
 	State                string                  `json:"state"`
 	Version              int32                   `json:"version"`
@@ -140,7 +143,6 @@ func ParseAgentReply(text string, tasks, backlog []generated.Task, categories []
 		cats[cat.ID] = true
 	}
 	seen := map[uuid.UUID]bool{}
-	total := int32(0)
 	for i := range reply.Tasks {
 		task := &reply.Tasks[i]
 		task.Title = strings.TrimSpace(task.Title)
@@ -163,38 +165,13 @@ func ParseAgentReply(text string, tasks, backlog []generated.Task, categories []
 			}
 			seen[*task.ID] = true
 		}
-		if task.Disposition == "today" {
-			total += task.Duration
-		}
 	}
 	for id := range required {
 		if !seen[id] {
 			return nil, invalidCode("plan_incomplete", "proposal omitted an unfinished task")
 		}
 	}
-	if err := CapacityError(reply.AvailableMinutes, total); err != nil {
-		return nil, err
-	}
 	return &reply, nil
-}
-
-// TodayDuration sums durations for proposal tasks kept on today.
-func TodayDuration(tasks []ProposalTask) int32 {
-	var total int32
-	for _, task := range tasks {
-		if task.Disposition == "today" {
-			total += task.Duration
-		}
-	}
-	return total
-}
-
-// CapacityError is the hard gate: known available minutes cannot be exceeded.
-func CapacityError(available *int32, planned int32) error {
-	if available != nil && planned > *available {
-		return invalidCode("over_capacity", "proposed tasks exceed the available time: %d minutes planned, %d minutes available", planned, *available)
-	}
-	return nil
 }
 
 func snapshot(tasks, backlog []generated.Task) string {

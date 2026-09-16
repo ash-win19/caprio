@@ -1,6 +1,6 @@
 # Daily planning workflow
 
-Caprio helps an individual professional turn the work on their mind into a realistic plan for one selected calendar day. The planner gathers tasks and constraints, proposes a complete plan, and waits for explicit confirmation before it changes saved work.
+Caprio helps an individual professional organize the work on their mind into a task list for one selected calendar day. The planner gathers tasks and constraints, proposes a complete plan, and waits for explicit confirmation before it changes saved work.
 
 ## Pages
 
@@ -37,7 +37,7 @@ stateDiagram-v2
 2. The API loads that day's messages, saved tasks, inbox, categories, state, version, pending proposal, and review.
 3. A chat request includes a unique request ID. The API serializes mutations for the account and uses the request ID to avoid duplicate model turns.
 4. The general planner receives trusted backend context plus conversation history. Task content is treated as user data.
-5. The API strictly validates the planner's JSON. A proposal must account for every unfinished saved task exactly once, use only owned IDs, and fit known available time.
+5. The API strictly validates the planner's JSON. A proposal must account for every unfinished saved task exactly once and use only owned IDs. Estimates may exceed available time, including zero available minutes. Time never determines whether requested work stays in the proposal.
 6. Chat saves messages and a draft. It never changes tasks.
 7. Confirmation checks the proposal ID, workflow version, and task snapshot in one transaction. Only then does it create, move, and order tasks.
 8. Direct task edits invalidate open drafts so the user cannot confirm an outdated plan.
@@ -46,11 +46,11 @@ stateDiagram-v2
 
 Saved tasks alone do not confirm a day. Manual or carried tasks remain visible and reviewable while the workflow stays `planning`; only explicit proposal confirmation changes it to `active`. A confirmed empty day remains active until reviewed.
 
-The workflow response includes `oldestUnclosedDate`, the earliest earlier date with an active plan or saved planned/completed tasks and no closed review. Morning routing and the Review sidebar link lead to that date before today's plan. Recovery works through one explicit calendar-day carry at a time, including missed weekends. Historical reviews show the actual destination date. A carry clears an outdated destination proposal and preserves its confirmation state; carrying into a closed destination rejects the whole review.
+The workflow response includes `oldestUnclosedDate`, the earliest earlier date with an active plan or saved planned/completed tasks and no closed review. Automatic rollover resolves these dates before the app loads today's tasks. When the app opens or the local date changes, it automatically archives earlier unfinished days and moves unchecked tasks to the current open day, including after missed weekends. The first planned date is preserved in task_carryovers. Today shows carried tasks in a separate expandable section. Manual review defaults unchecked tasks to Tomorrow and still permits Done or Drop. Historical reviews show the actual destination date through review.carriedToDate, with the following day as a fallback for older reviews. A carry clears an outdated destination proposal and preserves its confirmation state; carrying into a closed destination rejects the whole review.
 
 Closed summaries group task names from the immutable archive by Done, Carried, and Dropped. `taskDetailsAvailable: false` identifies older reviews without an archive; their saved totals remain visible, but current live tasks are never substituted for historical details.
 
-Workflow errors retain an `error` message and add a stable `code`: `plan_incomplete`, `over_capacity`, `validation`, `conflict`, `model_unavailable`, `not_found`, or `internal`. Streaming failures carry the same code and an HTTP-style `status` in the error event. Authentication retains HTTP 401/403 handling; the client labels expired sessions `auth`. Plan validation failures preserve saved work and never trigger model fallback.
+Workflow errors retain an `error` message and add a stable `code`: `plan_incomplete`, `validation`, `conflict`, `model_unavailable`, `not_found`, or `internal`. Streaming failures carry the same code and an HTTP-style `status` in the error event. Authentication retains HTTP 401/403 handling; the client labels expired sessions `auth`. Plan validation failures preserve saved work and never trigger model fallback.
 
 Fresh committed transitions log `plan_confirmed`, `day_closed`, and, when nonzero, `tasks_carried`. Records include account/date/version identifiers and counts, plus proposal or review IDs. They exclude task text and notes. Replays and rollbacks emit no success records. These operational logs are best effort; they do not provide durable exactly-once delivery across a process crash.
 
@@ -59,3 +59,11 @@ Fresh committed transitions log `plan_confirmed`, `day_closed`, and, when nonzer
 [`src/mastra/agents/daily-planner.md`](../src/mastra/agents/daily-planner.md) is the canonical instruction contract for the single MVP planner. Build scripts embed it into the Mastra agent, and `npm run verify:planner` checks that the built instructions match the Markdown and that only the general planner is registered.
 
 The agent can ask questions and return proposals. It cannot mutate tasks, claim that a draft was saved as a plan, accept instructions embedded in task data, or bypass confirmation. The Go API owns validation, authorization, concurrency, persistence, and all workflow transitions.
+
+## Estimates and automatic carry-forward
+
+Task duration and available minutes are informational. All requested tasks belong in the proposed day regardless of the total estimate. Backlog disposition requires the user's intent to defer or remove work. Confirmation still saves the complete draft atomically. Completed tasks remain done.
+
+`POST /api/day/rollover` takes an IANA timezone and derives today from the server clock. Browsing a future calendar date cannot trigger an early carry. Each earlier day is processed under the account lock: checked tasks retain their completion timestamp, unchecked tasks keep their IDs and first planned dates, and the source day stores an immutable archive. Concurrent calls and retries are safe. Missed dates without saved work do not create empty intermediate plans. A closed destination stays closed; outstanding work waits for the next open day. Inbox tasks are excluded.
+
+The UI runs rollover during account bootstrap, on a new local date, and on subsequent bootstrap refreshes. This is automatic when the app is used; no server scheduler runs while it is closed. Apply migration 10 before deploying the backend, then deploy the frontend and updated Mastra planner.

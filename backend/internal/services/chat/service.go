@@ -99,6 +99,22 @@ func load(ctx context.Context, conn generated.DBTX, userID uuid.UUID, date pgtyp
 	if err != nil {
 		return nil, err
 	}
+	w.CarryoverOrigins = map[string]string{}
+	rows, err := conn.Query(ctx, `SELECT c.task_id::text,c.first_planned_date::text FROM task_carryovers c JOIN tasks t ON t.id=c.task_id WHERE t.user_id=$1`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, origin string
+		if err := rows.Scan(&id, &origin); err != nil {
+			return nil, err
+		}
+		w.CarryoverOrigins[id] = origin
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return w, nil
 }
 
@@ -231,9 +247,6 @@ func (s *Service) Confirm(ctx context.Context, userID uuid.UUID, date pgtype.Dat
 		}
 		if w.Proposal == nil || w.Proposal.ID != proposalID || w.Version != version || before == nil || *before != snapshot(w.Tasks, w.Backlog) {
 			return ErrConflict
-		}
-		if err := CapacityError(w.Proposal.AvailableMinutes, TodayDuration(w.Proposal.Tasks)); err != nil {
-			return err
 		}
 		categories, err := q.ListCategoriesByUser(ctx, userID)
 		if err != nil {

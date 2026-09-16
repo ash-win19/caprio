@@ -26,6 +26,32 @@ func NewChatHandler(store *db.Store, service *chat.Service) *ChatHandler {
 	return &ChatHandler{store: store, chatService: service}
 }
 
+func (h *ChatHandler) Rollover(c *gin.Context) {
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	var req struct {
+		Timezone string `json:"timezone" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "timezone is required", "code": "validation"})
+		return
+	}
+	today, err := chat.LocalToday(time.Now(), req.Timezone)
+	if err != nil {
+		workflowError(c, err)
+		return
+	}
+	w, err := h.chatService.Rollover(c.Request.Context(), userID, today)
+	if err != nil {
+		workflowError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, w)
+}
+
 // workflowStatus maps a service error to the HTTP status and message the client
 // should see. Unexpected errors are logged here and reported generically.
 func workflowStatus(err error) (int, string) {

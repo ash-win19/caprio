@@ -246,7 +246,7 @@ describe('Daily planning workflow', () => {
     mount(<Review />, '/review');
     expect(await screen.findByText('Already completed · 1')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Done: Finish report' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: 'Tomorrow: Team meeting' }));
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     fireEvent.click(screen.getByText(/Add a reflection/));
@@ -325,25 +325,28 @@ describe('Daily planning workflow', () => {
     expect(screen.getByRole('link', { name: 'Review day' })).toHaveAttribute('href', `/review?date=${today}`);
   });
 
-  it('identifies carried tasks in the ordered Today list', async () => {
-    workflow = { ...workflow, state: 'active' };
+  it('separates older work in a collapsible carryover list with its original date', async () => {
+    workflow = { ...workflow, state: 'active', carryoverOrigins: { carry: previousDate(today) } };
     vi.mocked(api.getTodayTasks).mockResolvedValue([
       { id: 'carry', title: 'Finish report', urgency: 'medium', category: 'Uncategorized', completed: false, addedToday: false, carriedOver: true, order: 0 },
       { id: 'fresh', title: 'Team meeting', urgency: 'medium', category: 'Uncategorized', completed: false, addedToday: true, carriedOver: false, order: 1 },
     ]);
     mount(<Today />, '/today');
-    expect(await screen.findByText('Carried over')).toBeInTheDocument();
+    expect(await screen.findByText('Carried forward')).toBeInTheDocument();
+    expect(screen.getByText('1 from yesterday')).toBeInTheDocument();
     expect(screen.getByRole('list', { name: 'Remaining tasks' })).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Carried forward'));
+    expect(screen.getByTitle(dateLabel(previousDate(today), true))).toHaveAttribute('datetime', previousDate(today));
     expect(screen.getByRole('checkbox', { name: 'Mark Finish report complete' })).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: 'Mark Team meeting complete' })).toBeInTheDocument();
   });
 
-  it('explains one-hop carry and drop outcomes on Review', async () => {
+  it('defaults unchecked work to carry forward on Review', async () => {
     workflow = { ...workflow, state: 'active', tasks: [task('meeting')] };
     mount(<Review />, '/review');
-    expect(await screen.findByText(/Tomorrow moves the task to/i)).toBeInTheDocument();
-    expect(screen.getByText(/Moving it again requires another explicit carry choice/i)).toBeInTheDocument();
-    expect(screen.getByText(/Drop removes it from the plan/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Unchecked tasks are set to tomorrow/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Tomorrow: Team meeting' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText(/Drop removes a task from the plan/i)).toBeInTheDocument();
   });
 
   it('surfaces a human-readable error when tomorrow is already closed', async () => {
@@ -357,22 +360,22 @@ describe('Daily planning workflow', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/Choose Done or Drop/i);
     expect(screen.getByRole('alert')).not.toHaveTextContent(/reopen tomorrow/i);
   });
-  it('shows a carried-from-yesterday chip above the plan composer', async () => {
+  it('shows a carryover count above the plan composer', async () => {
     workflow = { ...workflow, tasks: [task('report', false, 1)] };
     mount(<New />, '/new');
     const input = await screen.findByRole('textbox', { name: 'Message about your day' });
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/1 carried from yesterday/i));
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/1 carried forward/i));
     expect(input.getAttribute('placeholder') || '').toMatch(/carried task/i);
   });
 
-  it('warns about postponement and highlights Drop for already carried tasks on Review', async () => {
+  it('keeps repeatedly carried tasks without pressuring the user to drop them', async () => {
     workflow = { ...workflow, state: 'active', tasks: [task('report', false, 1)] };
     mount(<Review />, '/review');
-    expect(await screen.findByText(/postponed before/i)).toBeInTheDocument();
-    expect(screen.getByText(/explicitly carry it one more day/i)).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Tomorrow: Finish report' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByText(/postponed before/i)).not.toBeInTheDocument();
     const drop = screen.getByRole('button', { name: 'Drop: Finish report' });
     expect(drop).toHaveAttribute('aria-pressed', 'false');
-    expect(drop.className).toMatch(/amber/);
+    expect(drop.className).not.toMatch(/amber/);
   });
 
   it('lets you close yesterday when it is still active and shows the reopen banner', async () => {
@@ -384,12 +387,12 @@ describe('Daily planning workflow', () => {
     expect(screen.queryByText('This day is in your history')).not.toBeInTheDocument();
   });
 
-  it('hard-blocks confirm when the draft is over capacity', async () => {
+  it.each([0, 60])('lets users confirm all tasks with %i minutes available', async (availableMinutes) => {
     workflow = {
       ...workflow,
       proposal: {
         ...proposal(),
-        availableMinutes: 60,
+        availableMinutes,
         tasks: [
           { title: 'Finish report', duration: 90, urgency: 'high', disposition: 'today', reason: 'Due this afternoon.' },
           { title: 'Clean inbox', duration: 30, urgency: 'low', disposition: 'today', reason: 'Would also take time.' },
@@ -397,19 +400,25 @@ describe('Daily planning workflow', () => {
       },
     };
     mount(<New />, '/new');
-    expect(await screen.findByRole('alert')).toHaveTextContent('Plan is 1h over your 1h day');
-    expect(screen.getByRole('button', { name: 'Confirm plan' })).toBeDisabled();
+    const confirm = await screen.findByRole('button', { name: 'Confirm plan' });
+    expect(screen.getByText('Finish report')).toBeInTheDocument();
+    expect(screen.getByText('Clean inbox')).toBeInTheDocument();
+    expect(confirm).toBeEnabled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(api.confirmDayPlan).not.toHaveBeenCalled();
+    fireEvent.click(confirm);
+    await waitFor(() => expect(api.confirmDayPlan).toHaveBeenCalledWith({ date: today, proposalId: 'proposal-1', version: 2 }));
   });
 
-  it('shows remaining minutes on Today and warns when over available capacity', async () => {
+  it('shows estimates on Today without treating available time as a limit', async () => {
     workflow = { ...workflow, state: 'active', availableMinutes: 45 };
     vi.mocked(api.getTodayTasks).mockResolvedValue([
       { id: 'report', title: 'Finish report', urgency: 'medium', category: 'Uncategorized', completed: false, addedToday: true, carriedOver: false, order: 0, duration: 30 },
       { id: 'meeting', title: 'Team meeting', urgency: 'medium', category: 'Uncategorized', completed: false, addedToday: true, carriedOver: false, order: 1, duration: 30 },
     ]);
     mount(<Today />, '/today');
-    expect(await screen.findByText(/60 estimated min left · 45 min planned capacity · over capacity/i)).toBeInTheDocument();
+    expect(await screen.findByText('60 min estimated remaining · 45 min available')).toBeInTheDocument();
+    expect(screen.queryByText(/over capacity/i)).not.toBeInTheDocument();
   });
 
   it('keeps one adjustment action and a separate review action on an active Today', async () => {

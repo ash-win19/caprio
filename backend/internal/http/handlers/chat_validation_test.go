@@ -29,14 +29,12 @@ func (a validationAgent) StreamChat(ctx context.Context, messages []mastra.ChatM
 
 func TestModelValidationCodesSurviveJSONAndSSE(t *testing.T) {
 	for _, stream := range []bool{false, true} {
-		for _, code := range []string{"plan_incomplete", "over_capacity", "validation"} {
+		for _, code := range []string{"plan_incomplete", "validation"} {
 			t.Run(fmt.Sprintf("stream=%t/%s", stream, code), func(t *testing.T) {
 				r, store, user := setupWorkflowHTTP(t)
-				created := httpJSON(t, r, "POST", "/api/tasks", map[string]any{"title": "Saved report", "plannedForDate": "2026-09-06"}, 201)
+				httpJSON(t, r, "POST", "/api/tasks", map[string]any{"title": "Saved report", "plannedForDate": "2026-09-06"}, 201)
 				reply := `{"message":"Draft response","phase":"proposal","availableMinutes":60,"tasks":[]}`
-				if code == "over_capacity" {
-					reply = fmt.Sprintf(`{"message":"Draft response","phase":"proposal","availableMinutes":30,"tasks":[{"id":%q,"title":"Saved report","duration":60,"urgency":"medium","disposition":"today","reason":"Priority"}]}`, created["id"])
-				} else if code == "validation" {
+				if code == "validation" {
 					reply = `{"message":"Draft response","phase":`
 				}
 				h := handlers.NewChatHandler(store, chat.NewService(store, validationAgent{reply: reply}))
@@ -65,9 +63,6 @@ func TestModelValidationCodesSurviveJSONAndSSE(t *testing.T) {
 					require.NoError(t, json.Unmarshal(res.Body.Bytes(), &payload))
 				}
 				require.Equal(t, code, payload["code"])
-				if code == "over_capacity" {
-					require.Contains(t, payload["error"], "60 minutes planned, 30 minutes available")
-				}
 				var messages, requests int
 				require.NoError(t, store.Pool.QueryRow(context.Background(), `SELECT count(*) FROM chat_messages WHERE user_id=$1`, user).Scan(&messages))
 				require.NoError(t, store.Pool.QueryRow(context.Background(), `SELECT count(*) FROM chat_requests WHERE user_id=$1`, user).Scan(&requests))

@@ -41,11 +41,10 @@ function DayReview({ date, forceCloseBanner }: { date: string; forceCloseBanner:
   const destination = followingDate(date);
   const historical = date < today;
   const carryLabel = historical ? `Carry to ${dateLabel(destination)}` : 'Tomorrow';
-  const actionFor = (task: api.BackendTask) => task.completed ? 'done' : actions[task.id];
+  const actionFor = (task: api.BackendTask) => task.completed ? 'done' : actions[task.id] || 'tomorrow';
   const allMarked = tasks.every((task) => actionFor(task));
   const unfinished = tasks.filter(task => !task.completed);
   const completed = tasks.filter(task => task.completed);
-  const decisionsLeft = unfinished.filter(task => !actionFor(task)).length;
   const close = useMutation({
     mutationFn: () => api.closeDay({ date, taskActions: tasks.map((task) => ({ taskId: task.id, action: actionFor(task)! })), notes: notes.trim() || undefined, energyLevel: energy ?? undefined }),
     onSuccess: async () => {
@@ -70,24 +69,21 @@ function DayReview({ date, forceCloseBanner }: { date: string; forceCloseBanner:
 
   return <>
     {(forceCloseBanner || historical) && <div role="status" className="mb-5 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm">{`You are reviewing ${dateLabel(date, true)}. You can return to today at any time.`}</div>}
-    <div className="mb-5 flex items-center justify-between gap-4"><h2 ref={stepHeading} tabIndex={-1} className="scroll-mt-36 text-lg font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{step === 0 ? `${decisionsLeft} ${decisionsLeft === 1 ? 'task needs' : 'tasks need'} a decision` : 'Confirm your day'}</h2><span className="text-xs text-muted-foreground">{step + 1} of 2</span></div>
+    <div className="mb-5 flex items-center justify-between gap-4"><h2 ref={stepHeading} tabIndex={-1} className="scroll-mt-36 text-lg font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{step === 0 ? 'Review your tasks' : 'Confirm your day'}</h2><span className="text-xs text-muted-foreground">{step + 1} of 2</span></div>
     {step === 0 ? <>
       <div className="space-y-3">{unfinished.map((task) => {
-        const lastChance = task.deferCount > 0 && !task.completed;
-        return <fieldset key={task.id} className={`rounded-xl border bg-card p-4 ${lastChance ? 'border-amber-500/50' : 'border-border'}`}>
+        return <fieldset key={task.id} className="rounded-xl border border-border bg-card p-4">
           <legend className="sr-only">Outcome for {task.title}</legend>
           <p className="mb-1 text-sm font-medium">{task.title}</p>
-          {lastChance && <p role="status" className="mb-3 text-xs leading-5 text-amber-700 dark:text-amber-300">This task has been postponed before. Consider Drop, or explicitly carry it one more day.</p>}
           <div className="flex flex-wrap gap-2">{OUTCOMES.map(({ action, label: defaultLabel, icon: Icon }) => {
             const label = action === 'tomorrow' ? carryLabel : defaultLabel;
-            const preferredDrop = lastChance && action === 'drop' && actionFor(task) !== 'drop';
-            return <button key={action} type="button" aria-pressed={actionFor(task) === action} disabled={task.completed && action !== 'done'} aria-label={`${label}: ${task.title}`} onClick={() => setActions((previous) => ({ ...previous, [task.id]: action }))} className={`flex min-h-11 items-center gap-1.5 rounded-md border px-3 py-2 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${actionFor(task) === action ? 'border-primary/50 bg-primary/10 text-primary' : preferredDrop ? 'border-amber-500/60 bg-amber-500/10 text-foreground hover:bg-amber-500/15' : 'border-border text-muted-foreground hover:bg-accent'}`}><Icon size={13} />{label}</button>;
+            return <button key={action} type="button" aria-pressed={actionFor(task) === action} disabled={task.completed && action !== 'done'} aria-label={`${label}: ${task.title}`} onClick={() => setActions((previous) => ({ ...previous, [task.id]: action }))} className={`flex min-h-11 items-center gap-1.5 rounded-md border px-3 py-2 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${actionFor(task) === action ? 'border-primary/50 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-accent'}`}><Icon size={13} />{label}</button>;
           })}</div>
         </fieldset>;
       })}</div>
       {completed.length > 0 && <details className="workspace-details mt-4"><summary>Already completed · {completed.length}<ChevronDown size={14} aria-hidden /></summary><ul className="mt-2 space-y-2">{completed.map(task => <li key={task.id} className="flex items-start gap-2 text-sm text-muted-foreground"><Check size={16} className="mt-0.5 shrink-0" aria-hidden />{task.title}</li>)}</ul></details>}
       {!unfinished.length && <p className="mt-3 text-sm text-muted-foreground">No unfinished tasks to resolve. Continue to confirm and close this day.</p>}
-      <p className="mt-4 text-xs leading-5 text-muted-foreground">{carryLabel} moves the task to {dateLabel(destination)}. Moving it again requires another explicit carry choice. Drop removes it from the plan and keeps its outcome in history. Your choices save together when you close the day.</p>
+      <p className="mt-4 text-xs leading-5 text-muted-foreground">Unchecked tasks are set to {carryLabel.toLowerCase()} and keep carrying forward until you finish them. Drop removes a task from the plan and keeps its outcome in history. Your choices save together when you close the day.</p>
       <Button onClick={() => setStep(1)} disabled={!allMarked} className="mt-6">Continue<ArrowRight className="ml-2 h-4 w-4" /></Button>
     </> : <div className="space-y-6">
       <details open={reflectionOpen} onToggle={event => setReflectionOpen(event.currentTarget.open)} className="workspace-details rounded-xl border border-border bg-card p-4"><summary>Add a reflection <span className="font-normal text-muted-foreground">(optional)</span><ChevronDown size={14} aria-hidden /></summary><div className="mt-4 space-y-5"><div><label htmlFor="review-notes" className="mb-2 block text-sm font-medium">Notes for tomorrow <span className="font-normal text-muted-foreground">(optional)</span></label><Textarea id="review-notes" value={notes} maxLength={8000} onChange={(event) => setNotes(event.target.value)} placeholder="What helped, what got in the way, or what should you remember?" className="min-h-[120px] bg-card" /><p className="mt-2 text-xs text-muted-foreground">These notes are saved with your review.</p></div>

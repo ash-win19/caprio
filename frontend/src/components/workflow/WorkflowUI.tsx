@@ -5,18 +5,6 @@ import type { Workflow } from '@/lib/api';
 import { dateLabel, followingDate } from './dates';
 import { localDate } from '@/lib/date';
 
-/** Format minutes as compact hours for capacity copy (90 → "1.5h"). */
-export function formatHours(minutes: number): string {
-  const rounded = Math.round((minutes / 60) * 10) / 10;
-  return `${rounded}h`;
-}
-
-/** Hard-gate copy when planned today minutes exceed known available minutes. */
-export function capacityOverMessage(plannedMinutes: number, availableMinutes: number): string {
-  const over = plannedMinutes - availableMinutes;
-  return `Plan is ${formatHours(over)} over your ${formatHours(availableMinutes)} day`;
-}
-
 export type ProposalRevisionDiff = {
   kept: string[];
   added: string[];
@@ -131,7 +119,7 @@ export function WorkflowError({ error, retry }: { error: unknown; retry?: () => 
 
 export function DaySummary({ workflow }: { workflow: Workflow }) {
   const review = workflow.review;
-  const destination = followingDate(workflow.date);
+  const destination = review?.carriedToDate || followingDate(workflow.date);
   const carriedCount = review?.carriedToTomorrowCount ?? 0;
   const recovering = destination < localDate() && carriedCount > 0;
   const nextPath = recovering ? `/review?date=${destination}&reopen=1` : destination < localDate() ? '/new' : `/new?date=${destination}`;
@@ -143,10 +131,10 @@ export function DaySummary({ workflow }: { workflow: Workflow }) {
   return <section className="rounded-2xl border border-border bg-card p-6 sm:p-8">
     <CheckCircle2 className="mb-4 h-8 w-8 text-primary" />
     <h2 className="text-xl font-medium">Day closed</h2>
-    <p className="mt-2 text-sm text-muted-foreground">Your review for {dateLabel(workflow.date)} is saved.</p>
+    <p className="mt-2 text-sm text-muted-foreground">{review?.automatic ? `Unchecked tasks from ${dateLabel(workflow.date)} were carried forward automatically. Completed work stays recorded here.` : `Your review for ${dateLabel(workflow.date)} is saved.`}</p>
     {review && <>
       <dl className="my-6 grid grid-cols-3 gap-3">
-        {[[review.completedCount, 'Completed'], [review.carriedToTomorrowCount, 'For tomorrow'], [review.droppedCount, 'Dropped']].map(([count, label]) => <div key={label}>
+        {[[review.completedCount, 'Completed'], [review.carriedToTomorrowCount, 'Carried forward'], [review.droppedCount, 'Dropped']].map(([count, label]) => <div key={label}>
           <dd className="text-2xl font-medium">{count}</dd><dt className="mt-1 text-xs text-muted-foreground">{label}</dt>
         </div>)}
       </dl>
@@ -158,7 +146,7 @@ export function DaySummary({ workflow }: { workflow: Workflow }) {
         <h3 className="mb-2 text-sm font-medium">{label}</h3>
         {tasks.length > 0 ? <ul className="space-y-2">{tasks.map(task => <li key={task.id} className="rounded-lg bg-muted px-3 py-2 text-sm">{task.title}</li>)}</ul> : <p className="text-xs text-muted-foreground">No tasks</p>}
       </section>)}</div>}
-    <p className="mb-5 text-sm text-muted-foreground">{carriedCount > 0 ? `Carried tasks are saved for ${dateLabel(destination)}. ${recovering ? 'Review that day to decide what happens next.' : 'Review your available time before confirming its plan.'}` : 'Nothing was carried from this day.'}</p>
+    <p className="mb-5 text-sm text-muted-foreground">{carriedCount > 0 ? `Carried tasks are saved for ${dateLabel(destination)}. Unchecked tasks continue forward until you finish or remove them.` : 'Nothing was carried from this day.'}</p>
     <div className="flex flex-wrap gap-3">
       <Button asChild><Link to={nextPath}>{nextLabel} <ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
       <Button asChild variant="outline"><Link to="/momentum">View history</Link></Button>
