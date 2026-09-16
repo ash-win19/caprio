@@ -32,7 +32,7 @@ func TestModelValidationCodesSurviveJSONAndSSE(t *testing.T) {
 		for _, code := range []string{"plan_incomplete", "validation"} {
 			t.Run(fmt.Sprintf("stream=%t/%s", stream, code), func(t *testing.T) {
 				r, store, user := setupWorkflowHTTP(t)
-				httpJSON(t, r, "POST", "/api/tasks", map[string]any{"title": "Saved report", "plannedForDate": "2026-09-06"}, 201)
+				httpJSON(t, r, "POST", "/api/tasks", map[string]any{"title": "Saved report", "plannedForDate": "2090-09-06"}, 201)
 				reply := `{"message":"Draft response","phase":"proposal","availableMinutes":60,"tasks":[]}`
 				if code == "validation" {
 					reply = `{"message":"Draft response","phase":`
@@ -43,7 +43,7 @@ func TestModelValidationCodesSurviveJSONAndSSE(t *testing.T) {
 				} else {
 					r.POST("/test/chat", h.SendMessage)
 				}
-				body, err := json.Marshal(map[string]any{"content": "Plan my day", "date": "2026-09-06", "requestId": uuid.NewString()})
+				body, err := json.Marshal(map[string]any{"content": "Plan my day", "date": "2090-09-06", "requestId": uuid.NewString()})
 				require.NoError(t, err)
 				req := httptest.NewRequest("POST", "/test/chat", bytes.NewReader(body))
 				req.Header.Set("Content-Type", "application/json")
@@ -68,7 +68,7 @@ func TestModelValidationCodesSurviveJSONAndSSE(t *testing.T) {
 				require.NoError(t, store.Pool.QueryRow(context.Background(), `SELECT count(*) FROM chat_requests WHERE user_id=$1`, user).Scan(&requests))
 				require.Zero(t, messages)
 				require.Zero(t, requests)
-				w := httpJSON(t, r, "GET", "/api/workflow?date=2026-09-06", nil, 200)
+				w := httpJSON(t, r, "GET", "/api/workflow?date=2090-09-06", nil, 200)
 				require.Nil(t, w["proposal"])
 				require.Len(t, w["tasks"], 1)
 			})

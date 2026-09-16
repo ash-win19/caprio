@@ -182,11 +182,11 @@ describe('Daily planning workflow', () => {
     fireEvent.change(input, { target: { value: 'Keep this request' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send prompt' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Next day' })).toBeDisabled());
-    fireEvent.click(screen.getByRole('link', { name: 'View day' }));
+    fireEvent.click(screen.getByRole('link', { name: 'View tasks' }));
     expect(screen.queryByText('Saved plan destination')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Stop generating' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Next day' })).toBeEnabled());
-    fireEvent.click(screen.getByRole('link', { name: 'View day' }));
+    fireEvent.click(screen.getByRole('link', { name: 'View tasks' }));
     expect(await screen.findByText('Saved plan destination')).toBeInTheDocument();
   });
 
@@ -464,7 +464,7 @@ describe('Daily planning workflow', () => {
     expect(screen.getByRole('button', { name: /Add to today/i })).toBeInTheDocument();
     fireEvent.keyDown(options, { key: 'ArrowDown' });
     const discuss = await screen.findByRole('menuitem', { name: 'Discuss in Plan' });
-    expect(discuss.getAttribute('href')).toContain(`/new?date=${today}&intent=interrupt&seed=`);
+    expect(discuss.getAttribute('href')).toContain(`/new?date=${today}&intent=interrupt&taskId=inbox-1&seed=`);
     expect(decodeURIComponent(discuss.getAttribute('href') || '')).toContain('Consider adding to today: Write brief');
   });
 

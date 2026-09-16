@@ -29,6 +29,7 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promi
   const token = accessTokenProvider ? await accessTokenProvider() : null;
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
+    'X-Caprio-Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone,
     ...options.headers,
   };
 
@@ -156,6 +157,7 @@ export function mapBackendTaskToTask(backendTask: BackendTask, categories: Categ
     plannedForDate: backendTask.plannedForDate,
     status: backendTask.status,
     priorityReason: backendTask.priorityReason || undefined,
+    description: backendTask.description || undefined,
     addedToday: backendTask.status === 'planned',
     carriedOver: backendTask.deferCount > 0,
     order: backendTask.sortOrder,
@@ -327,7 +329,25 @@ export interface PlanTask {
   reason: string;
 }
 
+export interface TaskOperation {
+  kind: 'create' | 'update' | 'move' | 'complete' | 'remove';
+  taskId?: string;
+  date?: string;
+  inbox?: boolean;
+  fields?: Record<string, unknown>;
+  completed?: boolean;
+}
+export interface ChangeReceipt {
+  id: string; requestId: string; summary: string;
+  changes: Array<{ taskId: string; title: string; action: string; date: string }>;
+  affectedDates: string[]; undone: boolean; canUndo: boolean; undoReason?: string;
+}
+export interface ReviewRecord {
+  id: string; createdAt: string; review: DayReview; tasks: BackendTask[]; taskDetailsAvailable: boolean;
+}
 export interface PlanProposal {
+  operations?: TaskOperation[];
+  taskTitles?: Record<string, string>;
   id: string;
   summary: string;
   availableMinutes: number | null;
@@ -345,6 +365,8 @@ export interface DayReview {
 }
 
 export interface Workflow {
+  changeReceipts?: ChangeReceipt[];
+  reviewHistory?: ReviewRecord[];
   carryoverOrigins?: Record<string, string>;
   oldestUnclosedDate?: string | null;
   taskDetailsAvailable?: boolean;
@@ -377,12 +399,13 @@ export async function getChatSessions(): Promise<ChatSession[]> {
 }
 
 export interface ChatReply {
+  appliedChange?: ChangeReceipt;
   text: string;
   workflow: Workflow;
 }
 
-function chatMessageBody(content: string, date: string, requestId: string, model?: string) {
-  const body: { content: string; date: string; requestId: string; model?: string } = { content, date, requestId };
+function chatMessageBody(content: string, date: string, requestId: string, model?: string, taskId?: string) {
+  const body = { content, date, requestId, contractVersion: 2, model, taskId };
   if (model) body.model = model;
   return JSON.stringify(body);
 }
@@ -401,6 +424,7 @@ export async function sendChatMessage(
 }
 
 export interface ChatStreamInput {
+  taskId?: string;
   content: string;
   date?: string;
   requestId?: string;
@@ -444,6 +468,7 @@ function createEventParser(onEvent: (event: string, data: Record<string, unknown
 // failure after streaming began. Errors before the first delta arrive as
 // ordinary HTTP status codes and are thrown by fetchWithAuth.
 export async function streamChatMessage({
+  taskId,
   content,
   date = localDate(),
   requestId = crypto.randomUUID(),
@@ -454,7 +479,7 @@ export async function streamChatMessage({
   const response = await fetchWithAuth('/api/chat/stream', {
     method: 'POST',
     headers: { Accept: 'text/event-stream' },
-    body: chatMessageBody(content, date, requestId, model),
+    body: chatMessageBody(content, date, requestId, model, taskId),
     signal,
   });
   const result: { reply: ChatReply | null } = { reply: null };
@@ -512,4 +537,8 @@ export async function closeDay(input: CloseDayInput): Promise<DayReview & { next
 export async function getInboxTasks(): Promise<Task[]> {
   const data = await (await fetchWithAuth('/api/tasks?status=backlog')).json();
   return (data.tasks || []).map((task: BackendTask) => mapBackendTaskToTask(task));
+}
+
+export async function undoTaskChange(id: string): Promise<Workflow> {
+  return (await fetchWithAuth(`/api/task-changes/${id}/undo`, { method: 'POST' })).json();
 }

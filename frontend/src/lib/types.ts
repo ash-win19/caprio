@@ -4,6 +4,7 @@ export type VoiceState = 'idle' | 'listening' | 'processing';
 export interface Task {
   id: string;
   title: string;
+  description?: string;
   category: string;
   categoryId?: string;
   urgency: Urgency;

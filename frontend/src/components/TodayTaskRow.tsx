@@ -35,9 +35,10 @@ export function TodayTaskRow({ task, readOnly, sortable = false, canMoveUp = fal
           {task.duration != null && <span>{task.duration} min</span>}
           {task.carriedOver && <span className="rounded bg-accent px-2 py-0.5 text-foreground">{carriedFrom ? <time dateTime={carriedFrom} title={dateLabel(carriedFrom, true)}>Since {new Date(`${carriedFrom}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</time> : 'Carried forward'}</span>}
         </div>
-        {task.priorityReason && !task.completed && <details className="today-task-note">
+        {(task.description || task.priorityReason) && <details className="today-task-note">
           <summary><span>Plan note</span><ChevronDown size={13} aria-hidden /></summary>
-          <p className="mt-1 max-w-prose text-sm leading-6 text-muted-foreground">{task.priorityReason}</p>
+          {task.description && <p className="mt-1 max-w-prose whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{task.description}</p>}
+          {task.priorityReason && task.priorityReason !== task.description && <p className="mt-1 max-w-prose text-sm leading-6 text-muted-foreground">{task.priorityReason}</p>}
         </details>}
       </div>
       {sortable && <div className="today-task-tools">

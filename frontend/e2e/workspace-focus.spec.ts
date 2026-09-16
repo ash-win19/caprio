@@ -104,7 +104,7 @@ test('inbox separates add-to-day, discuss and confirmed deletion', async ({ page
   const { writes } = await workspace(page);
   await page.goto('/capture');
   await page.getByRole('button', { name: 'More options for Write a brief' }).click();
-  await expect(page.getByRole('menuitem', { name: 'Discuss in Plan' })).toHaveAttribute('href', /intent=interrupt&seed=/);
+  await expect(page.getByRole('menuitem', { name: 'Discuss in Plan' })).toHaveAttribute('href', /intent=interrupt&taskId=inbox-1&seed=/);
   await page.getByRole('menuitem', { name: 'Delete task' }).click();
   await expect(page.getByRole('alertdialog')).toBeVisible();
   expect(writes).toHaveLength(0);

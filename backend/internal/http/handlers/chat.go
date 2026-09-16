@@ -135,10 +135,12 @@ func (h *ChatHandler) Sessions(c *gin.Context) {
 }
 
 type chatMessageRequest struct {
-	Content   string    `json:"content" binding:"required"`
-	Date      string    `json:"date" binding:"required"`
-	RequestID uuid.UUID `json:"requestId" binding:"required"`
-	Model     string    `json:"model"`
+	ContractVersion int        `json:"contractVersion"`
+	TaskID          *uuid.UUID `json:"taskId"`
+	Content         string     `json:"content" binding:"required"`
+	Date            string     `json:"date" binding:"required"`
+	RequestID       uuid.UUID  `json:"requestId" binding:"required"`
+	Model           string     `json:"model"`
 }
 
 // bindMessage validates a chat request. It has already answered the client
@@ -159,7 +161,11 @@ func (h *ChatHandler) bindMessage(c *gin.Context) (chat.ProcessRequest, bool) {
 		workflowError(c, err)
 		return chat.ProcessRequest{}, false
 	}
-	return chat.ProcessRequest{UserID: userID, SessionDate: date, Content: req.Content, RequestID: req.RequestID, Model: req.Model}, true
+	if err := chat.WritableDate(c.Request.Context(), date); err != nil {
+		workflowError(c, err)
+		return chat.ProcessRequest{}, false
+	}
+	return chat.ProcessRequest{ContractVersion: req.ContractVersion, TaskID: req.TaskID, UserID: userID, SessionDate: date, Content: req.Content, RequestID: req.RequestID, Model: req.Model}, true
 }
 
 func (h *ChatHandler) SendMessage(c *gin.Context) {
@@ -244,6 +250,10 @@ func (h *ChatHandler) Confirm(c *gin.Context) {
 		workflowError(c, err)
 		return
 	}
+	if err := chat.WritableDate(c.Request.Context(), date); err != nil {
+		workflowError(c, err)
+		return
+	}
 	result, err := h.chatService.Confirm(c.Request.Context(), userID, date, req.ProposalID, req.Version)
 	if err != nil {
 		workflowError(c, err)
@@ -272,10 +282,33 @@ func (h *ChatHandler) Discard(c *gin.Context) {
 		workflowError(c, err)
 		return
 	}
+	if err := chat.WritableDate(c.Request.Context(), date); err != nil {
+		workflowError(c, err)
+		return
+	}
 	result, err := h.chatService.Discard(c.Request.Context(), userID, date, req.ProposalID, req.Version)
 	if err != nil {
 		workflowError(c, err)
 		return
 	}
 	c.JSON(200, result)
+}
+
+func (h *ChatHandler) Undo(c *gin.Context) {
+	user, ok := middleware.GetUserID(c)
+	if !ok {
+		c.JSON(401, gin.H{"error": "unauthorized"})
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		workflowError(c, chat.ErrConflict)
+		return
+	}
+	w, err := h.chatService.Undo(c.Request.Context(), user, id)
+	if err != nil {
+		workflowError(c, err)
+		return
+	}
+	c.JSON(200, w)
 }

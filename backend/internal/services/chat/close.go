@@ -151,14 +151,6 @@ func (s *Service) close(ctx context.Context, userID uuid.UUID, req CloseRequest,
 		if req.Notes != nil {
 			result.Notes = *req.Notes
 		}
-		session, err := q.CreateStandupSession(ctx, generated.CreateStandupSessionParams{UserID: userID, SessionDate: date, EnergyLevel: req.EnergyLevel, Notes: req.Notes, TasksPlanned: int32(len(w.Tasks))})
-		if err != nil {
-			return err
-		}
-		result.Session, err = q.UpdateStandupSession(ctx, generated.UpdateStandupSessionParams{ID: session.ID, TasksCompleted: &result.CompletedCount})
-		if err != nil {
-			return err
-		}
 		if result.CarriedToTomorrowCount > 0 {
 			result.CarriedToDate = result.NextDate
 			// New arrivals invalidate the destination draft, but do not confirm it.
@@ -182,8 +174,58 @@ func (s *Service) close(ctx context.Context, userID uuid.UUID, req CloseRequest,
 				w.Tasks[i].Status = generated.TaskStatusDropped
 			}
 		}
+		// Every close has an immutable review, even when today was reopened.
 		review, _ := json.Marshal(result.Review)
 		archived, _ := json.Marshal(w.Tasks)
+		if _, err := tx.Exec(ctx, `INSERT INTO day_reviews(user_id,plan_date,review,closed_tasks) VALUES($1,$2,$3,$4)`, userID, date, review, archived); err != nil {
+			return err
+		}
+		// The day summary is a union by identity, not a sum of review counters.
+		// Earlier carried tasks stay in history after new work arrives later.
+		combined := []generated.Task{}
+		positions := map[uuid.UUID]int{}
+		put := func(task generated.Task) {
+			if index, ok := positions[task.ID]; ok {
+				combined[index] = task
+			} else {
+				positions[task.ID] = len(combined)
+				combined = append(combined, task)
+			}
+		}
+		for _, entry := range w.ReviewHistory {
+			for _, task := range entry.Tasks {
+				put(task)
+			}
+		}
+		for _, task := range w.Tasks {
+			put(task)
+		}
+		result.CompletedCount = 0
+		result.CarriedToTomorrowCount = 0
+		result.DroppedCount = 0
+		for _, task := range combined {
+			switch {
+			case task.Completed || task.Status == generated.TaskStatusCompleted:
+				result.CompletedCount++
+			case task.Status == generated.TaskStatusDropped:
+				result.DroppedCount++
+			case task.Status == generated.TaskStatusPlanned:
+				result.CarriedToTomorrowCount++
+			}
+		}
+		if result.CarriedToTomorrowCount > 0 {
+			result.CarriedToDate = result.NextDate
+		}
+		review, _ = json.Marshal(result.Review)
+		archived, _ = json.Marshal(combined)
+		var sessionID uuid.UUID
+		if err := tx.QueryRow(ctx, `INSERT INTO standup_sessions(user_id,session_date,energy_level,notes,tasks_planned,tasks_completed) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(user_id,session_date) DO UPDATE SET energy_level=EXCLUDED.energy_level,notes=EXCLUDED.notes,tasks_planned=EXCLUDED.tasks_planned,tasks_completed=EXCLUDED.tasks_completed RETURNING id`, userID, date, req.EnergyLevel, req.Notes, len(combined), result.CompletedCount).Scan(&sessionID); err != nil {
+			return err
+		}
+		result.Session, err = q.GetStandupByUserAndDate(ctx, generated.GetStandupByUserAndDateParams{UserID: userID, SessionDate: date})
+		if err != nil {
+			return err
+		}
 		if _, err := tx.Exec(ctx, `UPDATE daily_plans SET state='closed',proposal=NULL,proposal_snapshot=NULL,review=$3,closed_tasks=$4,version=version+1,updated_at=clock_timestamp() WHERE user_id=$1 AND plan_date=$2`, userID, date, review, archived); err != nil {
 			return fmt.Errorf("save review: %w", err)
 		}
