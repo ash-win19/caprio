@@ -127,7 +127,7 @@ test('inbox adds a task to the current day only on the primary row action', asyn
   expect(writes[0].body).toEqual({ status: 'planned', plannedForDate: date });
 });
 
-test('proposal shows decisions before conversation and optional model selection', async ({ page }, info) => {
+test('proposal shows decisions before conversation and keeps the model picker inside the composer', async ({ page }, info) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   const writes = await mockDay(page, { messages: [{ id: 'm1', role: 'assistant', content: 'Previous planning conversation', createdAt: date }], proposal: { id: 'proposal-1', summary: 'A smaller plan for today.', availableMinutes: 220, tasks: [
     { id: 'task-0', title: titles[0], duration: 40, urgency: 'medium', disposition: 'today', reason: 'Due today.' },
@@ -140,12 +140,12 @@ test('proposal shows decisions before conversation and optional model selection'
   await expect(page.getByText('Previous planning conversation')).not.toBeVisible();
   await expect(page.getByRole('region', { name: 'Proposal changes' })).toContainText('Prepare a handoff');
   await expect(page.getByText('Deferred or removed · 2')).toBeVisible();
-  await expect(page.getByRole('combobox', { name: 'Model for this conversation' })).not.toBeVisible();
-  await page.locator('summary').filter({ hasText: /^AI model/ }).click();
-  await page.getByRole('combobox', { name: 'Model for this conversation' }).selectOption('groq/openai/gpt-oss-20b');
-  await expect(page.getByRole('combobox', { name: 'Model for this conversation' })).toHaveValue('groq/openai/gpt-oss-20b');
+  const composer = page.locator('.conversation-composer form');
+  await expect(composer.getByRole('button', { name: 'Gemini 3.7 Flash' })).toBeVisible();
+  await composer.getByRole('button', { name: 'Gemini 3.7 Flash' }).click();
+  await page.getByRole('option', { name: 'GPT-OSS 20B', exact: true }).click();
+  await expect(composer.getByRole('button', { name: 'GPT-OSS 20B' })).toBeVisible();
   expect(writes).toEqual([]);
-  await page.locator('summary').filter({ hasText: /^AI model/ }).click();
   await page.screenshot({ path: info.outputPath('plan-proposal.png'), animations: 'disabled' });
 });
 
