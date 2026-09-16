@@ -42,6 +42,7 @@ test('review outcomes and notes stay with their selected date until explicitly c
   await page.goto(`/review?date=${date}`);
   for (const title of titles) await page.getByRole('button', { name: `Done: ${title}`, exact: true }).click();
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  await page.locator('summary').filter({ hasText: 'Add a reflection' }).click();
   await page.getByRole('textbox', { name: /Notes for tomorrow/ }).fill('Keep these notes for this day');
   await page.getByRole('button', { name: 'Previous day' }).click();
   await expect(page.getByRole('button', { name: 'Continue', exact: true })).toBeDisabled();

@@ -80,7 +80,6 @@ describe('Momentum history insight', () => {
 
     mount();
 
-    expect(await screen.findByText('No closed days yet')).toBeInTheDocument();
-    expect(screen.getByText(/Close a day to see what you finished/i)).toBeInTheDocument();
+    expect(await screen.findByText(/No closed days yet. Close a day to see its outcomes here./)).toBeInTheDocument();
   });
 });

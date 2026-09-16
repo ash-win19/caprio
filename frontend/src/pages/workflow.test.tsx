@@ -244,13 +244,12 @@ describe('Daily planning workflow', () => {
       return { ...review, nextDate: nextDate(today) };
     });
     mount(<Review />, '/review');
-    const done = await screen.findByRole('button', { name: 'Done: Finish report' });
-    expect(done).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: 'Tomorrow: Finish report' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Drop: Finish report' })).toBeDisabled();
+    expect(await screen.findByText('Already completed · 1')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Done: Finish report' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Tomorrow: Team meeting' }));
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.click(screen.getByText(/Add a reflection/));
     fireEvent.change(screen.getByRole('textbox', { name: /Notes for tomorrow/ }), { target: { value: 'Leave room for the client call.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Steady' }));
     expect(api.closeDay).not.toHaveBeenCalled();
@@ -289,9 +288,9 @@ describe('Daily planning workflow', () => {
   it('saves an inbox task without immediately adding it to today', async () => {
     vi.mocked(api.createTask).mockResolvedValue(task('report'));
     mount(<Capture />, '/capture');
+    fireEvent.change(await screen.findByRole('textbox', { name: 'What do you need to do?' }), { target: { value: 'Finish report' } });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Add task' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Add task' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Task' }), { target: { value: 'Finish report' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save to inbox' }));
     await waitFor(() => expect(api.createTask).toHaveBeenCalled());
     expect(vi.mocked(api.createTask).mock.calls[0][0]).toMatchObject({ title: 'Finish report', status: 'backlog', plannedForDate: today });
     expect(api.updateTask).not.toHaveBeenCalled();
@@ -452,10 +451,12 @@ describe('Daily planning workflow', () => {
     workflow = { ...workflow, state: 'active' };
     vi.mocked(api.getInboxTasks).mockResolvedValue([{ id: 'inbox-1', title: 'Write brief', urgency: 'medium', category: 'Uncategorized', completed: false, addedToday: false, carriedOver: false, order: 0, duration: 30 }]);
     mount(<Capture />, '/capture');
-    const discuss = await screen.findByRole('link', { name: 'Discuss in Plan' });
+    const options = await screen.findByRole('button', { name: 'More options for Write brief' });
+    expect(screen.getByRole('button', { name: /Add to today/i })).toBeInTheDocument();
+    fireEvent.keyDown(options, { key: 'ArrowDown' });
+    const discuss = await screen.findByRole('menuitem', { name: 'Discuss in Plan' });
     expect(discuss.getAttribute('href')).toContain(`/new?date=${today}&intent=interrupt&seed=`);
     expect(decodeURIComponent(discuss.getAttribute('href') || '')).toContain('Consider adding to today: Write brief');
-    expect(screen.getByRole('button', { name: /Add to today/i })).toBeInTheDocument();
   });
 
   it('seeds interrupt chips on the planner when intent=interrupt', async () => {

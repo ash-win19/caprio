@@ -95,9 +95,8 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   }
   if (!session.data.onboardingComplete && !location.pathname.startsWith('/onboarding')) return <Navigate to="/onboarding" replace />;
 
-  if (session.data.onboardingComplete && (PUBLIC_ROUTES.includes(location.pathname) || location.pathname.startsWith('/onboarding'))) {
-    return <Navigate to="/today" replace />;
-  }
+  if (session.data.onboardingComplete && location.pathname.startsWith('/onboarding')) return <Navigate to="/new" replace />;
+  if (session.data.onboardingComplete && PUBLIC_ROUTES.includes(location.pathname)) return <Navigate to="/today" replace />;
 
   return <>{children}</>;
 }

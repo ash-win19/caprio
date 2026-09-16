@@ -1,12 +1,11 @@
 import { AppShell } from '@/layouts/AppShell';
 import { AppTopBar } from '@/components/AppTopBar';
-import { RecoveryNotice } from '@/components/workflow/RecoveryNotice';
 import { useLocalDay } from '@/lib/useLocalDay';
 import { useDateDraft, useNavigationLock, useNavigationState } from '@/lib/dateDrafts';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, Clock3, ListChecks } from 'lucide-react';
+import { ArrowRight, ChevronDown, Clock3, ListChecks } from 'lucide-react';
 import { PromptInput } from '@/components/agents/prompt-input';
 import { SpeechMicButton } from '@/components/agents/SpeechMicButton';
 import { ConversationSidebar } from '@/components/ConversationSidebar';
@@ -167,6 +166,10 @@ function ConversationDay({ date, intent, seed }: { date: string; intent: string 
   }, [setPending]);
 
   useEffect(() => {
+    if (workflow?.proposal?.id && !pending?.status) {
+      (document.getElementById('proposal-context') || document.getElementById('proposed-plan'))?.scrollIntoView?.({ behavior: 'auto', block: 'start' });
+      return;
+    }
     const container = scrollRef.current;
     const nearBottom = !container || container.scrollHeight - container.scrollTop - container.clientHeight < 160;
     if (pending?.status === 'streaming' && !nearBottom) return;
@@ -211,17 +214,19 @@ function ConversationDay({ date, intent, seed }: { date: string; intent: string 
   const showDiff = revisionDiff && (revisionDiff.kept.length + revisionDiff.added.length + revisionDiff.deferredOrRemoved.length) > 0;
 
   return <>
-    <main id="main-content" tabIndex={-1} className="conversation-main workspace-main">
+    <main id="main-content" tabIndex={-1} className="conversation-main workspace-main [overflow-wrap:anywhere]">
     <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-6 md:px-8"><div className="mx-auto max-w-2xl space-y-6">
-      {date === today && <RecoveryNotice />}
       {workflowQuery.isLoading ? <p role="status" className="py-12 text-center text-sm text-muted-foreground">Loading your day…</p> : workflowQuery.error ? <WorkflowError error={workflowQuery.error} retry={() => void workflowQuery.refetch()} /> : <>
-        {!messages.length && !pending && <div className="flex min-h-[38vh] flex-col items-center justify-center text-center">
+        {!messages.length && !pending && !proposal && workflow?.state !== 'closed' && <div className="flex min-h-[38vh] flex-col items-center justify-center text-center">
           <ListChecks className="mb-5 h-7 w-7 text-primary" />
           <h2 className="text-3xl font-medium">{past ? 'No conversation for this day' : intent === 'interrupt' || workflow?.state === 'active' ? 'What changed?' : 'What needs your attention?'}</h2>
           <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">{past ? 'Your saved plan and review are available from View day.' : intent === 'interrupt' || workflow?.state === 'active' ? 'Tell Caprio what shifted — less time, new work, or something to drop. You’ll review a revision before anything is saved.' : 'Tell me your tasks, fixed commitments, and how much time you have. We’ll turn them into a realistic plan.'}</p>
           {!past && !!workflow?.tasks.length && <p className="mt-4 text-sm text-primary">{workflow.tasks.length} saved {workflow.tasks.length === 1 ? 'task is' : 'tasks are'} already waiting for this day{carriedCount > 0 ? ` · ${carriedCount} carried from yesterday` : ''}.</p>}
         </div>}
-        {messages.map((message) => <MessageBubble key={message.id} role={message.role}>{message.content}</MessageBubble>)}
+        {proposal && !pending && !readOnly && messages.length > 0 ? <details id="proposal-context" className="workspace-details scroll-mt-4 rounded-xl border border-border px-4 py-2">
+          <summary>Conversation · {messages.length} {messages.length === 1 ? 'message' : 'messages'}<ChevronDown size={14} aria-hidden /></summary>
+          <div className="mt-4 space-y-6">{messages.map(message => <MessageBubble key={message.id} role={message.role}>{message.content}</MessageBubble>)}</div>
+        </details> : messages.map(message => <MessageBubble key={message.id} role={message.role}>{message.content}</MessageBubble>)}
         {pending && <>
           <MessageBubble role="user">{pending.content}</MessageBubble>
           {pending.status === 'thinking' && <ThinkingIndicator />}
@@ -229,7 +234,7 @@ function ConversationDay({ date, intent, seed }: { date: string; intent: string 
           {pending.status === 'failed' && <WorkflowError error={pending.error} retry={retry} />}
           {pending.status === 'stopped' && <StoppedNotice retry={retry} />}
         </>}
-        {proposal && !readOnly && !settling && <section aria-label="Proposed plan" className="rounded-2xl border border-primary/30 bg-card p-5 sm:p-6">
+        {proposal && !readOnly && !settling && <section id="proposed-plan" aria-label="Proposed plan" className="scroll-mt-4 rounded-2xl border border-primary/30 bg-card p-5 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-medium">{workflow?.state === 'active' ? 'Proposed changes' : 'Your proposed plan'}</h2><span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs text-primary">Needs your confirmation</span></div>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">{proposal.summary}</p>
           <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -241,13 +246,13 @@ function ConversationDay({ date, intent, seed }: { date: string; intent: string 
           {overCapacity && availableMinutes !== null && <p role="alert" className="mt-3 text-sm text-amber-700 dark:text-amber-400">{capacityOverMessage(minutes, availableMinutes)}</p>}
           {showDiff && <div role="region" aria-label="Proposal changes" className="mt-5 space-y-3 rounded-xl border border-border bg-background p-4">
             <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Compared with your current plan</h3>
-            {revisionDiff!.kept.length > 0 && <div><p className="text-xs font-medium text-muted-foreground">Kept · {revisionDiff!.kept.length}</p><ul className="mt-1.5 space-y-1">{revisionDiff!.kept.map((title) => <li key={`kept-${title}`} className="text-sm">{title}</li>)}</ul></div>}
+            {revisionDiff!.kept.length > 0 && <details className="workspace-details"><summary>Kept · {revisionDiff!.kept.length}<ChevronDown size={14} aria-hidden /></summary><ul className="mt-1.5 space-y-1">{revisionDiff!.kept.map(title => <li key={`kept-${title}`} className="text-sm">{title}</li>)}</ul></details>}
             {revisionDiff!.added.length > 0 && <div><p className="text-xs font-medium text-primary">Added · {revisionDiff!.added.length}</p><ul className="mt-1.5 space-y-1">{revisionDiff!.added.map((title) => <li key={`added-${title}`} className="text-sm">{title}</li>)}</ul></div>}
             {revisionDiff!.deferredOrRemoved.length > 0 && <div><p className="text-xs font-medium text-amber-700 dark:text-amber-400">Deferred or removed · {revisionDiff!.deferredOrRemoved.length}</p><ul className="mt-1.5 space-y-1">{revisionDiff!.deferredOrRemoved.map((title) => <li key={`deferred-${title}`} className="text-sm">{title}</li>)}</ul></div>}
           </div>}
           {([['For this day', proposedToday], ['Keep in inbox', proposedBacklog]] as const).map(([label, tasks]) => tasks.length > 0 && <div key={label} className="mt-5">
             <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</h3>
-            <ol className="space-y-2">{tasks.map((task, index) => <li key={task.id || `${label}-${index}`} className="rounded-lg bg-background p-3"><div className="flex items-start justify-between gap-4"><p className="text-sm font-medium">{task.title}</p><span className="shrink-0 text-xs text-muted-foreground">{task.duration} min</span></div><p className="mt-1.5 text-xs leading-5 text-muted-foreground">{task.reason}</p></li>)}</ol>
+            <ol className="space-y-2">{tasks.map((task, index) => <li key={task.id || `${label}-${index}`} className="rounded-lg bg-background p-3"><div className="flex items-start justify-between gap-4"><p className="min-w-0 flex-1 break-words text-sm font-medium">{task.title}</p><span className="shrink-0 text-xs text-muted-foreground">{task.duration} min</span></div><details className="workspace-details workspace-details-compact mt-1"><summary>Plan note<ChevronDown size={13} aria-hidden /></summary><p className="mt-1 text-sm leading-6 text-muted-foreground">{task.reason}</p></details></li>)}</ol>
           </div>)}
           <p className="mt-5 text-xs leading-5 text-muted-foreground">Confirming saves this plan. Completed tasks stay completed.</p>
           {(confirm.error || discard.error) && <div className="mt-4"><WorkflowError error={confirm.error || discard.error} /></div>}
@@ -260,7 +265,7 @@ function ConversationDay({ date, intent, seed }: { date: string; intent: string 
     <div className="conversation-composer bg-background px-4 pb-4 pt-2 md:px-8"><div className="mx-auto max-w-2xl">
       {readOnly ? <div className="flex items-center justify-between gap-3 rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground"><span>{past ? 'Past conversations are read-only.' : 'This day is closed.'}</span><Link to="/new" className="shrink-0 text-primary hover:underline">Go to today</Link></div> : <>
         {!past && carriedCount > 0 && <p role="status" className="mb-3 inline-flex max-w-full items-center rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs text-primary">{carriedCount} carried from yesterday — they’ll be in the proposal unless you drop them</p>}
-        {showInterruptChips && <div className="mb-3 flex flex-wrap gap-2" aria-label="Quick interruption prompts">
+        {showInterruptChips && !pending && !input && !proposal && <div className="mb-3 flex flex-wrap gap-2" aria-label="Quick interruption prompts">
           {INTERRUPT_CHIPS.map((chip) => (
             <button
               key={chip.label}
@@ -272,8 +277,8 @@ function ConversationDay({ date, intent, seed }: { date: string; intent: string 
             </button>
           ))}
         </div>}
-        <PromptInput id="day-message" value={input} onValueChange={setInput} models={CHAT_MODELS} model={model} defaultModel={DEFAULT_CHAT_MODEL} onModelChange={setModel} onSubmit={handleSend} loading={replying} onStop={stop} disabled={workflowQuery.isLoading || !!workflowQuery.error || confirm.isPending || discard.isPending} leadingAction={<SpeechMicButton value={input} onTranscript={setInput} disabled={workflowQuery.isLoading || !!workflowQuery.error || confirm.isPending || discard.isPending || replying} />} aria-label="Message about your day" maxLength={8000} placeholder={workflow?.state === 'active' || intent === 'interrupt' ? 'What changed? For example, a meeting took an extra hour…' : carriedCount > 0 ? `Include the ${carriedCount} carried task${carriedCount === 1 ? '' : 's'}, add what’s new, and say how much time you have…` : 'Finish a report, meet the team at 2, and go for a run. I have 4 hours…'} />
-        <p className="mt-2 text-center text-[11px] text-muted-foreground">Your tasks and constraints guide the plan. You confirm changes before they’re saved.</p>
+        <PromptInput id="day-message" value={input} onValueChange={setInput} model={model} onSubmit={handleSend} loading={replying} onStop={stop} disabled={workflowQuery.isLoading || !!workflowQuery.error || confirm.isPending || discard.isPending} leadingAction={<SpeechMicButton value={input} onTranscript={setInput} disabled={workflowQuery.isLoading || !!workflowQuery.error || confirm.isPending || discard.isPending || replying} />} aria-label="Message about your day" maxLength={8000} placeholder={workflow?.state === 'active' || intent === 'interrupt' ? 'What changed? For example, a meeting took an extra hour…' : carriedCount > 0 ? `Include the ${carriedCount} carried task${carriedCount === 1 ? '' : 's'}, add what’s new, and say how much time you have…` : 'Finish a report, meet the team at 2, and go for a run. I have 4 hours…'} />
+        <details className="workspace-details mt-2"><summary>AI model{model !== DEFAULT_CHAT_MODEL && <span>· {CHAT_MODELS.find(option => option.value === model)?.label}</span>}<ChevronDown size={14} aria-hidden /></summary><div className="mt-2 flex flex-wrap items-center gap-3"><label htmlFor="planning-model" className="text-sm text-muted-foreground">Model for this conversation</label><select id="planning-model" value={model} disabled={busy} onChange={event => setModel(event.target.value)} className="h-11 max-w-full rounded-md border border-border bg-card px-3 text-sm">{CHAT_MODELS.map(option => <option key={option.value} value={option.value}>{typeof option.label === 'string' ? option.label : option.value}</option>)}</select></div></details>
       </>}
     </div></div>
   </main></>;

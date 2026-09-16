@@ -155,6 +155,11 @@
   }
 
   .today-page { max-width: 64rem; }
+  .workspace-details > summary { display: flex; min-height: 2.75rem; align-items: center; flex-wrap: wrap; gap: 0.5rem; cursor: pointer; list-style: none; font-size: 0.8125rem; color: hsl(var(--muted-foreground)); }
+  .workspace-details > summary::-webkit-details-marker { display: none; }
+  .workspace-details > summary:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 3px; border-radius: 0.25rem; }
+  .workspace-details[open] > summary > svg { transform: rotate(180deg); }
+  .workspace-details-compact > summary { min-height: 2rem; font-size: 0.75rem; }
   .today-work { min-width: 0; }
   .today-list-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; }
   .today-progress { min-width: 9rem; }

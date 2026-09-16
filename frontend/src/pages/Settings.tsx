@@ -1,6 +1,6 @@
 import { Page, PageBody, PageHeader } from '@/components/PageLayout';
 import { Link, useNavigate } from 'react-router-dom';
-import { ChevronRight, LogOut } from 'lucide-react';
+import { ChevronDown, ChevronRight, LogOut } from 'lucide-react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { clearActiveAccount } from '@/lib/accountSession';
 import { useAppStore } from '@/lib/store';
@@ -30,57 +30,12 @@ export default function SettingsPage() {
     navigate('/login');
   };
 
-  return (
-    <Page>
-      <PageHeader title="Settings" />
-      <PageBody width="form">
-
-      <section className="mb-6">
-        <p className="text-caption uppercase tracking-wider mb-2">Account</p>
-        <div className="bg-card border border-border rounded-lg overflow-hidden">
-          <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
-            <UserAvatar user={user} className="h-8 w-8" fallbackClassName="bg-accent text-xs font-medium text-foreground" />
-            <div className="flex-1">
-              <p className="text-sm text-foreground">{user?.name || 'Demo User'}</p>
-              <p className="text-xs text-muted-foreground">{user?.email || 'demo@caprio.app'}</p>
-            </div>
-          </div>
-          <button onClick={handleSignOut}
-            className="w-full flex items-center px-4 py-3 text-sm text-cap-red hover:bg-accent transition-colors">
-            <LogOut size={14} className="mr-3" />
-            Sign out
-          </button>
-        </div>
-      </section>
-
-      <section className="mb-6">
-        <p className="text-caption uppercase tracking-wider mb-2">Preferences</p>
-        <div className="bg-card border border-border rounded-lg overflow-hidden">
-          {[
-            { label: 'Categories', path: '/settings/categories' },
-            { label: 'Planning preferences', path: '/settings/notifications' },
-            { label: 'Shortcuts and input', path: '/settings/voice' },
-          ].map((item, i, arr) => (
-            <Link key={item.path} to={item.path}
-              className={`flex items-center justify-between px-4 py-3 text-sm text-foreground hover:bg-accent transition-colors ${
-                i < arr.length - 1 ? 'border-b border-border' : ''
-              }`}
-            >
-              {item.label}
-              <ChevronRight size={14} className="text-muted-foreground" />
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      <section>
-        <p className="text-caption uppercase tracking-wider mb-2">About</p>
-        <div className="bg-card border border-border rounded-lg px-4 py-3 flex justify-between text-sm">
-          <span className="text-foreground">Version</span>
-          <span className="text-mono">Caprio v0.1.0</span>
-        </div>
-      </section>
-      </PageBody>
-    </Page>
-  );
+  return <Page>
+    <PageHeader title="Settings" />
+    <PageBody width="form">
+      <section aria-labelledby="task-settings-heading"><h2 id="task-settings-heading" className="mb-3 text-sm font-medium">Task organization</h2><Link to="/settings/categories" className="flex items-center justify-between gap-4 rounded-xl border border-border bg-card p-4 hover:bg-accent"><div><p className="text-base font-medium">Categories</p><p className="mt-1 text-sm text-muted-foreground">Organize tasks and add context for planning.</p></div><ChevronRight size={18} className="shrink-0 text-muted-foreground" /></Link></section>
+      <section aria-labelledby="account-heading" className="mt-8"><h2 id="account-heading" className="mb-3 text-sm font-medium">Account</h2><div className="flex min-w-0 items-center gap-3"><UserAvatar user={user} className="h-10 w-10 shrink-0" fallbackClassName="bg-accent text-xs font-medium text-foreground" /><div className="min-w-0"><p className="break-words text-sm">{user?.name || 'Caprio user'}</p>{user?.email && <p className="break-all text-xs text-muted-foreground">{user.email}</p>}</div></div><button onClick={handleSignOut} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"><LogOut size={15} />Sign out</button></section>
+      <details className="workspace-details mt-6 border-t border-border pt-4"><summary>Help and input<ChevronDown size={15} aria-hidden /></summary><div className="mt-2 flex flex-col items-start"><Link to="/settings/voice" className="inline-flex min-h-11 items-center text-sm underline underline-offset-4">Shortcuts and input</Link><Link to="/settings/notifications" className="inline-flex min-h-11 items-center text-sm underline underline-offset-4">How planning works</Link></div></details>
+    </PageBody>
+  </Page>;
 }

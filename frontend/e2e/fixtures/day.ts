@@ -22,6 +22,7 @@ export async function mockDay(page: Page, options: {
   tasks?: BackendTask[];
   state?: Workflow['state'];
   proposal?: Workflow['proposal'];
+  messages?: Workflow['messages'];
   oldestUnclosedDate?: string;
 } = {}) {
   const tasks = options.tasks ?? tasksForDay();
@@ -65,7 +66,7 @@ export async function mockDay(page: Page, options: {
       const requestedDate = url.searchParams.get('date');
       await route.fulfill({ json: {
         date: requestedDate, oldestUnclosedDate: options.oldestUnclosedDate ?? null, state: requestedDate === date ? options.state ?? 'active' : 'planning',
-        version: 1, messages: [], proposal: options.proposal ?? null, availableMinutes: 220,
+        version: 1, messages: options.messages ?? [], proposal: options.proposal ?? null, availableMinutes: 220,
         tasks, backlog: [], review: options.state === 'closed'
           ? { completedCount: 1, carriedToTomorrowCount: 1, droppedCount: 1, notes: null, energyLevel: null } : null,
       } });
