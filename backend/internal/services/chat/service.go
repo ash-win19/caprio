@@ -264,7 +264,7 @@ func (s *Service) ProcessStream(ctx context.Context, req ProcessRequest, onDelta
 				return err
 			}
 		}
-		trusted, _ := json.Marshal(map[string]any{"date": w.Date, "localToday": CurrentDate(ctx).Time.Format("2006-01-02"), "operationsEnabled": req.ContractVersion >= 2, "referencedTaskId": req.TaskID, "state": w.State, "tasks": liveTasks, "ownedTasks": owned, "backlog": w.Backlog, "categories": categories, "availableMinutes": w.AvailableMinutes, "proposal": w.Proposal})
+		trusted, _ := json.Marshal(map[string]any{"date": w.Date, "localToday": CurrentDate(ctx).Time.Format("2006-01-02"), "operationsEnabled": req.ContractVersion >= 2, "referencedTaskId": req.TaskID, "state": w.State, "tasks": liveTasks, "backlog": w.Backlog, "categories": categories, "availableMinutes": w.AvailableMinutes, "proposal": w.Proposal})
 		if req.ContractVersion >= 2 {
 			trusted = operationContext(w, owned, categories, CurrentDate(ctx).Time.Format("2006-01-02"), req.TaskID)
 		}
@@ -304,16 +304,18 @@ func (s *Service) ProcessStream(ctx context.Context, req ProcessRequest, onDelta
 		for _, task := range owned {
 			titles[task.ID.String()] = task.Title
 		}
+		proposalTitles := map[string]string{}
 		for _, op := range reply.Operations {
 			if op.TaskID != nil {
 				if _, ok := titles[op.TaskID.String()]; !ok {
 					return invalid("unknown task in changes")
 				}
+				proposalTitles[op.TaskID.String()] = titles[op.TaskID.String()]
 			}
 		}
 		var proposal []byte
 		if reply.Phase == "proposal" {
-			proposal, _ = json.Marshal(&Proposal{ID: uuid.New(), Summary: reply.Message, AvailableMinutes: reply.AvailableMinutes, Tasks: reply.Tasks, Operations: reply.Operations, TaskTitles: titles})
+			proposal, _ = json.Marshal(&Proposal{ID: uuid.New(), Summary: reply.Message, AvailableMinutes: reply.AvailableMinutes, Tasks: reply.Tasks, Operations: reply.Operations, TaskTitles: proposalTitles})
 		}
 		if _, err := q.CreateChatMessage(ctx, generated.CreateChatMessageParams{UserID: req.UserID, SessionDate: req.SessionDate, Role: "user", Content: req.Content}); err != nil {
 			return err
