@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthGuard } from './AuthGuard';
 import { useAuth0 } from '@auth0/auth0-react';
 import type { Auth0ContextInterface } from '@auth0/auth0-react';
 import * as api from '@/lib/api';
-import { localDate, previousDate } from '@/lib/date';
+import { localDate, nextDate, previousDate } from '@/lib/date';
 
 vi.mock('@auth0/auth0-react', () => ({
   useAuth0: vi.fn(),
@@ -145,6 +145,8 @@ describe('AuthGuard morning reopen routing', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    vi.mocked(api.rolloverDay).mockReset();
+    vi.mocked(api.getWorkflow).mockImplementation(async (date = today) => workflow(date));
     vi.mocked(useAuth0).mockReturnValue({
       isAuthenticated: true,
       isLoading: false,
@@ -163,10 +165,10 @@ describe('AuthGuard morning reopen routing', () => {
     });
   });
 
-  it('opens Today on login even when an older day needs review', async () => {
+  it('opens Plan on login even when an older day needs review', async () => {
     vi.mocked(api.getWorkflow).mockImplementation(async (date = today) => ({ ...workflow(date), oldestUnclosedDate: yesterday }));
     mount('/');
-    await waitFor(() => expect(screen.getByTestId('today-page')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('new-page')).toBeInTheDocument());
     expect(screen.queryByTestId('review-page')).not.toBeInTheDocument();
   });
 
@@ -182,31 +184,67 @@ describe('AuthGuard morning reopen routing', () => {
     await waitFor(() => expect(screen.getByTestId('new-page')).toBeInTheDocument());
   });
 
-  it('opens Today even before a plan is confirmed', async () => {
+  it('opens Plan before a plan is started', async () => {
     vi.mocked(api.getWorkflow).mockImplementation(async (date = today) => workflow(date, 'planning'));
     mount('/');
-    await waitFor(() => expect(screen.getByTestId('today-page')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('new-page')).toBeInTheDocument());
   });
 
-  it('opens /today when today is already active', async () => {
-    vi.mocked(api.getWorkflow).mockImplementation(async (date = today) => workflow(date, date === today ? 'active' : 'closed'));
+  it.each(['/', '/today'])('opens the conversation for a carry-only morning from %s', async (path) => {
+    const carried: api.BackendTask = {
+      id: 'carried', userId: 'user', title: 'Finish report', urgency: 'medium', duration: 120,
+      source: 'manual', completed: false, sortOrder: 0, plannedForDate: today,
+      status: 'planned', deferCount: 1, createdAt: yesterday, updatedAt: today,
+    };
+    const morning = { ...workflow(today), tasks: [carried], carryoverOrigins: { carried: yesterday } };
+    vi.mocked(api.rolloverDay).mockResolvedValue(morning);
+    vi.mocked(api.getWorkflow).mockResolvedValue(morning);
+    mount(path);
+    expect(await screen.findByTestId('new-page')).toBeInTheDocument();
+    expect(screen.queryByTestId('today-page')).not.toBeInTheDocument();
+  });
+
+  it.each(['active', 'closed'] as const)('opens /today when today is already %s, even with no tasks', async (state) => {
+    vi.mocked(api.getWorkflow).mockImplementation(async (date = today) => workflow(date, state));
     mount('/');
     await waitFor(() => expect(screen.getByTestId('today-page')).toBeInTheDocument());
   });
 
-  it('does not redirect a Today link after a multi-day absence', async () => {
+  it('opens Plan from a restored Today tab after a multi-day absence', async () => {
     const missed = previousDate(previousDate(previousDate(today)));
     vi.mocked(api.getWorkflow).mockResolvedValue({ ...workflow(today), oldestUnclosedDate: missed });
     mount('/today');
-    expect(await screen.findByTestId('today-page')).toBeInTheDocument();
+    expect(await screen.findByTestId('new-page')).toBeInTheDocument();
     expect(screen.queryByTestId('review-page')).not.toBeInTheDocument();
   });
 
-  it('lets the destination page handle a workflow outage without a routing loop', async () => {
+  it('waits for rollover before choosing the morning destination', async () => {
+    let finishRollover!: (result: api.Workflow) => void;
+    vi.mocked(api.rolloverDay).mockImplementation(() => new Promise(resolve => { finishRollover = resolve; }));
+    mount('/today');
+    await waitFor(() => expect(api.rolloverDay).toHaveBeenCalled());
+    expect(api.getWorkflow).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('today-page')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('new-page')).not.toBeInTheDocument();
+    await act(async () => finishRollover(workflow(today)));
+    expect(await screen.findByTestId('new-page')).toBeInTheDocument();
+  });
+
+  it('offers retry when the morning state cannot be loaded', async () => {
     vi.mocked(api.getWorkflow).mockRejectedValue(new Error('Workflow unavailable'));
     mount('/');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Workflow unavailable');
+    expect(screen.queryByTestId('today-page')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('new-page')).not.toBeInTheDocument();
+    vi.mocked(api.getWorkflow).mockResolvedValue(workflow(today));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByTestId('new-page')).toBeInTheDocument();
+  });
+
+  it.each([yesterday, today, nextDate(today)])('preserves an explicit task view for %s', async (date) => {
+    mount(`/today?date=${date}`);
     expect(await screen.findByTestId('today-page')).toBeInTheDocument();
-    expect(screen.queryByTestId('review-page')).not.toBeInTheDocument();
+    expect(api.getWorkflow).not.toHaveBeenCalled();
   });
 
   it('keeps a deliberately selected historical day usable while recovery is unavailable', async () => {
