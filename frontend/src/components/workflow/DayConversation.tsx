@@ -15,7 +15,6 @@ import { CHAT_MODELS, DEFAULT_CHAT_MODEL, FALLBACK_CHAT_MODEL } from '@/lib/chat
 import { shouldFallbackToGroq } from '@/lib/chat-resilience';
 import { useWorkflow } from '@/lib/queries';
 import { useRevealedText } from '@/lib/hooks/use-revealed-text';
-import { localDate } from '@/lib/date';
 import * as api from '@/lib/api';
 
 // A turn that has been sent but not yet committed by the server. The user's
@@ -81,7 +80,7 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
       if (!mounted.current) return;
       queryClient.setQueryData(['workflow', date], saved);
       refresh();
-      if (mounted.current) navigate(`/today${date === localDate() ? '' : `?date=${date}`}`);
+      navigate(`/today?date=${date}`);
     },
     onError: () => { void workflowQuery.refetch(); },
   });
@@ -133,7 +132,7 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
       }
       updatePending(request.requestId, (turn) => ({ ...turn, status: 'failed', error }));
       // A response can disappear after commit. Recover both the receipt and
-      // the checklist, including a checklist already mounted beside chat.
+      // the saved tasks before deciding whether to open the task page.
       refresh();
     } finally {
       if (abortRef.current === controller) abortRef.current = null;

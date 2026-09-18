@@ -111,6 +111,31 @@ for (const width of [390, 1440]) {
   });
 }
 
+test('confirming a plan of carried tasks opens the task page', async ({ page }) => {
+  const tasks = tasksForDay().map(task => ({ ...task, deferCount: 1 }));
+  const proposal: NonNullable<Workflow['proposal']> = {
+    id: 'carry-plan', summary: 'Focus on the work carried from yesterday.', availableMinutes: 240,
+    tasks: tasks.map(task => ({ id: task.id, title: task.title, duration: task.duration ?? 30, urgency: task.urgency, disposition: 'today', reason: 'Keep this priority.' })),
+  };
+  await mockDay(page, { state: 'planning', tasks, proposal, firstVisit: true });
+  let workflow: Workflow = { date, state: 'planning', version: 1, tasks, proposal, messages: [], backlog: [], availableMinutes: 240, review: null };
+  await page.route('**/api/**', async route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/workflow') return route.fulfill({ json: workflow });
+    if (path === '/api/day/plan/confirm') {
+      workflow = { ...workflow, state: 'active', version: 2, proposal: null };
+      return route.fulfill({ json: workflow });
+    }
+    return route.fallback();
+  });
+  await page.goto('/');
+  await expect(page).toHaveURL('/new');
+  await page.getByRole('button', { name: 'Confirm plan', exact: true }).click();
+  await expect(page).toHaveURL(`/today?date=${date}`);
+  await expect(page.getByRole('heading', { name: 'Your tasks' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Planning conversation' })).toHaveCount(0);
+});
+
 test('a Today tab left open overnight starts the new day in conversation', async ({ page }) => {
   await mockDay(page);
   await page.goto('/today');
