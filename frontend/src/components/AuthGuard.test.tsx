@@ -190,6 +190,11 @@ describe('AuthGuard morning reopen routing', () => {
     await waitFor(() => expect(screen.getByTestId('new-page')).toBeInTheDocument());
   });
 
+  it.each(['', 'invalid', '2026-02-30'])('opens Plan when a Today date is unusable: %s', async (date) => {
+    mount(`/today?date=${date}`);
+    expect(await screen.findByTestId('new-page')).toBeInTheDocument();
+  });
+
   it.each(['/', '/today'])('opens the conversation for a carry-only morning from %s', async (path) => {
     const carried: api.BackendTask = {
       id: 'carried', userId: 'user', title: 'Finish report', urgency: 'medium', duration: 120,

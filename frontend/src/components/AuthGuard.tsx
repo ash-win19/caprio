@@ -6,6 +6,7 @@ import { activateAccount } from '@/lib/accountSession';
 import { useAppStore } from '@/lib/store';
 import { bootstrap, rolloverDay, setAccessTokenProvider } from '@/lib/api';
 import { useLocalDay } from '@/lib/useLocalDay';
+import { isValidDate } from '@/lib/date';
 import { clearDateDrafts } from '@/lib/dateDrafts';
 import { QUERY_KEYS, useWorkflow } from '@/lib/queries';
 
@@ -105,9 +106,10 @@ export function AuthGuard({ children }: { children: ReactNode }) {
 
   if (session.data.onboardingComplete && location.pathname.startsWith('/onboarding')) return <Navigate to="/new" replace />;
   const fromPublicRoute = PUBLIC_ROUTES.includes(location.pathname);
-  // An undated Today URL is also a common restored tab or bookmark. Explicit
-  // dates, including the conversation's View tasks link, keep their destination.
-  const opensCurrentDay = location.pathname === '/today' && !new URLSearchParams(location.search).has('date');
+  // Missing or invalid dates open the current day, matching Today's fallback.
+  // Valid explicit dates, including View tasks links, keep their destination.
+  const explicitDate = new URLSearchParams(location.search).get('date');
+  const opensCurrentDay = location.pathname === '/today' && (!explicitDate || !isValidDate(explicitDate));
   if (fromPublicRoute || opensCurrentDay) return <DayEntry date={date} fromPublicRoute={fromPublicRoute}>{children}</DayEntry>;
 
   return <>{children}</>;

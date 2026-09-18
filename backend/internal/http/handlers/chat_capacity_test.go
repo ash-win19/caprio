@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ashwinshanmugam/caprio/backend/internal/http/handlers"
 	"github.com/ashwinshanmugam/caprio/backend/internal/mastra"
@@ -34,7 +35,9 @@ func TestProviderHighDemandEnablesFallbackWithoutSaving(t *testing.T) {
 			r, store, user := setupWorkflowHTTP(t)
 			h := handlers.NewChatHandler(store, chat.NewService(store, mastra.NewClient(upstream.URL)))
 			r.POST("/test/chat", h.StreamMessage)
-			body, err := json.Marshal(map[string]any{"content": "Plan my day", "date": "2026-09-16", "requestId": uuid.NewString()})
+			// Stay writable across UTC midnight so the request reaches the provider.
+			date := time.Now().UTC().AddDate(0, 0, 1).Format(time.DateOnly)
+			body, err := json.Marshal(map[string]any{"content": "Plan my day", "date": date, "requestId": uuid.NewString()})
 			require.NoError(t, err)
 			req := httptest.NewRequest("POST", "/test/chat", bytes.NewReader(body))
 			req.Header.Set("Content-Type", "application/json")
@@ -59,7 +62,7 @@ func TestProviderHighDemandEnablesFallbackWithoutSaving(t *testing.T) {
 			require.NoError(t, store.Pool.QueryRow(context.Background(), `SELECT count(*) FROM chat_requests WHERE user_id=$1`, user).Scan(&requests))
 			require.Zero(t, messages)
 			require.Zero(t, requests)
-			workflow := httpJSON(t, r, "GET", "/api/workflow?date=2026-09-16", nil, 200)
+			workflow := httpJSON(t, r, "GET", "/api/workflow?date="+date, nil, 200)
 			require.Nil(t, workflow["proposal"])
 			require.Empty(t, workflow["tasks"])
 		})
