@@ -43,7 +43,7 @@ for (const width of [390, 1440]) {
     });
     await page.goto(`/new?date=${date}&taskId=referenced-inbox-task`);
     const checklist = page.getByRole('region', { name: 'Saved checklist' });
-    await expect(checklist).toHaveCount(width >= 1100 ? 1 : 0);
+    await expect(checklist).toHaveCount(0);
     await expect(page.getByText('1 saved task', { exact: true })).toBeVisible();
     await page.getByRole('textbox', { name: 'Message about your day' }).fill('I have to fix Headlines publishing and prepare tomorrow’s demo. Two hours each.');
     await page.getByRole('button', { name: 'Send prompt', exact: true }).click();
@@ -51,13 +51,14 @@ for (const width of [390, 1440]) {
     await expect(receipts).toContainText('Added 2 tasks');
     await expect(page.getByText('3 saved tasks', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Confirm plan' })).toHaveCount(0);
-    if (width >= 1100) {
-      await expect(checklist.getByRole('list', { name: 'Remaining tasks' }).locator(':scope > li')).toHaveCount(3);
-      await expect(checklist).toContainText('280 min estimated remaining');
-      const publishing = checklist.getByRole('listitem').filter({ hasText: 'Fix Headlines publishing' });
-      await publishing.locator('summary').click();
-      await expect(publishing.getByText('Preserve the Headlines brand and use Cozad’s feedback.')).toBeVisible();
-    }
+    await page.getByRole('link', { name: 'View tasks', exact: true }).click();
+    await expect(page.getByRole('list', { name: 'Remaining tasks' }).locator(':scope > li')).toHaveCount(3);
+    await expect(page.locator('.today-page')).toContainText('280 min estimated remaining');
+    const publishing = page.getByRole('listitem').filter({ hasText: 'Fix Headlines publishing' });
+    await publishing.locator('summary').click();
+    await expect(publishing.getByText('Preserve the Headlines brand and use Cozad’s feedback.')).toBeVisible();
+    await page.goBack();
+    await expect(receipts).toContainText('Added 2 tasks');
     expect(writes[0].body).toMatchObject({ contractVersion: 2, date, taskId: 'referenced-inbox-task' });
     expect(requestId).toBeTruthy();
     await page.reload();
