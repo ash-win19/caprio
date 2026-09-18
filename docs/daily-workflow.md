@@ -10,7 +10,7 @@ Caprio helps an individual professional organize the work on their mind into a t
 | `/login` and `/signup` | Authenticate with Auth0. | Continue onboarding or open the current day. |
 | `/onboarding` | Choose the areas of life used to organize tasks. | Save category choices. |
 | `/onboarding/prefs` | Set the usual planning time and explain how task requests are saved. | Open the first planning conversation. |
-| `/new?date=YYYY-MM-DD` | Show only the planning conversation, with a saved count and View tasks. | Discuss the day, then save tasks or confirm suggestions. |
+| `/new?date=YYYY-MM-DD` | Show only the planning conversation, with unfinished counts and View tasks. | Discuss the day, then save tasks or confirm suggestions. |
 | `/today?date=YYYY-MM-DD` | Execute the saved plan, complete tasks, reorder unfinished work, and report a changed day. | Work the plan or request an adjustment. |
 | `/capture` | Store unplanned work in the inbox. | Add it directly to an open day or discuss it with the planner. |
 | `/review?date=YYYY-MM-DD` | Choose an explicit outcome for every task and record optional notes and energy. | Close the current day. |
@@ -54,6 +54,8 @@ Closed summaries group task names from the immutable archive by Done, Carried, a
 
 Workflow errors retain an `error` message and add a stable `code`: `plan_incomplete`, `validation`, `conflict`, `model_unavailable`, `historical_day`, `ambiguous_task`, `not_found`, or `internal`. Streaming failures carry the same code and an HTTP-style `status` in the error event. Authentication retains HTTP 401/403 handling; the client labels expired sessions `auth`. Plan validation failures preserve saved work and never trigger model fallback.
 
+The composer, API, and planner default to GPT-OSS 120B through Groq. Users can still select another supported model. A capacity failure or timeout retries once with GPT-OSS 20B and identifies that model in the notice.
+
 Fresh committed transitions log `plan_confirmed`, `day_closed`, and, when nonzero, `tasks_carried`. Records include account/date/version identifiers and counts, plus proposal or review IDs. They exclude task text and notes. Replays and rollbacks emit no success records. These operational logs are best effort; they do not provide durable exactly-once delivery across a process crash.
 
 ## Agent boundary
@@ -73,3 +75,5 @@ The UI runs rollover during account bootstrap, on a new local date, and on subse
 After rollover, the first default app entry for each account and local day opens the conversation at `/new`. The browser remembers only that account's last opened date. Later default entries also open the conversation when the day is still `planning` or has no new tasks. Carried tasks alone do not count as tasks created for the new day. Once the day has an active plan with new tasks, later entries open Today. Closed days keep their saved summary. A failed workflow lookup offers retry before choosing a destination. Explicit dated links stay on their requested page, so View tasks remains available during planning and historical or future dates remain accessible.
 
 Planning never shares its screen with the checklist. Clarifying replies and unconfirmed suggestions keep the user in conversation. When the initial conversation saves tasks for the selected day, the app finishes showing the reply and opens Today. Confirming a proposal also opens Today, including a plan made entirely of carried tasks. For the current day, this transition leaves the route undated and remembers the saved date in navigation state, so an overnight tab still opens the next morning's conversation. A lost response that is recovered from a committed change receipt follows the same transition. Typing a new draft keeps the conversation open. Adjusting an existing plan keeps its conversation and Undo receipts available, with View tasks returning to the checklist.
+
+The conversation header shows one summary beside View tasks: `3 remaining · 2 carried forward`. Both numbers count unfinished work and exclude dropped tasks. The carried count uses blue text and an explicit label; it never assumes that all carries came from yesterday. The summary remains during chat, shows zero remaining for completed saved work, and is absent for an empty day or unavailable workflow. The welcome, composer, and placeholder do not repeat the counts or carry policy.

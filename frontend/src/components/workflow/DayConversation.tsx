@@ -130,7 +130,7 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
       if (controller.signal.aborted) return;
       if (allowFallback && shouldFallbackToGroq(error, request.model)) {
         setModel(FALLBACK_CHAT_MODEL);
-        toast({ title: 'Switched to Groq', description: 'The previous model was busy. Retrying with Groq.' });
+        toast({ title: 'Switched to GPT-OSS 20B', description: 'The previous model was unavailable. Retrying with GPT-OSS 20B.' });
         await send({ ...request, model: FALLBACK_CHAT_MODEL }, { allowFallback: false });
         return;
       }
@@ -220,7 +220,6 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
   const proposedBacklog = proposal?.tasks.filter((task) => task.disposition === 'backlog') || [];
   const minutes = proposedToday.reduce((sum, task) => sum + task.duration, 0);
   const availableMinutes = proposal?.availableMinutes ?? null;
-  const carriedCount = (workflow?.tasks || []).filter((task) => task.deferCount > 0 && !task.completed).length;
   const busy = replying || confirm.isPending || discard.isPending || undo.isPending;
   useNavigationLock(busy, Boolean(input.trim()) || Boolean(pending && !settling));
   // While a reply is still being revealed, the thread shows the messages that
@@ -239,8 +238,7 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
         {!messages.length && !pending && !proposal && workflow?.state !== 'closed' && <div className="flex min-h-[38vh] flex-col items-center justify-center text-center">
           <ListChecks className="mb-5 h-7 w-7 text-primary" />
           <h2 className="text-3xl font-medium">{past ? 'No conversation for this day' : showInterruptChips ? 'What changed?' : 'What needs your attention?'}</h2>
-          <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">{past ? 'Your saved plan and review are available from View tasks.' : showInterruptChips ? 'Tell Caprio what shifted: less time, new work, or something to drop. Explicit task requests save to your list. Suggested changes wait for your approval.' : 'Tell me what you need to do. Tasks save here as you add them. Estimates are optional.'}</p>
-          {!past && !!workflow?.tasks.length && <p className="mt-4 text-sm text-primary">{workflow.tasks.length} saved {workflow.tasks.length === 1 ? 'task is' : 'tasks are'} already waiting for this day{carriedCount > 0 ? ` · ${carriedCount} carried forward` : ''}.</p>}
+          <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">{past ? 'Your saved plan and review are available from View tasks.' : showInterruptChips ? 'Tell Caprio what shifted: less time, new work, or something to drop. Explicit task requests save to your list. Suggested changes wait for your approval.' : 'Tell me what you need to do. Tasks save here as you add them.'}</p>
         </div>}
         {proposal && !pending && !readOnly && messages.length > 0 ? <details id="proposal-context" className="workspace-details scroll-mt-4 rounded-xl border border-border px-4 py-2">
           <summary>Conversation · {messages.length} {messages.length === 1 ? 'message' : 'messages'}<ChevronDown size={14} aria-hidden /></summary>
@@ -292,7 +290,6 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
     </div></div>
     <div className="conversation-composer bg-background px-4 pb-4 pt-2 md:px-8"><div className="mx-auto max-w-2xl">
       {readOnly ? <div className="flex items-center justify-between gap-3 rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground"><span>{past ? 'Past conversations are read-only.' : 'This day is closed.'}</span><Link to="/new" className="shrink-0 text-primary hover:underline">Go to today</Link></div> : <>
-        {!past && carriedCount > 0 && <p role="status" className="mb-3 inline-flex max-w-full items-center rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs text-primary">{carriedCount} carried forward. They stay in your plan until you finish or remove them.</p>}
         {showInterruptChips && !pending && !input && !proposal && <div className="mb-3 flex flex-wrap gap-2" aria-label="Quick interruption prompts">
           {INTERRUPT_CHIPS.map((chip) => (
             <button
@@ -305,7 +302,7 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
             </button>
           ))}
         </div>}
-        <PromptInput id="day-message" value={input} onValueChange={setInput} models={CHAT_MODELS} model={model} defaultModel={DEFAULT_CHAT_MODEL} onModelChange={setModel} onSubmit={handleSend} loading={replying} onStop={stop} disabled={workflowQuery.isLoading || !!workflowQuery.error || confirm.isPending || discard.isPending || undo.isPending} leadingAction={<SpeechMicButton value={input} onTranscript={setInput} disabled={workflowQuery.isLoading || !!workflowQuery.error || confirm.isPending || discard.isPending || undo.isPending || replying} />} aria-label="Message about your day" maxLength={8000} placeholder={workflow?.state === 'active' || intent === 'interrupt' ? 'Add a task or tell me what changed…' : carriedCount > 0 ? `Add what’s new. Your ${carriedCount} carried task${carriedCount === 1 ? '' : 's'} will stay in the list…` : 'I need to finish a report, test the workflow, and prepare the demo…'} />
+        <PromptInput id="day-message" value={input} onValueChange={setInput} models={CHAT_MODELS} model={model} defaultModel={DEFAULT_CHAT_MODEL} onModelChange={setModel} onSubmit={handleSend} loading={replying} onStop={stop} disabled={workflowQuery.isLoading || !!workflowQuery.error || confirm.isPending || discard.isPending || undo.isPending} leadingAction={<SpeechMicButton value={input} onTranscript={setInput} disabled={workflowQuery.isLoading || !!workflowQuery.error || confirm.isPending || discard.isPending || undo.isPending || replying} />} aria-label="Message about your day" maxLength={8000} placeholder={showInterruptChips ? 'Add a task or tell me what changed…' : 'Tell me what you want to work on…'} />
       </>}
     </div></div>
   </section></>;

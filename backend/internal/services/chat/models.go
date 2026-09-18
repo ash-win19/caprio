@@ -1,6 +1,6 @@
 package chat
 
-const DefaultChatModel = "google/gemini-3.7-flash"
+const DefaultChatModel = "groq/openai/gpt-oss-120b"
 
 var allowedChatModels = map[string]struct{}{
 	"google/gemini-3.7-flash":  {},

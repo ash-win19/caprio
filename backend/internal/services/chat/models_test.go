@@ -9,7 +9,7 @@ import (
 func TestResolveChatModel(t *testing.T) {
 	got, err := ResolveChatModel("")
 	require.NoError(t, err)
-	require.Equal(t, DefaultChatModel, got)
+	require.Equal(t, "groq/openai/gpt-oss-120b", got)
 
 	got, err = ResolveChatModel("groq/openai/gpt-oss-20b")
 	require.NoError(t, err)

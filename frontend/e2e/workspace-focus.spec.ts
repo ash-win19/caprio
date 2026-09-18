@@ -141,8 +141,8 @@ test('proposal shows decisions before conversation and keeps the model picker in
   await expect(page.getByRole('region', { name: 'Proposal changes' })).toContainText('Prepare a handoff');
   await expect(page.getByText('Deferred or removed · 2')).toBeVisible();
   const composer = page.locator('.conversation-composer form');
-  await expect(composer.getByRole('button', { name: 'Gemini 3.7 Flash' })).toBeVisible();
-  await composer.getByRole('button', { name: 'Gemini 3.7 Flash' }).click();
+  await expect(composer.getByRole('button', { name: 'GPT-OSS 120B' })).toBeVisible();
+  await composer.getByRole('button', { name: 'GPT-OSS 120B' }).click();
   await page.getByRole('option', { name: 'GPT-OSS 20B', exact: true }).click();
   await expect(composer.getByRole('button', { name: 'GPT-OSS 20B' })).toBeVisible();
   expect(writes).toEqual([]);

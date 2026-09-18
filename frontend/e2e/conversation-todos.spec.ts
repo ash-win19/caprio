@@ -44,12 +44,12 @@ for (const width of [390, 1440]) {
     await page.goto(`/new?date=${date}&taskId=referenced-inbox-task`);
     const checklist = page.getByRole('region', { name: 'Saved checklist' });
     await expect(checklist).toHaveCount(0);
-    await expect(page.getByText('1 saved task', { exact: true })).toBeVisible();
+    await expect(page.getByText('1 remaining', { exact: true })).toBeVisible();
     await page.getByRole('textbox', { name: 'Message about your day' }).fill('I have to fix Headlines publishing and prepare tomorrow’s demo. Two hours each.');
     await page.getByRole('button', { name: 'Send prompt', exact: true }).click();
     const receipts = page.getByRole('region', { name: 'Saved task changes' });
     await expect(receipts).toContainText('Added 2 tasks');
-    await expect(page.getByText('3 saved tasks', { exact: true })).toBeVisible();
+    await expect(page.getByText('3 remaining', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Confirm plan' })).toHaveCount(0);
     await page.getByRole('link', { name: 'View tasks', exact: true }).click();
     await expect(page.getByRole('list', { name: 'Remaining tasks' }).locator(':scope > li')).toHaveCount(3);
@@ -68,7 +68,7 @@ for (const width of [390, 1440]) {
     await page.screenshot({ path: info.outputPath(`conversation-saved-${width}.png`), animations: 'disabled' });
     await receipts.getByRole('button', { name: 'Undo added 2 tasks' }).click();
     await expect(receipts.getByText('Undone', { exact: true })).toBeVisible();
-    await expect(page.getByText('1 saved task', { exact: true })).toBeVisible();
+    await expect(page.getByText('1 remaining', { exact: true })).toBeVisible();
     await expect(receipts.getByRole('button', { name: 'Undo added 2 tasks' })).toBeDisabled();
     await page.getByRole('link', { name: 'View tasks', exact: true }).click();
     await expect(page).toHaveURL(`/today?date=${date}`);
