@@ -75,7 +75,10 @@ for (const width of [390, 1440]) {
     let turns = 0;
     await page.route('**/api/**', async route => {
       const path = new URL(route.request().url()).pathname;
-      if (path === '/api/workflow') return route.fulfill({ json: workflow });
+      if (path === '/api/workflow') {
+        if (new URL(route.request().url()).searchParams.get('date') !== date) return route.fallback();
+        return route.fulfill({ json: workflow });
+      }
       if (path === '/api/tasks') return route.fulfill({ json: { tasks: workflow.tasks } });
       if (path !== '/api/chat/stream') return route.fallback();
       const request = route.request().postDataJSON();
@@ -101,12 +104,16 @@ for (const width of [390, 1440]) {
     await expect(page.getByRole('region', { name: 'Saved checklist' })).toHaveCount(0);
     await input.fill('Add Finish report to today');
     await page.getByRole('button', { name: 'Send prompt', exact: true }).click();
-    await expect(page).toHaveURL(`/today?date=${date}`);
+    await expect(page).toHaveURL('/today');
     await expect(page.getByRole('list', { name: 'Remaining tasks' })).toContainText('Finish report');
     await expect(page.getByRole('region', { name: 'Planning conversation' })).toHaveCount(0);
     await page.screenshot({ path: info.outputPath(`after-planning-${width}.png`), animations: 'disabled' });
-    await page.goto('/');
+    await page.reload();
     await expect(page).toHaveURL('/today');
+    await page.clock.setFixedTime(new Date('2026-09-15T08:00:00'));
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect(page).toHaveURL('/new');
+    await expect(input).toBeEnabled();
     expect(turns).toBe(2);
   });
 }
@@ -131,7 +138,7 @@ test('confirming a plan of carried tasks opens the task page', async ({ page }) 
   await page.goto('/');
   await expect(page).toHaveURL('/new');
   await page.getByRole('button', { name: 'Confirm plan', exact: true }).click();
-  await expect(page).toHaveURL(`/today?date=${date}`);
+  await expect(page).toHaveURL('/today');
   await expect(page.getByRole('heading', { name: 'Your tasks' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Planning conversation' })).toHaveCount(0);
 });

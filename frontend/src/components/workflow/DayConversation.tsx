@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, ChevronDown, Clock3, ListChecks } from 'lucide-react';
@@ -15,6 +15,7 @@ import { CHAT_MODELS, DEFAULT_CHAT_MODEL, FALLBACK_CHAT_MODEL } from '@/lib/chat
 import { shouldFallbackToGroq } from '@/lib/chat-resilience';
 import { useWorkflow } from '@/lib/queries';
 import { useRevealedText } from '@/lib/hooks/use-revealed-text';
+import { localDate } from '@/lib/date';
 import * as api from '@/lib/api';
 
 // A turn that has been sent but not yet committed by the server. The user's
@@ -43,6 +44,9 @@ const INTERRUPT_CHIPS = [
 
 export function DayConversation({ date, intent, seed, taskId }: { date: string; intent: string | null; seed: string; taskId?: string }) {
   const navigate = useNavigate();
+  const openSavedPlan = useCallback(() => {
+    navigate(date === localDate() ? '/today' : `/today?date=${date}`, { state: { savedPlanDate: date } });
+  }, [date, navigate]);
   const queryClient = useQueryClient();
   const workflowQuery = useWorkflow(date);
   const workflow = workflowQuery.data;
@@ -80,7 +84,7 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
       if (!mounted.current) return;
       queryClient.setQueryData(['workflow', date], saved);
       refresh();
-      navigate(`/today?date=${date}`);
+      openSavedPlan();
     },
     onError: () => { void workflowQuery.refetch(); },
   });
@@ -152,8 +156,8 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
   useEffect(() => {
     if (!settled) return;
     setPending(null);
-    if (pending?.openTasks && !input.trim()) navigate(`/today?date=${date}`);
-  }, [settled, pending?.openTasks, input, date, navigate, setPending]);
+    if (pending?.openTasks && !input.trim()) openSavedPlan();
+  }, [settled, pending?.openTasks, input, openSavedPlan, setPending]);
 
   // The server may have committed the turn even though this client gave up on
   // it. Once the saved thread contains the message, drop the pending copy.
@@ -163,9 +167,9 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
     if (messages.some((message, index) => index >= pending.savedCount && message.role === 'user' && message.content === pending.content)) {
       setPending(null);
       const saved = workflow?.changeReceipts?.some(receipt => receipt.requestId === pending.requestId && !receipt.undone && receipt.affectedDates.includes(date));
-      if (pending.startPlanning && saved && workflow?.state === 'active' && workflow.tasks.length > 0 && !input.trim()) navigate(`/today?date=${date}`);
+      if (pending.startPlanning && saved && workflow?.state === 'active' && workflow.tasks.length > 0 && !input.trim()) openSavedPlan();
     }
-  }, [workflow, pending, replying, settling, input, date, navigate, setPending]);
+  }, [workflow, pending, replying, settling, input, date, openSavedPlan, setPending]);
 
   useEffect(() => {
     mounted.current = true;

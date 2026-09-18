@@ -119,12 +119,12 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   // Valid explicit dates, including View tasks links, keep their destination.
   const explicitDate = new URLSearchParams(location.search).get('date');
   const opensCurrentDay = location.pathname === '/today' && (!explicitDate || !isValidDate(explicitDate));
-  if (fromPublicRoute || opensCurrentDay) return <DayEntry key={`${account}:${date}`} account={account} date={date} fromPublicRoute={fromPublicRoute}>{children}</DayEntry>;
+  if (fromPublicRoute || opensCurrentDay) return <DayEntry key={`${account}:${date}`} account={account} date={date} fromPublicRoute={fromPublicRoute} savedPlanDate={location.state?.savedPlanDate}>{children}</DayEntry>;
 
   return <>{children}</>;
 }
 
-function DayEntry({ account, date, fromPublicRoute, children }: { account: string; date: string; fromPublicRoute: boolean; children: ReactNode }) {
+function DayEntry({ account, date, fromPublicRoute, savedPlanDate, children }: { account: string; date: string; fromPublicRoute: boolean; savedPlanDate?: string; children: ReactNode }) {
   // AuthGuard mounts this only after rollover and account bootstrap finish.
   // Carried tasks do not mean the user has started today's plan.
   const workflow = useWorkflow(date);
@@ -138,7 +138,10 @@ function DayEntry({ account, date, fromPublicRoute, children }: { account: strin
     <button className="mt-4 underline" onClick={() => void workflow.refetch()}>Try again</button>
   </SessionStatus>;
   const hasNewTasks = workflow.data.tasks.some(task => task.deferCount === 0);
-  if (workflow.data.state !== 'closed' && (firstOpen || workflow.data.state === 'planning' || !hasNewTasks)) return <Navigate to="/new" state={{ planningDay: date }} replace />;
+  // A just-saved plan can contain only carried tasks. Keep its task page open
+  // without pinning the route to a date, so an overnight tab starts tomorrow.
+  const showsSavedPlan = savedPlanDate === date && workflow.data.state === 'active' && workflow.data.tasks.length > 0;
+  if (!showsSavedPlan && workflow.data.state !== 'closed' && (firstOpen || workflow.data.state === 'planning' || !hasNewTasks)) return <Navigate to="/new" state={{ planningDay: date }} replace />;
   if (fromPublicRoute) return <Navigate to="/today" replace />;
   return <>{children}</>;
 }
