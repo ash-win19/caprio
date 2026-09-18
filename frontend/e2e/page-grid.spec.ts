@@ -95,7 +95,7 @@ for (const state of ['planning', 'active', 'closed'] as const) {
   test(`${state} empty day has a clear next step`, async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await mockDay(page, { state, tasks: [] });
-    await page.goto('/today');
+    await page.goto(`/today?date=${date}`);
     const title = state === 'planning' ? 'Make room for what matters today' : state === 'active' ? 'Nothing planned for this day' : 'Day closed';
     await expect(page.getByRole('heading', { name: title })).toBeVisible();
     await expect(page.getByRole('progressbar')).toHaveCount(0);
@@ -289,7 +289,7 @@ test('loading and failed plans preserve a retry path', async ({ page }) => {
     await pending;
     await route.fulfill({ status: 400, json: { error: 'Could not load the plan' } });
   });
-  await page.goto('/today');
+  await page.goto(`/today?date=${date}`);
   await expect(page.getByRole('status', { name: '', exact: true }).filter({ hasText: 'Loading your plan' })).toBeVisible();
   await expect(page.getByRole('list', { name: 'Remaining tasks' })).toHaveCount(0);
   release();

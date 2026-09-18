@@ -6,8 +6,9 @@ import { activateAccount } from '@/lib/accountSession';
 import { useAppStore } from '@/lib/store';
 import { bootstrap, rolloverDay, setAccessTokenProvider } from '@/lib/api';
 import { useLocalDay } from '@/lib/useLocalDay';
+import { isValidDate } from '@/lib/date';
 import { clearDateDrafts } from '@/lib/dateDrafts';
-import { QUERY_KEYS } from '@/lib/queries';
+import { QUERY_KEYS, useWorkflow } from '@/lib/queries';
 
 const PUBLIC_ROUTES = ['/', '/login', '/signup', '/landing'];
 
@@ -104,8 +105,27 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   if (!session.data.onboardingComplete && !location.pathname.startsWith('/onboarding')) return <Navigate to="/onboarding" replace />;
 
   if (session.data.onboardingComplete && location.pathname.startsWith('/onboarding')) return <Navigate to="/new" replace />;
-  if (session.data.onboardingComplete && PUBLIC_ROUTES.includes(location.pathname)) return <Navigate to="/today" replace />;
+  const fromPublicRoute = PUBLIC_ROUTES.includes(location.pathname);
+  // Missing or invalid dates open the current day, matching Today's fallback.
+  // Valid explicit dates, including View tasks links, keep their destination.
+  const explicitDate = new URLSearchParams(location.search).get('date');
+  const opensCurrentDay = location.pathname === '/today' && (!explicitDate || !isValidDate(explicitDate));
+  if (fromPublicRoute || opensCurrentDay) return <DayEntry date={date} fromPublicRoute={fromPublicRoute}>{children}</DayEntry>;
 
+  return <>{children}</>;
+}
+
+function DayEntry({ date, fromPublicRoute, children }: { date: string; fromPublicRoute: boolean; children: ReactNode }) {
+  // AuthGuard mounts this only after rollover and account bootstrap finish.
+  // Carried tasks do not mean the user has started today's plan.
+  const workflow = useWorkflow(date);
+  if (workflow.isPending) return <SessionStatus>Loading your day...</SessionStatus>;
+  if (workflow.error) return <SessionStatus>
+    <p role="alert">{workflow.error.message || 'Unable to load your day.'}</p>
+    <button className="mt-4 underline" onClick={() => void workflow.refetch()}>Try again</button>
+  </SessionStatus>;
+  if (workflow.data.state === 'planning') return <Navigate to="/new" replace />;
+  if (fromPublicRoute) return <Navigate to="/today" replace />;
   return <>{children}</>;
 }
 
