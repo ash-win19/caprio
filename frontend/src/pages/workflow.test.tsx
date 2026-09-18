@@ -379,12 +379,38 @@ describe('Daily planning workflow', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/Choose Done or Drop/i);
     expect(screen.getByRole('alert')).not.toHaveTextContent(/reopen tomorrow/i);
   });
-  it('shows a carryover count above the plan composer', async () => {
-    workflow = { ...workflow, tasks: [task('report', false, 1)] };
+  it.each([false, true])('shows unfinished carry context once in the header, with existing conversation: %s', async (hasMessages) => {
+    workflow = { ...workflow, tasks: [task('report', false, 3), task('meeting'), task('done', true, 2)],
+      messages: hasMessages ? [{ id: 'earlier', role: 'user', content: 'Help me plan around these tasks.' }] : [] };
     mount(<New />, '/new');
     const input = await screen.findByRole('textbox', { name: 'Message about your day' });
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/1 carried forward/i));
-    expect(input.getAttribute('placeholder') || '').toMatch(/carried task/i);
+    const summary = await screen.findByRole('status', { name: 'Task summary' });
+    expect(summary).toHaveTextContent('2 remaining');
+    expect(summary).toHaveTextContent('1 carried forward');
+    expect(summary.closest('header')).not.toBeNull();
+    expect(screen.getAllByText(/carried forward/i)).toHaveLength(1);
+    expect(screen.queryByText(/already waiting|Estimates are optional|They stay in your plan/i)).not.toBeInTheDocument();
+    expect(input.getAttribute('placeholder')).not.toMatch(/carried/i);
+    expect(screen.getByRole('link', { name: 'View tasks' })).toHaveAttribute('href', `/today?date=${today}`);
+  });
+
+  it('shows zero remaining when saved work is completed or dropped', async () => {
+    workflow = { ...workflow, tasks: [task('done', true, 1), { ...task('removed', false, 1), status: 'dropped' }] };
+    mount(<New />, '/new');
+    const summary = await screen.findByRole('status', { name: 'Task summary' });
+    expect(summary).toHaveTextContent('0 remaining');
+    expect(summary).not.toHaveTextContent('carried');
+  });
+
+  it.each(['empty', 'loading', 'error'])('does not invent task counts for an %s workflow', async (state) => {
+    if (state === 'loading') vi.mocked(api.getWorkflow).mockReturnValue(new Promise(() => {}));
+    if (state === 'error') vi.mocked(api.getWorkflow).mockRejectedValue(new Error('Unable to load your day'));
+    mount(<New />, '/new');
+    await screen.findByRole('link', { name: 'View tasks' });
+    if (state === 'empty') await waitFor(() => expect(screen.getByRole('textbox', { name: 'Message about your day' })).toBeEnabled());
+    if (state === 'error') await screen.findByRole('alert');
+    expect(screen.queryByRole('status', { name: 'Task summary' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/0 remaining|0 saved tasks/)).not.toBeInTheDocument();
   });
 
   it('keeps repeatedly carried tasks without pressuring the user to drop them', async () => {
@@ -508,7 +534,7 @@ describe('Daily planning workflow', () => {
 
 
 describe('Model resilience', () => {
-  it('retries once with Groq after a capacity failure and notes the switch', async () => {
+  it('starts with GPT-OSS 120B and retries once with 20B after a capacity failure', async () => {
     const { toast } = await import('@/hooks/use-toast');
     vi.mocked(api.streamChatMessage)
       .mockRejectedValueOnce(Object.assign(new Error('the planning model is overloaded or timed out; try again or switch models'), { status: 503 }))
@@ -521,13 +547,14 @@ describe('Model resilience', () => {
     mount(<New />, '/new');
     const input = await screen.findByRole('textbox', { name: 'Message about your day' });
     await waitFor(() => expect(input).toBeEnabled());
+    expect(screen.getByRole('button', { name: 'GPT-OSS 120B' })).toBeEnabled();
     fireEvent.change(input, { target: { value: 'Plan with less load' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send prompt' }));
     await waitFor(() => expect(api.streamChatMessage).toHaveBeenCalledTimes(2));
     const models = vi.mocked(api.streamChatMessage).mock.calls.map(([call]) => call.model);
-    expect(models[0]).toBe('google/gemini-3.7-flash');
+    expect(models[0]).toBe('groq/openai/gpt-oss-120b');
     expect(models[1]).toBe('groq/openai/gpt-oss-20b');
-    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Switched to Groq' }));
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Switched to GPT-OSS 20B' }));
     await waitFor(() => expect(screen.getByText('Fallback reply')).toBeInTheDocument());
   });
 

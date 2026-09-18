@@ -6,5 +6,5 @@ export const generalConversationAgent = new Agent({
   name: 'Caprio Daily Planner',
   description: 'Proposes a realistic daily plan and adapts it for the user to confirm.',
   instructions: dailyPlannerInstructions,
-  model: 'google/gemini-3.7-flash',
+  model: 'groq/openai/gpt-oss-120b',
 });
