@@ -29,6 +29,8 @@ type PendingTurn = {
   reply: string;
   status: 'thinking' | 'streaming' | 'settling' | 'failed' | 'stopped';
   savedCount: number;
+  startPlanning: boolean;
+  openTasks?: boolean;
   error?: unknown;
 };
 
@@ -60,7 +62,7 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
   const settling = pending?.status === 'settling';
   const shownReply = useRevealedText(pending && (pending.status === 'streaming' || settling) ? pending.reply : '');
   const settled = settling && shownReply === pending.reply;
-  const showInterruptChips = !readOnly && (intent === 'interrupt' || workflow?.state === 'active');
+  const showInterruptChips = !readOnly && (intent === 'interrupt' || (intent !== 'plan' && workflow?.state === 'active' && workflow.tasks.length > 0));
 
   useEffect(() => {
     if (seed.trim() && seed !== consumedSeed.current) {
@@ -102,7 +104,9 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
-    setPending({ ...request, reply: '', status: 'thinking', savedCount: workflow?.messages.length ?? 0 });
+    const startPlanning = pending?.requestId === request.requestId ? pending.startPlanning
+      : intent === 'plan' || workflow?.state === 'planning' || !workflow?.tasks.length;
+    setPending({ ...request, reply: '', status: 'thinking', savedCount: workflow?.messages.length ?? 0, startPlanning });
     try {
       const response = await api.streamChatMessage({
         ...request,
@@ -115,7 +119,9 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
       });
       if (controller.signal.aborted || !mounted.current) return;
       queryClient.setQueryData(['workflow', date], response.workflow);
-      updatePending(request.requestId, (turn) => ({ ...turn, reply: response.text, status: 'settling' }));
+      updatePending(request.requestId, (turn) => ({ ...turn, reply: response.text, status: 'settling',
+        openTasks: startPlanning && Boolean(response.appliedChange?.affectedDates.includes(date)) && response.workflow.state === 'active' && response.workflow.tasks.length > 0,
+      }));
       refresh();
     } catch (error) {
       if (controller.signal.aborted) return;
@@ -145,16 +151,22 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
 
   // Swap the revealed reply for the saved thread once the last character shows.
   useEffect(() => {
-    if (settled) setPending(null);
-  }, [settled, setPending]);
+    if (!settled) return;
+    setPending(null);
+    if (pending?.openTasks && !input.trim()) navigate(`/today?date=${date}`);
+  }, [settled, pending?.openTasks, input, date, navigate, setPending]);
 
   // The server may have committed the turn even though this client gave up on
   // it. Once the saved thread contains the message, drop the pending copy.
   useEffect(() => {
     if (!pending || replying || settling) return;
     const messages = workflow?.messages ?? [];
-    if (messages.some((message, index) => index >= pending.savedCount && message.role === 'user' && message.content === pending.content)) setPending(null);
-  }, [workflow?.messages, pending, replying, settling, setPending]);
+    if (messages.some((message, index) => index >= pending.savedCount && message.role === 'user' && message.content === pending.content)) {
+      setPending(null);
+      const saved = workflow?.changeReceipts?.some(receipt => receipt.requestId === pending.requestId && !receipt.undone && receipt.affectedDates.includes(date));
+      if (pending.startPlanning && saved && workflow?.state === 'active' && workflow.tasks.length > 0 && !input.trim()) navigate(`/today?date=${date}`);
+    }
+  }, [workflow, pending, replying, settling, input, date, navigate, setPending]);
 
   useEffect(() => {
     mounted.current = true;
@@ -223,8 +235,8 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
       {workflowQuery.isLoading ? <p role="status" className="py-12 text-center text-sm text-muted-foreground">Loading your day…</p> : workflowQuery.error ? <WorkflowError error={workflowQuery.error} retry={() => void workflowQuery.refetch()} /> : <>
         {!messages.length && !pending && !proposal && workflow?.state !== 'closed' && <div className="flex min-h-[38vh] flex-col items-center justify-center text-center">
           <ListChecks className="mb-5 h-7 w-7 text-primary" />
-          <h2 className="text-3xl font-medium">{past ? 'No conversation for this day' : intent === 'interrupt' || workflow?.state === 'active' ? 'What changed?' : 'What needs your attention?'}</h2>
-          <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">{past ? 'Your saved plan and review are available from View tasks.' : intent === 'interrupt' || workflow?.state === 'active' ? 'Tell Caprio what shifted: less time, new work, or something to drop. Explicit task requests save to your list. Suggested changes wait for your approval.' : 'Tell me what you need to do. Tasks save here as you add them. Estimates are optional.'}</p>
+          <h2 className="text-3xl font-medium">{past ? 'No conversation for this day' : showInterruptChips ? 'What changed?' : 'What needs your attention?'}</h2>
+          <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">{past ? 'Your saved plan and review are available from View tasks.' : showInterruptChips ? 'Tell Caprio what shifted: less time, new work, or something to drop. Explicit task requests save to your list. Suggested changes wait for your approval.' : 'Tell me what you need to do. Tasks save here as you add them. Estimates are optional.'}</p>
           {!past && !!workflow?.tasks.length && <p className="mt-4 text-sm text-primary">{workflow.tasks.length} saved {workflow.tasks.length === 1 ? 'task is' : 'tasks are'} already waiting for this day{carriedCount > 0 ? ` · ${carriedCount} carried forward` : ''}.</p>}
         </div>}
         {proposal && !pending && !readOnly && messages.length > 0 ? <details id="proposal-context" className="workspace-details scroll-mt-4 rounded-xl border border-border px-4 py-2">

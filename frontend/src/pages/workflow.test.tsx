@@ -86,6 +86,25 @@ describe('Missed-day recovery and archived outcomes', () => {
 });
 
 describe('Daily planning workflow', () => {
+  it.each(['reply', 'recovery'])('opens tasks after an initial plan is saved through %s', async (mode) => {
+    workflow = { ...workflow, tasks: [task('carry', false, 1)] };
+    vi.mocked(api.streamChatMessage).mockImplementationOnce(async request => {
+      const receipt: api.ChangeReceipt = { id: 'initial-plan', requestId: request.requestId, summary: 'Added 1 task',
+        changes: [{ taskId: 'report', title: 'Finish report', action: 'Added', date: today }], affectedDates: [today], canUndo: true, undone: false };
+      workflow = { ...workflow, state: 'active', tasks: [...workflow.tasks, task('report')],
+        messages: [{ id: 'user', role: 'user', content: request.content }, { id: 'assistant', role: 'assistant', content: 'Saved.' }], changeReceipts: [receipt] };
+      if (mode === 'recovery') throw new Error('Response lost after commit');
+      return { text: 'Saved.', workflow, appliedChange: receipt };
+    });
+    mount(<New />, '/new');
+    const input = await screen.findByRole('textbox', { name: 'Message about your day' });
+    await waitFor(() => expect(input).toBeEnabled());
+    fireEvent.change(input, { target: { value: 'Add Finish report' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send prompt' }));
+    expect(await screen.findByText('Saved plan destination')).toBeInTheDocument();
+    expect(api.confirmDayPlan).not.toHaveBeenCalled();
+  });
+
   it('restores messages and requires a separate confirmation to save a proposal', async () => {
     workflow = { ...workflow, messages: [{ id: 'message-1', role: 'user', content: 'I have an hour for the report.' }], proposal: proposal() };
     vi.mocked(api.confirmDayPlan).mockImplementation(async () => ({ ...workflow, proposal: null, state: 'active' }));

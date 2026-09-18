@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthGuard } from './AuthGuard';
@@ -7,6 +7,7 @@ import { useAuth0 } from '@auth0/auth0-react';
 import type { Auth0ContextInterface } from '@auth0/auth0-react';
 import * as api from '@/lib/api';
 import { localDate, nextDate, previousDate } from '@/lib/date';
+import { markDayOpened } from '@/lib/dayEntry';
 
 vi.mock('@auth0/auth0-react', () => ({
   useAuth0: vi.fn(),
@@ -209,10 +210,53 @@ describe('AuthGuard morning reopen routing', () => {
     expect(screen.queryByTestId('today-page')).not.toBeInTheDocument();
   });
 
-  it.each(['active', 'closed'] as const)('opens /today when today is already %s, even with no tasks', async (state) => {
-    vi.mocked(api.getWorkflow).mockImplementation(async (date = today) => workflow(date, state));
+  it('opens the conversation again if an active day has no tasks', async () => {
+    markDayOpened('auth0|user', today);
+    vi.mocked(api.getWorkflow).mockResolvedValue(workflow(today, 'active'));
+    mount('/');
+    expect(await screen.findByTestId('new-page')).toBeInTheDocument();
+  });
+
+  it('keeps a closed day on Today', async () => {
+    vi.mocked(api.getWorkflow).mockResolvedValue(workflow(today, 'closed'));
     mount('/');
     await waitFor(() => expect(screen.getByTestId('today-page')).toBeInTheDocument());
+  });
+
+  it('does not count carried tasks as tasks created for the new day', async () => {
+    markDayOpened('auth0|user', today);
+    vi.mocked(api.getWorkflow).mockResolvedValue({ ...workflow(today, 'active'), tasks: [{
+      id: 'carry', userId: 'user', title: 'Finish report', urgency: 'medium', source: 'manual',
+      completed: false, sortOrder: 0, plannedForDate: today, status: 'planned', deferCount: 1,
+      createdAt: yesterday, updatedAt: today,
+    }] });
+    mount('/');
+    expect(await screen.findByTestId('new-page')).toBeInTheDocument();
+  });
+
+  it('opens conversation once per day even with a pre-existing active plan, then returns to tasks', async () => {
+    const plannedTask: api.BackendTask = {
+      id: 'task', userId: 'user', title: 'Finish report', urgency: 'medium', source: 'manual',
+      completed: false, sortOrder: 0, plannedForDate: today, status: 'planned', deferCount: 0,
+      createdAt: yesterday, updatedAt: yesterday,
+    };
+    vi.mocked(api.getWorkflow).mockResolvedValue({ ...workflow(today, 'active'), tasks: [plannedTask] });
+    mount('/');
+    expect(await screen.findByTestId('new-page')).toBeInTheDocument();
+    cleanup();
+    mount('/');
+    expect(await screen.findByTestId('today-page')).toBeInTheDocument();
+  });
+
+  it('does not share the morning visit between accounts', async () => {
+    markDayOpened('auth0|other-user', today);
+    vi.mocked(api.getWorkflow).mockResolvedValue({ ...workflow(today, 'active'), tasks: [{
+      id: 'task', userId: 'user', title: 'Finish report', urgency: 'medium', source: 'manual',
+      completed: false, sortOrder: 0, plannedForDate: today, status: 'planned', deferCount: 0,
+      createdAt: yesterday, updatedAt: yesterday,
+    }] });
+    mount('/');
+    expect(await screen.findByTestId('new-page')).toBeInTheDocument();
   });
 
   it('opens Plan from a restored Today tab after a multi-day absence', async () => {

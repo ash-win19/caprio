@@ -25,14 +25,16 @@ export async function mockDay(page: Page, options: {
   messages?: Workflow['messages'];
   oldestUnclosedDate?: string;
   carryoverOrigins?: Record<string, string>;
+  firstVisit?: boolean;
 } = {}) {
   const tasks = options.tasks ?? tasksForDay();
   const writes: Array<{ path: string; body: unknown }> = [];
   await page.clock.setFixedTime(new Date(`${date}T12:00:00`));
-  await page.addInitScript((collapsed) => {
+  await page.addInitScript(({ collapsed, firstVisit, date }) => {
     localStorage.setItem('caprio_session', 'demo');
     localStorage.setItem('caprio-sidebar', JSON.stringify({ state: { collapsed }, version: 0 }));
-  }, options.collapsed ?? true);
+    if (!firstVisit && !localStorage.getItem('caprio_day_entry:demo')) localStorage.setItem('caprio_day_entry:demo', date);
+  }, { collapsed: options.collapsed ?? true, firstVisit: options.firstVisit ?? false, date });
   // All API calls stay in the browser fixture; no backend or account is required.
   await page.route('**/api/**', async (route) => {
     const request = route.request();

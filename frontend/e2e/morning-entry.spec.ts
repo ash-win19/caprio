@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { mockDay, date, tasksForDay } from './fixtures/day';
+import type { ChangeReceipt, Workflow } from '../src/lib/api';
 
 for (const width of [390, 1440]) {
   for (const entry of ['/', '/today']) {
@@ -7,7 +8,7 @@ for (const width of [390, 1440]) {
       await page.setViewportSize({ width, height: 900 });
       const tasks = tasksForDay().map(task => ({ ...task, deferCount: 1, duration: 120 }));
       const writes = await mockDay(page, {
-        state: 'planning', tasks,
+        state: 'planning', tasks, firstVisit: true,
         carryoverOrigins: Object.fromEntries(tasks.map(task => [task.id, '2026-09-13'])),
       });
       await page.goto(entry);
@@ -15,6 +16,9 @@ for (const width of [390, 1440]) {
       const input = page.getByRole('textbox', { name: 'Message about your day' });
       await expect(input).toBeVisible();
       await expect(input).toBeEnabled();
+      await expect(page.getByRole('region', { name: 'Saved checklist' })).toHaveCount(0);
+      await expect(page.getByRole('heading', { name: 'Your tasks' })).toHaveCount(0);
+      await expect(page.locator('.daily-conversation-workspace')).not.toHaveClass(/with-task-list/);
       await expect(page.getByText('3 saved tasks', { exact: true })).toBeVisible();
       await expect(page.getByRole('status')).toContainText('3 carried forward');
       await page.screenshot({ path: info.outputPath(`morning-conversation-${width}.png`), animations: 'disabled' });
@@ -38,13 +42,74 @@ for (const width of [390, 1440]) {
   }
 }
 
-test('an empty morning opens a ready conversation', async ({ page }) => {
-  await mockDay(page, { state: 'planning', tasks: [] });
-  await page.goto('/');
+for (const state of ['planning', 'active'] as const) {
+  test(`an empty ${state} day opens only the conversation on every visit`, async ({ page }) => {
+    await mockDay(page, { state, tasks: [] });
+    for (const entry of ['/', '/today']) {
+      await page.goto(entry);
+      await expect(page).toHaveURL('/new');
+      await expect(page.getByRole('textbox', { name: 'Message about your day' })).toBeEnabled();
+      await expect(page.getByText('0 saved tasks', { exact: true })).toBeVisible();
+      await expect(page.getByRole('region', { name: 'Saved checklist' })).toHaveCount(0);
+    }
+  });
+}
+
+test('first visit opens conversation even with a plan, then later visits open tasks', async ({ page }) => {
+  await mockDay(page, { firstVisit: true });
+  await page.goto('/today');
   await expect(page).toHaveURL('/new');
-  await expect(page.getByRole('textbox', { name: 'Message about your day' })).toBeEnabled();
-  await expect(page.getByText('0 saved tasks', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'What needs your attention?' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Saved checklist' })).toHaveCount(0);
+  await page.goto('/');
+  await expect(page).toHaveURL('/today');
+  await expect(page.getByRole('list', { name: 'Remaining tasks' })).toBeVisible();
 });
+
+for (const width of [390, 1440]) {
+  test(`morning planning stays in conversation until tasks are saved at ${width}px`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 900 });
+    const carried = tasksForDay().slice(0, 1).map(task => ({ ...task, deferCount: 1 }));
+    await mockDay(page, { state: 'planning', tasks: carried, firstVisit: true });
+    let workflow: Workflow = { date, state: 'planning', version: 1, tasks: carried, messages: [], backlog: [], proposal: null, availableMinutes: null, review: null };
+    let turns = 0;
+    await page.route('**/api/**', async route => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === '/api/workflow') return route.fulfill({ json: workflow });
+      if (path === '/api/tasks') return route.fulfill({ json: { tasks: workflow.tasks } });
+      if (path !== '/api/chat/stream') return route.fallback();
+      const request = route.request().postDataJSON();
+      turns++;
+      const text = turns === 1 ? 'What would you like to work on?' : 'Added your report.';
+      let receipt: ChangeReceipt | undefined;
+      if (turns === 2) {
+        receipt = { id: 'initial-plan', requestId: request.requestId, summary: 'Added 1 task',
+          changes: [{ taskId: 'report', title: 'Finish report', action: 'Added', date }], affectedDates: [date], canUndo: true, undone: false };
+        workflow = { ...workflow, state: 'active', version: 2, tasks: [...carried, { ...tasksForDay()[0], id: 'report', title: 'Finish report' }], changeReceipts: [receipt] };
+      }
+      workflow = { ...workflow, messages: [...workflow.messages, { id: `user-${turns}`, role: 'user', content: request.content }, { id: `assistant-${turns}`, role: 'assistant', content: text }] };
+      return route.fulfill({ contentType: 'text/event-stream', body: `event: done\ndata: ${JSON.stringify({ text, workflow, appliedChange: receipt })}\n\n` });
+    });
+    await page.goto('/');
+    const input = page.getByRole('textbox', { name: 'Message about your day' });
+    await expect(input).toBeEnabled();
+    await expect(page.getByRole('heading', { name: 'Your tasks' })).toHaveCount(0);
+    await input.fill('Help me plan my day');
+    await page.getByRole('button', { name: 'Send prompt', exact: true }).click();
+    await expect(page.getByText('What would you like to work on?', { exact: true })).toBeVisible();
+    await expect(page).toHaveURL('/new');
+    await expect(page.getByRole('region', { name: 'Saved checklist' })).toHaveCount(0);
+    await input.fill('Add Finish report to today');
+    await page.getByRole('button', { name: 'Send prompt', exact: true }).click();
+    await expect(page).toHaveURL(`/today?date=${date}`);
+    await expect(page.getByRole('list', { name: 'Remaining tasks' })).toContainText('Finish report');
+    await expect(page.getByRole('region', { name: 'Planning conversation' })).toHaveCount(0);
+    await page.screenshot({ path: info.outputPath(`after-planning-${width}.png`), animations: 'disabled' });
+    await page.goto('/');
+    await expect(page).toHaveURL('/today');
+    expect(turns).toBe(2);
+  });
+}
 
 test('a Today tab left open overnight starts the new day in conversation', async ({ page }) => {
   await mockDay(page);
