@@ -45,13 +45,14 @@ for (const width of [390, 1440]) {
     await expect(page.getByRole('region', { name: 'Saved task changes' })).toHaveCount(0);
     expect(writes[0].body).toMatchObject({ contractVersion: 2, date, taskId: 'referenced-inbox-task' });
     await proposal.getByRole('button', { name: 'Confirm plan' }).click();
-    await expect(page).toHaveURL(`/today?date=${date}`);
+    // Confirm opens bare /today for local today (fixture clock = date) so overnight tabs are not pinned.
+    await expect(page).toHaveURL('/today');
     await expect(page.getByRole('list', { name: 'Remaining tasks' }).locator(':scope > li')).toHaveCount(3);
     await expect(page.locator('.today-page')).toContainText('280 min estimated remaining');
     const publishing = page.getByRole('listitem').filter({ hasText: 'Fix Headlines publishing' });
     await publishing.locator('summary').click();
     await expect(publishing.getByText('Preserve the Headlines brand and use Cozad’s feedback.')).toBeVisible();
-    expect(writes.some(write => write.path === '/api/day/plan/confirm')).toBe(true);
+    expect(writes.find(write => write.path === '/api/day/plan/confirm')?.body).toMatchObject({ date, proposalId: 'draft-1' });
     expect(writes.filter(write => write.path === '/api/chat/stream')).toHaveLength(1);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: info.outputPath(`conversation-confirmed-${width}.png`), animations: 'disabled' });
