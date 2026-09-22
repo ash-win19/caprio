@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { mockDay, date, tasksForDay } from './fixtures/day';
-import type { ChangeReceipt, Workflow } from '../src/lib/api';
+import type { Workflow } from '../src/lib/api';
 
 for (const width of [320, 390, 1440]) {
   test(`unfinished carry context appears once beside View tasks at ${width}px`, async ({ page }, info) => {
@@ -115,7 +115,7 @@ test('first visit opens conversation even with a plan, then later visits open ta
 });
 
 for (const width of [390, 1440]) {
-  test(`morning planning stays in conversation until tasks are saved at ${width}px`, async ({ page }, info) => {
+  test(`morning planning stays in conversation until the draft is confirmed at ${width}px`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 900 });
     const carried = tasksForDay().slice(0, 1).map(task => ({ ...task, deferCount: 1 }));
     await mockDay(page, { state: 'planning', tasks: carried, firstVisit: true });
@@ -128,18 +128,20 @@ for (const width of [390, 1440]) {
         return route.fulfill({ json: workflow });
       }
       if (path === '/api/tasks') return route.fulfill({ json: { tasks: workflow.tasks } });
+      if (path === '/api/day/plan/confirm') {
+        workflow = { ...workflow, state: 'active', version: workflow.version + 1, proposal: null, tasks: [...carried, { ...tasksForDay()[0], id: 'report', title: 'Finish report' }] };
+        return route.fulfill({ json: workflow });
+      }
       if (path !== '/api/chat/stream') return route.fallback();
       const request = route.request().postDataJSON();
       turns++;
-      const text = turns === 1 ? 'What would you like to work on?' : 'Added your report.';
-      let receipt: ChangeReceipt | undefined;
+      const text = turns === 1 ? 'What would you like to work on?' : 'Review this draft with Finish report.';
       if (turns === 2) {
-        receipt = { id: 'initial-plan', requestId: request.requestId, summary: 'Added 1 task',
-          changes: [{ taskId: 'report', title: 'Finish report', action: 'Added', date }], affectedDates: [date], canUndo: true, undone: false };
-        workflow = { ...workflow, state: 'active', version: 2, tasks: [...carried, { ...tasksForDay()[0], id: 'report', title: 'Finish report' }], changeReceipts: [receipt] };
+        workflow = { ...workflow, version: 2, proposal: { id: 'draft-plan', summary: 'Add Finish report.', availableMinutes: null, tasks: [],
+          operations: [{ kind: 'create', date, fields: { title: 'Finish report' } }] } };
       }
       workflow = { ...workflow, messages: [...workflow.messages, { id: `user-${turns}`, role: 'user', content: request.content }, { id: `assistant-${turns}`, role: 'assistant', content: text }] };
-      return route.fulfill({ contentType: 'text/event-stream', body: `event: done\ndata: ${JSON.stringify({ text, workflow, appliedChange: receipt })}\n\n` });
+      return route.fulfill({ contentType: 'text/event-stream', body: `event: done\ndata: ${JSON.stringify({ text, workflow })}\n\n` });
     });
     await page.goto('/');
     const input = page.getByRole('textbox', { name: 'Message about your day' });
@@ -152,6 +154,9 @@ for (const width of [390, 1440]) {
     await expect(page.getByRole('region', { name: 'Saved checklist' })).toHaveCount(0);
     await input.fill('Add Finish report to today');
     await page.getByRole('button', { name: 'Send prompt', exact: true }).click();
+    await expect(page.getByRole('region', { name: 'Proposed plan' })).toBeVisible();
+    await expect(page).toHaveURL('/new');
+    await page.getByRole('button', { name: 'Confirm plan', exact: true }).click();
     await expect(page).toHaveURL('/today');
     await expect(page.getByRole('list', { name: 'Remaining tasks' })).toContainText('Finish report');
     await expect(page.getByRole('region', { name: 'Planning conversation' })).toHaveCount(0);

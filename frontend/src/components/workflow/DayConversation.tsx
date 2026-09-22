@@ -29,8 +29,6 @@ type PendingTurn = {
   reply: string;
   status: 'thinking' | 'streaming' | 'settling' | 'failed' | 'stopped';
   savedCount: number;
-  startPlanning: boolean;
-  openTasks?: boolean;
   error?: unknown;
 };
 
@@ -107,9 +105,7 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
-    const startPlanning = pending?.requestId === request.requestId ? pending.startPlanning
-      : intent === 'plan' || workflow?.state === 'planning' || !workflow?.tasks.length;
-    setPending({ ...request, reply: '', status: 'thinking', savedCount: workflow?.messages.length ?? 0, startPlanning });
+    setPending({ ...request, reply: '', status: 'thinking', savedCount: workflow?.messages.length ?? 0 });
     try {
       const response = await api.streamChatMessage({
         ...request,
@@ -122,9 +118,7 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
       });
       if (controller.signal.aborted || !mounted.current) return;
       queryClient.setQueryData(['workflow', date], response.workflow);
-      updatePending(request.requestId, (turn) => ({ ...turn, reply: response.text, status: 'settling',
-        openTasks: startPlanning && Boolean(response.appliedChange?.affectedDates.includes(date)) && response.workflow.state === 'active' && response.workflow.tasks.length > 0,
-      }));
+      updatePending(request.requestId, (turn) => ({ ...turn, reply: response.text, status: 'settling' }));
       refresh();
     } catch (error) {
       if (controller.signal.aborted) return;
@@ -135,8 +129,6 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
         return;
       }
       updatePending(request.requestId, (turn) => ({ ...turn, status: 'failed', error }));
-      // A response can disappear after commit. Recover both the receipt and
-      // the saved tasks before deciding whether to open the task page.
       refresh();
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
@@ -156,8 +148,7 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
   useEffect(() => {
     if (!settled) return;
     setPending(null);
-    if (pending?.openTasks && !input.trim()) openSavedPlan();
-  }, [settled, pending?.openTasks, input, openSavedPlan, setPending]);
+  }, [settled, setPending]);
 
   // The server may have committed the turn even though this client gave up on
   // it. Once the saved thread contains the message, drop the pending copy.
@@ -166,10 +157,8 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
     const messages = workflow?.messages ?? [];
     if (messages.some((message, index) => index >= pending.savedCount && message.role === 'user' && message.content === pending.content)) {
       setPending(null);
-      const saved = workflow?.changeReceipts?.some(receipt => receipt.requestId === pending.requestId && !receipt.undone && receipt.affectedDates.includes(date));
-      if (pending.startPlanning && saved && workflow?.state === 'active' && workflow.tasks.length > 0 && !input.trim()) openSavedPlan();
     }
-  }, [workflow, pending, replying, settling, input, date, openSavedPlan, setPending]);
+  }, [workflow, pending, replying, settling, setPending]);
 
   useEffect(() => {
     mounted.current = true;
@@ -238,7 +227,7 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
         {!messages.length && !pending && !proposal && workflow?.state !== 'closed' && <div className="flex min-h-[38vh] flex-col items-center justify-center text-center">
           <ListChecks className="mb-5 h-7 w-7 text-primary" />
           <h2 className="text-3xl font-medium">{past ? 'No conversation for this day' : showInterruptChips ? 'What changed?' : 'What needs your attention?'}</h2>
-          <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">{past ? 'Your saved plan and review are available from View tasks.' : showInterruptChips ? 'Tell Caprio what shifted: less time, new work, or something to drop. Explicit task requests save to your list. Suggested changes wait for your approval.' : 'Tell me what you need to do. Tasks save here as you add them.'}</p>
+          <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">{past ? 'Your saved plan and review are available from View tasks.' : showInterruptChips ? 'Tell Caprio what shifted: less time, new work, or something to drop. Review the draft, then confirm to update your list.' : 'Tell me what you need to do. Review the draft plan, then confirm to save your tasks.'}</p>
         </div>}
         {proposal && !pending && !readOnly && messages.length > 0 ? <details id="proposal-context" className="workspace-details scroll-mt-4 rounded-xl border border-border px-4 py-2">
           <summary>Conversation · {messages.length} {messages.length === 1 ? 'message' : 'messages'}<ChevronDown size={14} aria-hidden /></summary>

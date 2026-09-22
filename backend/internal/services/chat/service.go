@@ -182,8 +182,9 @@ func (s *Service) Get(ctx context.Context, userID uuid.UUID, date pgtype.Date) (
 	return w, nil
 }
 
-// Process commits messages, explicit task operations, and their receipt together.
-// Suggestions remain proposals. Replays never call the model twice.
+// Process commits messages and draft proposals only. Task mutations require
+// Confirm. Explicit "actions" from the model are stored as proposals. Replays
+// never call the model twice.
 func (s *Service) Process(ctx context.Context, req ProcessRequest) (*ProcessResponse, error) {
 	return s.ProcessStream(ctx, req, nil)
 }
@@ -290,15 +291,14 @@ func (s *Service) ProcessStream(ctx context.Context, req ProcessRequest, onDelta
 		if len(reply.Operations) > 0 && req.ContractVersion < 2 {
 			return invalid("task operations require an updated client")
 		}
-		if err := validateOperations(reply.Operations, req.Content, reply.Phase == "actions"); err != nil {
-			return err
+		// Chat is draft-only: never persist tasks here. Explicit "actions" become
+		// a proposal the UI can confirm; Confirm is the sole mutation path.
+		directActions := reply.Phase == "actions"
+		if directActions && len(reply.Operations) > 0 {
+			reply.Phase = "proposal"
 		}
-		var applied *changeBatch
-		if reply.Phase == "actions" {
-			applied, err = applyOperations(ctx, tx, req.UserID, req.SessionDate, req.RequestID, reply.Operations)
-			if err != nil {
-				return err
-			}
+		if err := validateOperations(reply.Operations, req.Content, directActions); err != nil {
+			return err
 		}
 		titles := map[string]string{}
 		for _, task := range owned {
@@ -323,28 +323,19 @@ func (s *Service) ProcessStream(ctx context.Context, req ProcessRequest, onDelta
 		if _, err := q.CreateChatMessage(ctx, generated.CreateChatMessageParams{UserID: req.UserID, SessionDate: req.SessionDate, Role: "assistant", Content: reply.Message}); err != nil {
 			return err
 		}
-		if applied == nil {
-			if _, err := tx.Exec(ctx, `UPDATE daily_plans SET proposal=CASE WHEN $5 THEN $3 ELSE proposal END,proposal_snapshot=CASE WHEN $5 THEN $4 ELSE proposal_snapshot END,version=version+1,updated_at=clock_timestamp() WHERE user_id=$1 AND plan_date=$2`, req.UserID, req.SessionDate, proposal, func() string {
-				if len(reply.Operations) > 0 {
-					return snapshot(owned, nil)
-				}
-				return snapshot(w.Tasks, w.Backlog)
-			}(), reply.Phase == "proposal"); err != nil {
-				return err
+		if _, err := tx.Exec(ctx, `UPDATE daily_plans SET proposal=CASE WHEN $5 THEN $3 ELSE proposal END,proposal_snapshot=CASE WHEN $5 THEN $4 ELSE proposal_snapshot END,version=version+1,updated_at=clock_timestamp() WHERE user_id=$1 AND plan_date=$2`, req.UserID, req.SessionDate, proposal, func() string {
+			if len(reply.Operations) > 0 {
+				return snapshot(owned, nil)
 			}
+			return snapshot(w.Tasks, w.Backlog)
+		}(), reply.Phase == "proposal"); err != nil {
+			return err
 		}
 		if _, err := tx.Exec(ctx, `INSERT INTO chat_requests (user_id,request_id,session_date,content,assistant_text) VALUES ($1,$2,$3,$4,$5)`, req.UserID, req.RequestID, req.SessionDate, req.Content, reply.Message); err != nil {
 			return err
 		}
 		result.Text = reply.Message
 		result.Workflow, err = load(ctx, tx, req.UserID, req.SessionDate)
-		if err == nil && applied != nil {
-			for i := range result.Workflow.ChangeReceipts {
-				if result.Workflow.ChangeReceipts[i].ID == applied.ID {
-					result.AppliedChange = &result.Workflow.ChangeReceipts[i]
-				}
-			}
-		}
 		return err
 	})
 	return result, err
@@ -371,7 +362,9 @@ func (s *Service) Confirm(ctx context.Context, userID uuid.UUID, date pgtype.Dat
 			result = w
 			return nil
 		}
-		if w.State == "closed" {
+		// Legacy full-plan confirms stay blocked on closed days. Operation
+		// drafts may reopen the current day; applyOperations enforces that.
+		if w.State == "closed" && (w.Proposal == nil || len(w.Proposal.Operations) == 0) {
 			return ErrClosed
 		}
 		currentSnapshot := snapshot(w.Tasks, w.Backlog)

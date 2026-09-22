@@ -86,23 +86,56 @@ describe('Missed-day recovery and archived outcomes', () => {
 });
 
 describe('Daily planning workflow', () => {
-  it.each(['reply', 'recovery'])('opens tasks after an initial plan is saved through %s', async (mode) => {
-    workflow = { ...workflow, tasks: [task('carry', false, 1)] };
+  it('keeps a chat proposal as a draft without creating tasks or leaving Plan', async () => {
     vi.mocked(api.streamChatMessage).mockImplementationOnce(async request => {
-      const receipt: api.ChangeReceipt = { id: 'initial-plan', requestId: request.requestId, summary: 'Added 1 task',
-        changes: [{ taskId: 'report', title: 'Finish report', action: 'Added', date: today }], affectedDates: [today], canUndo: true, undone: false };
-      workflow = { ...workflow, state: 'active', tasks: [...workflow.tasks, task('report')],
-        messages: [{ id: 'user', role: 'user', content: request.content }, { id: 'assistant', role: 'assistant', content: 'Saved.' }], changeReceipts: [receipt] };
-      if (mode === 'recovery') throw new Error('Response lost after commit');
-      return { text: 'Saved.', workflow, appliedChange: receipt };
+      workflow = {
+        ...workflow,
+        version: 3,
+        messages: [{ id: 'user', role: 'user', content: request.content }, { id: 'assistant', role: 'assistant', content: 'Review this draft.' }],
+        proposal: {
+          id: 'draft-1',
+          summary: 'Add Finish report to today.',
+          availableMinutes: 60,
+          tasks: [],
+          operations: [{ kind: 'create', date: today, fields: { title: 'Finish report' } }],
+        },
+      };
+      return { text: 'Review this draft.', workflow };
     });
     mount(<New />, '/new');
     const input = await screen.findByRole('textbox', { name: 'Message about your day' });
     await waitFor(() => expect(input).toBeEnabled());
     fireEvent.change(input, { target: { value: 'Add Finish report' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send prompt' }));
-    expect(await screen.findByText('Saved plan destination')).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: 'Proposed plan' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Confirm plan' })).toBeInTheDocument();
+    expect(screen.queryByText('Saved plan destination')).not.toBeInTheDocument();
     expect(api.confirmDayPlan).not.toHaveBeenCalled();
+    expect(workflow.tasks).toEqual([]);
+  });
+
+  it('creates tasks and opens Today only after Confirm plan', async () => {
+    workflow = {
+      ...workflow,
+      messages: [{ id: 'message-1', role: 'user', content: 'Add Finish report' }],
+      proposal: {
+        id: 'draft-1',
+        summary: 'Add Finish report to today.',
+        availableMinutes: 60,
+        tasks: [],
+        operations: [{ kind: 'create', date: today, fields: { title: 'Finish report' } }],
+      },
+    };
+    vi.mocked(api.confirmDayPlan).mockImplementation(async () => {
+      workflow = { ...workflow, proposal: null, state: 'active', tasks: [task('report')], version: 4 };
+      return workflow;
+    });
+    mount(<New />, '/new');
+    expect(await screen.findByRole('region', { name: 'Proposed plan' })).toBeInTheDocument();
+    expect(api.confirmDayPlan).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm plan' }));
+    expect(await screen.findByText('Saved plan destination')).toBeInTheDocument();
+    expect(api.confirmDayPlan).toHaveBeenCalledWith({ date: today, proposalId: 'draft-1', version: 2 });
   });
 
   it('restores messages and requires a separate confirmation to save a proposal', async () => {
