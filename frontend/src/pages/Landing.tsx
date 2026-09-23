@@ -339,8 +339,10 @@ export default function Landing() {
               transition={{ duration: 0.75, delay: 0.08, ease }}
               className="mx-auto mt-7 max-w-[880px] text-[46px] font-medium leading-[0.98] tracking-[-0.065em] text-white sm:text-[64px] md:text-[82px]"
             >
-              Calendar <span className="font-light text-white/25">+</span> prioritization.<br />
-              <span className="text-white/42">One operating system</span><br className="sm:hidden" /> <span className="text-white/42">for your day.</span>
+              Calendar <span className="font-light text-white/25">+</span> prioritization.
+              <span className="mt-3 block text-[clamp(1.125rem,4.2vw,2rem)] font-normal leading-snug tracking-[-0.04em] text-white/45">
+                One operating system for your day.
+              </span>
             </motion.h1>
 
             <motion.p
