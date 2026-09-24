@@ -26,6 +26,7 @@ export async function mockDay(page: Page, options: {
   oldestUnclosedDate?: string;
   carryoverOrigins?: Record<string, string>;
   firstVisit?: boolean;
+  opener?: string;
 } = {}) {
   const tasks = options.tasks ?? tasksForDay();
   const writes: Array<{ path: string; body: unknown }> = [];
@@ -77,6 +78,7 @@ export async function mockDay(page: Page, options: {
         tasks, backlog: [], review: options.state === 'closed'
           ? { completedCount: 1, carriedToTomorrowCount: 1, droppedCount: 1, notes: null, energyLevel: null } : null,
         carryoverOrigins: options.carryoverOrigins ?? {},
+        ...(requestedDate === date && options.opener ? { opener: options.opener } : {}),
       } });
     } else if (url.pathname === '/api/tasks') {
       await route.fulfill({ json: { tasks } });

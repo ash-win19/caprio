@@ -6,6 +6,7 @@ package db
 
 import (
 	"database/sql/driver"
+	"encoding/json"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -221,6 +222,8 @@ type ChatMessage struct {
 	Role        string             `json:"role"`
 	Content     string             `json:"content"`
 	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
+	EventType   *string            `json:"eventType"`
+	Metadata    json.RawMessage    `json:"metadata"`
 }
 
 type ChatRequest struct {
@@ -242,6 +245,16 @@ type DailyPlan struct {
 	Review              []byte             `json:"review"`
 	ClosedTasks         []byte             `json:"closedTasks"`
 	UpdatedAt           pgtype.Timestamptz `json:"updatedAt"`
+	AvailableMinutes    *int32             `json:"availableMinutes"`
+}
+
+type DayReview struct {
+	ID          uuid.UUID          `json:"id"`
+	UserID      uuid.UUID          `json:"userId"`
+	PlanDate    pgtype.Date        `json:"planDate"`
+	Review      []byte             `json:"review"`
+	ClosedTasks []byte             `json:"closedTasks"`
+	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
 }
 
 type StandupSession struct {
@@ -276,6 +289,22 @@ type Task struct {
 	Status         TaskStatus         `json:"status"`
 	PriorityReason *string            `json:"priorityReason"`
 	CompletedAt    pgtype.Timestamptz `json:"completedAt"`
+}
+
+type TaskCarryover struct {
+	TaskID           uuid.UUID   `json:"taskId"`
+	FirstPlannedDate pgtype.Date `json:"firstPlannedDate"`
+}
+
+type TaskChangeBatch struct {
+	ID               uuid.UUID          `json:"id"`
+	UserID           uuid.UUID          `json:"userId"`
+	RequestID        uuid.UUID          `json:"requestId"`
+	ConversationDate pgtype.Date        `json:"conversationDate"`
+	Changes          []byte             `json:"changes"`
+	DayStates        []byte             `json:"dayStates"`
+	CreatedAt        pgtype.Timestamptz `json:"createdAt"`
+	UndoneAt         pgtype.Timestamptz `json:"undoneAt"`
 }
 
 type User struct {

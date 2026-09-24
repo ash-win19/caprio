@@ -29,6 +29,16 @@ func CurrentDate(ctx context.Context) pgtype.Date {
 	return date
 }
 
+// LocalNow is the current wall-clock time in the request's timezone.
+func LocalNow(ctx context.Context) time.Time {
+	timezone, _ := ctx.Value(timezoneKey{}).(string)
+	location, err := time.LoadLocation(timezone)
+	if timezone == "" || err != nil {
+		location = time.UTC
+	}
+	return time.Now().In(location)
+}
+
 func WritableDate(ctx context.Context, date pgtype.Date) error {
 	if !date.Valid || date.Time.Before(CurrentDate(ctx).Time) {
 		return invalidCode("historical_day", "Past days are read-only. Choose today or a future day.")

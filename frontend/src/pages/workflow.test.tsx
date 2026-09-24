@@ -86,6 +86,50 @@ describe('Missed-day recovery and archived outcomes', () => {
 });
 
 describe('Daily planning workflow', () => {
+  it('keeps the whole conversation visible while a draft waits for confirmation', async () => {
+    workflow = {
+      ...workflow,
+      messages: [
+        { id: 'opener', role: 'event', eventType: 'opener', content: 'Morning. What’s on today?' },
+        { id: 'u1', role: 'user', content: 'my tasks are: ship slides' },
+        { id: 'a1', role: 'assistant', content: 'Got it, slides are on for today.' },
+        { id: 'u2', role: 'user', content: 'add sleep early too' },
+        { id: 'a2', role: 'assistant', content: 'Added sleep early.' },
+      ],
+      proposal: { ...proposal(), summary: 'Draft: added a task. Confirm to save it.', tasks: [], operations: [{ kind: 'create', date: today, fields: { title: 'Sleep early' } }] },
+    };
+    mount(<New />, '/new');
+    const reply = await screen.findByText('Added sleep early.');
+    expect(reply.closest('details')).toBeNull();
+    for (const text of ['Morning. What’s on today?', 'my tasks are: ship slides', 'Got it, slides are on for today.', 'add sleep early too']) expect(screen.getByText(text)).toBeVisible();
+    expect(screen.queryByText(/Conversation ·/)).not.toBeInTheDocument();
+    const card = screen.getByRole('region', { name: 'Proposed plan' });
+    expect(card).not.toHaveTextContent('Draft: added a task');
+    expect(card).toHaveTextContent('Your proposed plan');
+    expect(screen.getByRole('button', { name: 'Confirm plan' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Discard' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Revise/ })).not.toBeInTheDocument();
+  });
+
+  it('opens a new day with the app-written opener and no model call', async () => {
+    workflow = { ...workflow, opener: 'Morning. 2 tasks carried over from yesterday. What’s on today?' };
+    mount(<New />, '/new');
+    expect(await screen.findByText('Morning. 2 tasks carried over from yesterday. What’s on today?')).toBeInTheDocument();
+    expect(api.streamChatMessage).not.toHaveBeenCalled();
+  });
+
+  it('marks discarded and saved plans in the thread', async () => {
+    workflow = { ...workflow, messages: [
+      { id: 'u1', role: 'user', content: 'Add the report' },
+      { id: 'a1', role: 'assistant', content: 'The report is on for today.' },
+      { id: 'e1', role: 'event', eventType: 'discarded', content: 'Proposal discarded' },
+      { id: 'e2', role: 'event', eventType: 'plan_saved', content: 'Plan saved · 1 task for today' },
+    ] };
+    mount(<New />, '/new');
+    expect(await screen.findByRole('status', { name: 'Proposal discarded' })).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'Plan saved · 1 task for today' })).toBeInTheDocument();
+  });
+
   it('keeps a chat proposal as a draft without creating tasks or leaving Plan', async () => {
     vi.mocked(api.streamChatMessage).mockImplementationOnce(async request => {
       workflow = {
@@ -274,7 +318,7 @@ describe('Daily planning workflow', () => {
     workflow = { ...workflow, proposal: proposal() };
     vi.mocked(api.discardDayPlan).mockImplementation(async () => { workflow = { ...workflow, proposal: null }; return workflow; });
     mount(<New />, '/new');
-    fireEvent.click(await screen.findByRole('button', { name: 'Discard proposal' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
     await waitFor(() => expect(screen.queryByRole('region', { name: 'Proposed plan' })).not.toBeInTheDocument());
     expect(api.discardDayPlan).toHaveBeenCalledWith({ date: today, proposalId: 'proposal-1', version: 2 });
     expect(api.confirmDayPlan).not.toHaveBeenCalled();
@@ -412,16 +456,15 @@ describe('Daily planning workflow', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/Choose Done or Drop/i);
     expect(screen.getByRole('alert')).not.toHaveTextContent(/reopen tomorrow/i);
   });
-  it.each([false, true])('shows unfinished carry context once in the header, with existing conversation: %s', async (hasMessages) => {
+  it.each([false, true])('shows the remaining count in the header and leaves carry context to the opener, with existing conversation: %s', async (hasMessages) => {
     workflow = { ...workflow, tasks: [task('report', false, 3), task('meeting'), task('done', true, 2)],
       messages: hasMessages ? [{ id: 'earlier', role: 'user', content: 'Help me plan around these tasks.' }] : [] };
     mount(<New />, '/new');
     const input = await screen.findByRole('textbox', { name: 'Message about your day' });
     const summary = await screen.findByRole('status', { name: 'Task summary' });
     expect(summary).toHaveTextContent('2 remaining');
-    expect(summary).toHaveTextContent('1 carried forward');
+    expect(summary).not.toHaveTextContent(/carried/i);
     expect(summary.closest('header')).not.toBeNull();
-    expect(screen.getAllByText(/carried forward/i)).toHaveLength(1);
     expect(screen.queryByText(/already waiting|Estimates are optional|They stay in your plan/i)).not.toBeInTheDocument();
     expect(input.getAttribute('placeholder')).not.toMatch(/carried/i);
     expect(screen.getByRole('link', { name: 'View tasks' })).toHaveAttribute('href', `/today?date=${today}`);

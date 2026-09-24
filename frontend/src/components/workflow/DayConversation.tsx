@@ -7,7 +7,7 @@ import { useLocalDay } from '@/lib/useLocalDay';
 import { PromptInput } from '@/components/agents/prompt-input';
 import { SpeechMicButton } from '@/components/agents/SpeechMicButton';
 import { Button } from '@/components/ui/button';
-import { MessageBubble, StoppedNotice, StreamingReply, ThinkingIndicator } from './ChatMessages';
+import { MessageBubble, StoppedNotice, StreamingReply, ThinkingIndicator, ThreadEntry } from './ChatMessages';
 import { WorkflowError, proposalRevisionDiff } from './WorkflowUI';
 import { dateLabel } from './dates';
 import { toast } from '@/hooks/use-toast';
@@ -170,16 +170,12 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
   }, [setPending]);
 
   useEffect(() => {
-    if (workflow?.proposal?.id && !pending?.status) {
-      (document.getElementById('proposal-context') || document.getElementById('proposed-plan'))?.scrollIntoView?.({ behavior: 'auto', block: 'start' });
-      return;
-    }
     const container = scrollRef.current;
     const nearBottom = !container || container.scrollHeight - container.scrollTop - container.clientHeight < 160;
     if (pending?.status === 'streaming' && !nearBottom) return;
     const instant = pending?.status === 'streaming' || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     messagesEndRef.current?.scrollIntoView?.({ behavior: instant ? 'auto' : 'smooth', block: 'end' });
-  }, [workflow?.messages.length, workflow?.proposal?.id, pending?.status, shownReply.length]);
+  }, [workflow?.messages.length, pending?.status, shownReply.length]);
 
   const handleSend = (value: string, selectedModel?: string) => {
     const content = value.trim();
@@ -194,10 +190,6 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
   };
   const retry = () => {
     if (pending) void send({ content: pending.content, requestId: pending.requestId, model: pending.model });
-  };
-  const revise = () => {
-    setInput('Change this plan: ');
-    document.getElementById('day-message')?.focus();
   };
   const undo = useMutation({
     mutationFn: api.undoTaskChange,
@@ -215,6 +207,9 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
   // existed before it was sent; the pending turn stands in for the rest.
   const savedMessages = workflow?.messages ?? [];
   const messages = pending?.status === 'settling' ? savedMessages.slice(0, pending.savedCount) : savedMessages;
+  // The opener stays at the top while the first reply settles and is saved.
+  const opener = workflow?.opener ?? savedMessages.find(message => message.eventType === 'opener')?.content;
+  const showOpener = Boolean(opener) && !messages.some(message => message.eventType === 'opener');
   const revisionDiff = proposal && !proposal.operations?.length && workflow?.state === 'active' && (workflow.tasks?.length ?? 0) > 0
     ? proposalRevisionDiff(workflow.tasks, proposal.tasks)
     : null;
@@ -224,15 +219,13 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
     <section aria-label="Planning conversation" className="conversation-main [overflow-wrap:anywhere]">
     <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-6 md:px-8"><div className="mx-auto max-w-2xl space-y-6">
       {workflowQuery.isLoading ? <p role="status" className="py-12 text-center text-sm text-muted-foreground">Loading your day…</p> : workflowQuery.error ? <WorkflowError error={workflowQuery.error} retry={() => void workflowQuery.refetch()} /> : <>
-        {!messages.length && !pending && !proposal && workflow?.state !== 'closed' && <div className="flex min-h-[38vh] flex-col items-center justify-center text-center">
+        {!messages.length && !pending && !proposal && !opener && workflow?.state !== 'closed' && <div className="flex min-h-[38vh] flex-col items-center justify-center text-center">
           <ListChecks className="mb-5 h-7 w-7 text-primary" />
           <h2 className="text-3xl font-medium">{past ? 'No conversation for this day' : showInterruptChips ? 'What changed?' : 'What needs your attention?'}</h2>
           <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">{past ? 'Your saved plan and review are available from View tasks.' : showInterruptChips ? 'Tell Caprio what shifted: less time, new work, or something to drop. Review the draft, then confirm to update your list.' : 'Tell me what you need to do. Review the draft plan, then confirm to save your tasks.'}</p>
         </div>}
-        {proposal && !pending && !readOnly && messages.length > 0 ? <details id="proposal-context" className="workspace-details scroll-mt-4 rounded-xl border border-border px-4 py-2">
-          <summary>Conversation · {messages.length} {messages.length === 1 ? 'message' : 'messages'}<ChevronDown size={14} aria-hidden /></summary>
-          <div className="mt-4 space-y-6">{messages.map(message => <MessageBubble key={message.id} role={message.role}>{message.content}</MessageBubble>)}</div>
-        </details> : messages.map(message => <MessageBubble key={message.id} role={message.role}>{message.content}</MessageBubble>)}
+        {showOpener && <MessageBubble role="assistant">{opener}</MessageBubble>}
+        {messages.map(message => <ThreadEntry key={message.id} message={message} />)}
         {pending && <>
           <MessageBubble role="user">{pending.content}</MessageBubble>
           {pending.status === 'thinking' && <ThinkingIndicator />}
@@ -249,8 +242,7 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
           {undo.error && <WorkflowError error={undo.error} />}
         </section>}
         {proposal && !readOnly && !settling && <section id="proposed-plan" aria-label="Proposed plan" className="scroll-mt-4 rounded-2xl border border-primary/30 bg-card p-5 sm:p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-medium">{workflow?.state === 'active' ? 'Proposed changes' : 'Your proposed plan'}</h2><span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs text-primary">Needs your confirmation</span></div>
-          <p className="mt-3 text-sm leading-6 text-muted-foreground">{proposal.summary}</p>
+          <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-medium">{workflow?.state === 'active' ? `Proposed changes · ${proposal.operations?.length || proposal.tasks.length}` : 'Your proposed plan'}</h2><span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs text-primary">Needs your confirmation</span></div>
           <div className="mt-4 flex flex-wrap items-center gap-2">
             {!proposal.operations?.length && <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground"><Clock3 className="h-3.5 w-3.5" />{minutes} min planned</span>}
             {availableMinutes !== null
@@ -271,7 +263,7 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
           </div>)}
           <p className="mt-5 text-xs leading-5 text-muted-foreground">Confirming saves this plan. Completed tasks stay completed.</p>
           {(confirm.error || discard.error) && <div className="mt-4"><WorkflowError error={confirm.error || discard.error} /></div>}
-          <div className="mt-4 flex flex-wrap gap-2"><Button onClick={() => confirm.mutate()} disabled={busy}>{confirm.isPending ? 'Saving plan…' : 'Confirm plan'}<ArrowRight className="ml-2 h-4 w-4" /></Button><Button variant="outline" onClick={revise} disabled={busy}>Revise proposal</Button><Button variant="ghost" onClick={() => discard.mutate()} disabled={busy}>{discard.isPending ? 'Discarding…' : 'Discard proposal'}</Button></div>
+          <div className="mt-4 flex flex-wrap gap-2"><Button onClick={() => confirm.mutate()} disabled={busy}>{confirm.isPending ? 'Saving plan…' : 'Confirm plan'}<ArrowRight className="ml-2 h-4 w-4" /></Button><Button variant="ghost" onClick={() => discard.mutate()} disabled={busy}>{discard.isPending ? 'Discarding…' : 'Discard'}</Button></div>
         </section>}
         {workflow?.state === 'closed' && !past && <p className="text-sm text-muted-foreground">Your review is saved. Add new work to continue this day; completed tasks and earlier reviews stay recorded.</p>}
       </>}
