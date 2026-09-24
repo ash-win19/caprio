@@ -20,7 +20,8 @@
     "@mastra/ai-sdk": "^1.10.0",
     "@mastra/core": "1.63.2",
     "@mastra/libsql": "1.22.2",
-    "@mastra/memory": "^1.28.1"
+    "@mastra/memory": "^1.28.1",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/node": "latest",

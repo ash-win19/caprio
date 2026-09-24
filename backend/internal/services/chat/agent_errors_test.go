@@ -14,6 +14,9 @@ func TestClassifyAgentError_Capacity(t *testing.T) {
 
 	err = classifyAgentError(fmt.Errorf("context deadline exceeded"))
 	require.ErrorIs(t, err, ErrModelCapacity)
+
+	err = classifyAgentError(fmt.Errorf(`mastra returned status 500: {"error":"You exceeded your current quota, please check your plan and billing details. https://ai.google.dev/gemini-api/docs/rate-limits"}`))
+	require.ErrorIs(t, err, ErrModelCapacity, "a provider quota is a capacity problem the fallback model can absorb")
 }
 
 func TestClassifyAgentError_Generic(t *testing.T) {

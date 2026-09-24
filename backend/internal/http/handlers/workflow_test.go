@@ -74,8 +74,8 @@ func TestTaskMutationKeepsCompletionConsistentAndInvalidatesProposals(t *testing
 	ctx := context.Background()
 	created := httpJSON(t, r, "POST", "/api/tasks", map[string]any{"title": "Finish report", "plannedForDate": "2090-09-06"}, 201)
 	id := created["id"].(string)
-	proposal := `{"id":"` + uuid.NewString() + `","summary":"Draft","availableMinutes":60,"tasks":[]}`
-	_, err := store.Pool.Exec(ctx, `INSERT INTO daily_plans (user_id,plan_date,state,version,proposal,proposal_snapshot) VALUES ($1,'2090-09-06','active',1,$2,'snapshot')`, user, proposal)
+	draft := `{"id":"` + uuid.NewString() + `","entries":{"new:1":{"ref":"new:1","create":true,"fields":{"title":"Draft task"},"date":"2090-09-06","turns":[]}},"order":["new:1"]}`
+	_, err := store.Pool.Exec(ctx, `INSERT INTO daily_plans (user_id,plan_date,state,version,draft,proposal_snapshot) VALUES ($1,'2090-09-06','active',1,$2,'snapshot')`, user, draft)
 	require.NoError(t, err)
 	done := httpJSON(t, r, "PATCH", "/api/tasks/"+id, map[string]any{"completed": true}, 200)
 	require.Equal(t, true, done["completed"])
@@ -84,7 +84,7 @@ func TestTaskMutationKeepsCompletionConsistentAndInvalidatesProposals(t *testing
 	tasks := httpJSON(t, r, "GET", "/api/tasks?date=2090-09-06", nil, 200)
 	require.Len(t, tasks["tasks"], 1)
 	workflow := httpJSON(t, r, "GET", "/api/workflow?date=2090-09-06", nil, 200)
-	require.Nil(t, workflow["proposal"])
+	require.Nil(t, workflow["plan"])
 	require.EqualValues(t, 2, workflow["version"])
 	require.Equal(t, "active", workflow["state"])
 	reopened := httpJSON(t, r, "PATCH", "/api/tasks/"+id, map[string]any{"completed": false}, 200)

@@ -291,3 +291,30 @@
 /* One checklist and one date-scoped conversation share committed state. */
 .daily-conversation-workspace { display: flex; flex: 1; min-height: 0; min-width: 0; }
 .daily-conversation-workspace .conversation-main { min-width: 0; }
+
+/* The day's plan sits beside the chat on wide screens and scrolls on its own. */
+/* The slide-in starts beyond the edge; never let it widen the page. */
+.daily-conversation-workspace:has(> .plan-panel) { overflow-x: clip; }
+.plan-panel {
+  display: flex;
+  flex-direction: column;
+  width: 25rem;
+  flex-shrink: 0;
+  min-height: 0;
+  overflow-y: auto;
+  border-left: 1px solid hsl(var(--border));
+  padding: 1rem;
+  animation: plan-panel-in 200ms ease-out;
+}
+.plan-panel .plan-card { flex: 1 0 auto; min-height: 100%; border-color: hsl(var(--border)); }
+/* Confirm and Discard stay in reach however long the plan gets. */
+.plan-panel .plan-card-actions { position: sticky; bottom: -1rem; margin-top: auto; border-top: 1px solid hsl(var(--border)); }
+@keyframes plan-panel-in { from { transform: translateX(100%); opacity: 0; } to { transform: none; opacity: 1; } }
+.plan-row-highlight { animation: plan-row-flash 2s ease-out; outline: 1px solid hsl(var(--primary) / 0.5); }
+@keyframes plan-row-flash { from { background-color: hsl(var(--primary) / 0.18); } to { background-color: hsl(var(--background)); } }
+@media (prefers-reduced-motion: reduce) {
+  .plan-panel, .plan-row-highlight { animation: none; }
+}
+@media (max-width: 1023px) {
+  .plan-panel { display: none; }
+}

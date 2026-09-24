@@ -1,10 +1,39 @@
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
+import { ListChecks } from 'lucide-react';
+import type { ChatThreadMessage, PlanUpdateMetadata } from '@/lib/api';
 
 export function MessageBubble({ role, children }: { role: 'user' | 'assistant'; children: ReactNode }) {
   return <div className={`flex ${role === 'user' ? 'justify-end' : 'justify-start'}`}>
     <div className={`max-w-[90%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed ${role === 'user' ? 'bg-accent text-foreground' : 'text-foreground'}`}>{children}</div>
   </div>;
+}
+
+// A marker the app writes into the thread, such as a discarded or saved plan.
+export function EventMarker({ children }: { children: string }) {
+  return <p role="status" aria-label={children} className="text-center text-xs text-muted-foreground">{children}</p>;
+}
+
+// What one reply changed in the plan, written by the app under that reply.
+// Clicking it shows those rows in the plan.
+export function PlanUpdatedLine({ children, onShow }: { children: string; onShow?: () => void }) {
+  const body = <><ListChecks size={13} aria-hidden className="shrink-0" /><span className="min-w-0 text-left">{children}</span></>;
+  if (onShow) {
+    return <button type="button" onClick={onShow} aria-label={children} className="flex items-center gap-1.5 rounded px-4 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{body}</button>;
+  }
+  return <p role="status" aria-label={children} className="flex items-center gap-1.5 px-4 text-xs text-muted-foreground">{body}</p>;
+}
+
+// The opener reads as Caprio's first line; other events are quiet markers.
+export function ThreadEntry({ message, onShowUpdate }: { message: ChatThreadMessage; onShowUpdate?: (refs: string[]) => void }) {
+  if (message.role !== 'event') return <MessageBubble role={message.role}>{message.content}</MessageBubble>;
+  if (message.eventType === 'opener') return <MessageBubble role="assistant">{message.content}</MessageBubble>;
+  if (message.eventType === 'plan_update') {
+    const changes = (message.metadata as PlanUpdateMetadata | null | undefined)?.changes;
+    const refs = Array.isArray(changes) ? changes.map(change => change.ref) : [];
+    return <PlanUpdatedLine onShow={onShowUpdate && refs.length ? () => onShowUpdate(refs) : undefined}>{message.content}</PlanUpdatedLine>;
+  }
+  return <EventMarker>{message.content}</EventMarker>;
 }
 
 // Shown from the moment a message is sent until the first token arrives.
