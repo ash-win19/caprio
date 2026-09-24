@@ -21,15 +21,12 @@ func WithTimezone(ctx context.Context, timezone string) (context.Context, error)
 }
 
 func CurrentDate(ctx context.Context) pgtype.Date {
-	timezone, _ := ctx.Value(timezoneKey{}).(string)
-	if timezone == "" {
-		timezone = "UTC"
-	}
-	date, _ := LocalToday(time.Now(), timezone)
+	date, _ := ParseDate(LocalNow(ctx).Format("2006-01-02"))
 	return date
 }
 
 // LocalNow is the current wall-clock time in the request's timezone.
+// WithTimezone has already validated the zone.
 func LocalNow(ctx context.Context) time.Time {
 	timezone, _ := ctx.Value(timezoneKey{}).(string)
 	location, err := time.LoadLocation(timezone)

@@ -163,7 +163,8 @@ func load(ctx context.Context, conn generated.DBTX, userID uuid.UUID, date pgtyp
 	if err := reviews.Err(); err != nil {
 		return nil, err
 	}
-	if len(w.Messages) == 0 && w.State != "closed" {
+	// Active days open on the adjust prompt instead; closed days are archived.
+	if len(w.Messages) == 0 && w.State == "planning" {
 		w.Opener = openerText(date, LocalNow(ctx), w.Tasks, w.CarryoverOrigins)
 	}
 	return w, nil
@@ -449,7 +450,9 @@ func writePlanSaved(ctx context.Context, tx pgx.Tx, q *generated.Queries, userID
 	if err := tx.QueryRow(ctx, `SELECT count(*) FROM tasks WHERE user_id=$1 AND planned_for_date=$2 AND status='planned' AND NOT completed`, userID, date).Scan(&open); err != nil {
 		return err
 	}
-	return writeEvent(ctx, q, userID, date, eventPlanSaved, fmt.Sprintf("Plan saved · %s for %s", plural(open, "task"), dayWord(date, CurrentDate(ctx))), nil)
+	// The marker stays in this day's thread, so it names no relative day that
+	// would go stale ("tomorrow" read the next morning).
+	return writeEvent(ctx, q, userID, date, eventPlanSaved, "Plan saved · "+plural(open, "task"), nil)
 }
 
 // Discard only removes the reviewed draft. Repeating a stale discard returns a

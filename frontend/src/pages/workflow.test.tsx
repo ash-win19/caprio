@@ -123,11 +123,11 @@ describe('Daily planning workflow', () => {
       { id: 'u1', role: 'user', content: 'Add the report' },
       { id: 'a1', role: 'assistant', content: 'The report is on for today.' },
       { id: 'e1', role: 'event', eventType: 'discarded', content: 'Proposal discarded' },
-      { id: 'e2', role: 'event', eventType: 'plan_saved', content: 'Plan saved · 1 task for today' },
+      { id: 'e2', role: 'event', eventType: 'plan_saved', content: 'Plan saved · 1 task' },
     ] };
     mount(<New />, '/new');
     expect(await screen.findByRole('status', { name: 'Proposal discarded' })).toBeInTheDocument();
-    expect(screen.getByRole('status', { name: 'Plan saved · 1 task for today' })).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'Plan saved · 1 task' })).toBeInTheDocument();
   });
 
   it('keeps a chat proposal as a draft without creating tasks or leaving Plan', async () => {

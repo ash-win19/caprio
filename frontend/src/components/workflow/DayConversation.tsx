@@ -233,6 +233,8 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
           {pending.status === 'failed' && <div><p className="mb-2 text-sm font-medium">Not saved</p><WorkflowError error={pending.error} retry={retry} /></div>}
           {pending.status === 'stopped' && <StoppedNotice retry={retry} />}
         </>}
+        {/* The latest message, not the draft card below it, is what a new turn scrolls to. */}
+        <div ref={messagesEndRef} />
         {(workflow?.changeReceipts?.length ?? 0) > 0 && <section aria-label="Saved task changes" className="space-y-3">
           {workflow!.changeReceipts!.map(receipt => <div key={receipt.id} className="rounded-xl border border-border bg-card p-4">
             <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm font-medium">{receipt.undone ? 'Undone' : receipt.summary}</p><Button size="sm" variant="outline" disabled={busy || !receipt.canUndo || past} onClick={() => undo.mutate(receipt.id)} aria-label={`Undo ${receipt.summary.toLowerCase()}`}>{undo.isPending && undo.variables === receipt.id ? 'Undoing…' : 'Undo'}</Button></div>
@@ -267,7 +269,6 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
         </section>}
         {workflow?.state === 'closed' && !past && <p className="text-sm text-muted-foreground">Your review is saved. Add new work to continue this day; completed tasks and earlier reviews stay recorded.</p>}
       </>}
-      <div ref={messagesEndRef} />
     </div></div>
     <div className="conversation-composer bg-background px-4 pb-4 pt-2 md:px-8"><div className="mx-auto max-w-2xl">
       {readOnly ? <div className="flex items-center justify-between gap-3 rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground"><span>{past ? 'Past conversations are read-only.' : 'This day is closed.'}</span><Link to="/new" className="shrink-0 text-primary hover:underline">Go to today</Link></div> : <>

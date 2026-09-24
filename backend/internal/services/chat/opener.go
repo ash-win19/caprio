@@ -72,7 +72,10 @@ const (
 func writeEvent(ctx context.Context, q *generated.Queries, user uuid.UUID, date pgtype.Date, kind, content string, metadata any) error {
 	var raw json.RawMessage
 	if metadata != nil {
-		raw, _ = json.Marshal(metadata)
+		var err error
+		if raw, err = json.Marshal(metadata); err != nil {
+			return err
+		}
 	}
 	_, err := q.CreateChatEvent(ctx, generated.CreateChatEventParams{UserID: user, SessionDate: date, EventType: &kind, Content: content, Metadata: raw})
 	return err
@@ -94,20 +97,9 @@ func modelMessage(m generated.ChatMessage) mastra.ChatMessage {
 	case eventDiscarded:
 		return mastra.ChatMessage{Role: "system", Content: "[Caprio] The user discarded the draft plan. Nothing from it was saved."}
 	case eventPlanSaved:
-		return mastra.ChatMessage{Role: "system", Content: "[Caprio] The user confirmed the plan. " + m.Content + "."}
+		return mastra.ChatMessage{Role: "system", Content: "[Caprio] The user confirmed the plan for " + m.SessionDate.Time.Format("2006-01-02") + ". " + m.Content + "."}
 	default:
 		return mastra.ChatMessage{Role: "system", Content: "[Caprio] " + m.Content}
 	}
 }
 
-// dayWord names a day the way a person would: today, tomorrow, or a weekday.
-func dayWord(date, today pgtype.Date) string {
-	switch int(date.Time.Sub(today.Time).Hours() / 24) {
-	case 0:
-		return "today"
-	case 1:
-		return "tomorrow"
-	default:
-		return date.Time.Format("Monday, Jan 2")
-	}
-}

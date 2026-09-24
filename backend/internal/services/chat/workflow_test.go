@@ -430,7 +430,10 @@ func TestConversationEventsFrameTheDaysThread(t *testing.T) {
 	require.NoError(t, err)
 	last = confirmed.Messages[len(confirmed.Messages)-1]
 	require.Equal(t, ptr("plan_saved"), last.EventType)
-	require.Equal(t, "Plan saved · 1 task for today", last.Content)
+	require.Equal(t, "Plan saved · 1 task", last.Content)
+	after, err := s.Get(ctx, user, date)
+	require.NoError(t, err)
+	require.Nil(t, after.Opener, "an active day opens on the adjust prompt, not an opener")
 
 	sessions, err := s.store.Queries.ListChatSessionsByUser(ctx, user)
 	require.NoError(t, err)
