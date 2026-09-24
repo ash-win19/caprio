@@ -23,8 +23,8 @@ const task = (id: string, completed = false, deferCount = 0): api.BackendTask =>
   source: 'manual', completed, sortOrder: 0, plannedForDate: today,
   status: completed ? 'completed' : 'planned', deferCount, createdAt: today, updatedAt: today,
 });
-const baseWorkflow = (): api.Workflow => ({ date: today, state: 'planning', version: 2, messages: [], proposal: null, availableMinutes: null, tasks: [], backlog: [], review: null });
-const proposal = (): api.PlanProposal => ({ id: 'proposal-1', summary: 'Protect time for your report.', availableMinutes: 60, tasks: [{ title: 'Finish report', duration: 30, urgency: 'high', disposition: 'today', reason: 'Due this afternoon.' }] });
+const baseWorkflow = (): api.Workflow => ({ date: today, state: 'planning', version: 2, messages: [], plan: null, availableMinutes: null, tasks: [], backlog: [], review: null });
+const plan = (over: Partial<api.PlanView> = {}): api.PlanView => ({ draftId: 'draft-1', today: [{ ref: 'new:1', title: 'Finish report', badge: 'new', date: today, duration: 30 }], carried: [], otherDays: [], doneCount: 0, counts: { new: 1, edited: 0, moved: 0, removed: 0, carried: 0 }, ...over });
 let workflow: api.Workflow;
 
 function mount(element: ReactElement, path: string) {
@@ -96,7 +96,7 @@ describe('Daily planning workflow', () => {
         { id: 'u2', role: 'user', content: 'add sleep early too' },
         { id: 'a2', role: 'assistant', content: 'Added sleep early.' },
       ],
-      proposal: { ...proposal(), summary: 'Draft: added a task. Confirm to save it.', tasks: [], operations: [{ kind: 'create', date: today, fields: { title: 'Sleep early' } }] },
+      plan: plan({ today: [{ ref: 'new:2', title: 'Sleep early', badge: 'new', date: today }] }),
     };
     mount(<New />, '/new');
     const reply = await screen.findByText('Added sleep early.');
@@ -104,8 +104,9 @@ describe('Daily planning workflow', () => {
     for (const text of ['Morning. What’s on today?', 'my tasks are: ship slides', 'Got it, slides are on for today.', 'add sleep early too']) expect(screen.getByText(text)).toBeVisible();
     expect(screen.queryByText(/Conversation ·/)).not.toBeInTheDocument();
     const card = screen.getByRole('region', { name: 'Proposed plan' });
-    expect(card).not.toHaveTextContent('Draft: added a task');
-    expect(card).toHaveTextContent('Your proposed plan');
+    expect(card).not.toHaveTextContent('Draft:');
+    expect(card).toHaveTextContent('Today’s plan');
+    expect(card).toHaveTextContent('Sleep early');
     expect(screen.getByRole('button', { name: 'Confirm plan' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Discard' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Revise/ })).not.toBeInTheDocument();
@@ -136,13 +137,7 @@ describe('Daily planning workflow', () => {
         ...workflow,
         version: 3,
         messages: [{ id: 'user', role: 'user', content: request.content }, { id: 'assistant', role: 'assistant', content: 'Review this draft.' }],
-        proposal: {
-          id: 'draft-1',
-          summary: 'Add Finish report to today.',
-          availableMinutes: 60,
-          tasks: [],
-          operations: [{ kind: 'create', date: today, fields: { title: 'Finish report' } }],
-        },
+        plan: plan(),
       };
       return { text: 'Review this draft.', workflow };
     });
@@ -162,16 +157,10 @@ describe('Daily planning workflow', () => {
     workflow = {
       ...workflow,
       messages: [{ id: 'message-1', role: 'user', content: 'Add Finish report' }],
-      proposal: {
-        id: 'draft-1',
-        summary: 'Add Finish report to today.',
-        availableMinutes: 60,
-        tasks: [],
-        operations: [{ kind: 'create', date: today, fields: { title: 'Finish report' } }],
-      },
+      plan: plan(),
     };
     vi.mocked(api.confirmDayPlan).mockImplementation(async () => {
-      workflow = { ...workflow, proposal: null, state: 'active', tasks: [task('report')], version: 4 };
+      workflow = { ...workflow, plan: null, state: 'active', tasks: [task('report')], version: 4 };
       return workflow;
     });
     mount(<New />, '/new');
@@ -179,20 +168,20 @@ describe('Daily planning workflow', () => {
     expect(api.confirmDayPlan).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Confirm plan' }));
     expect(await screen.findByText('Saved plan destination')).toBeInTheDocument();
-    expect(api.confirmDayPlan).toHaveBeenCalledWith({ date: today, proposalId: 'draft-1', version: 2 });
+    expect(api.confirmDayPlan).toHaveBeenCalledWith({ date: today, draftId: 'draft-1', version: 2 });
   });
 
   it('restores messages and requires a separate confirmation to save a proposal', async () => {
-    workflow = { ...workflow, messages: [{ id: 'message-1', role: 'user', content: 'I have an hour for the report.' }], proposal: proposal() };
-    vi.mocked(api.confirmDayPlan).mockImplementation(async () => ({ ...workflow, proposal: null, state: 'active' }));
+    workflow = { ...workflow, messages: [{ id: 'message-1', role: 'user', content: 'I have an hour for the report.' }], plan: plan() };
+    vi.mocked(api.confirmDayPlan).mockImplementation(async () => ({ ...workflow, plan: null, state: 'active' }));
     mount(<New />, '/new');
     expect(await screen.findByText('I have an hour for the report.')).toBeInTheDocument();
-    expect(screen.getByText('30 min planned')).toBeInTheDocument();
-    expect(screen.getByText('60 min available')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Proposed plan' })).toHaveTextContent('Finish report');
+    expect(screen.getByRole('region', { name: 'Proposed plan' })).toHaveTextContent('30 min');
     expect(api.confirmDayPlan).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Confirm plan' }));
     expect(await screen.findByText('Saved plan destination')).toBeInTheDocument();
-    expect(api.confirmDayPlan).toHaveBeenCalledWith({ date: today, proposalId: 'proposal-1', version: 2 });
+    expect(api.confirmDayPlan).toHaveBeenCalledWith({ date: today, draftId: 'draft-1', version: 2 });
   });
 
   it('keeps a failed message in the thread and reuses its request ID when retried', async () => {
@@ -315,17 +304,17 @@ describe('Daily planning workflow', () => {
   });
 
   it('discards a proposal through the server without confirming tasks', async () => {
-    workflow = { ...workflow, proposal: proposal() };
-    vi.mocked(api.discardDayPlan).mockImplementation(async () => { workflow = { ...workflow, proposal: null }; return workflow; });
+    workflow = { ...workflow, plan: plan() };
+    vi.mocked(api.discardDayPlan).mockImplementation(async () => { workflow = { ...workflow, plan: null }; return workflow; });
     mount(<New />, '/new');
     fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
     await waitFor(() => expect(screen.queryByRole('region', { name: 'Proposed plan' })).not.toBeInTheDocument());
-    expect(api.discardDayPlan).toHaveBeenCalledWith({ date: today, proposalId: 'proposal-1', version: 2 });
+    expect(api.discardDayPlan).toHaveBeenCalledWith({ date: today, draftId: 'draft-1', version: 2 });
     expect(api.confirmDayPlan).not.toHaveBeenCalled();
   });
 
   it('keeps a historical conversation read-only', async () => {
-    workflow = { ...workflow, date: '2020-01-01', proposal: proposal(), messages: [{ id: 'past', role: 'assistant', content: 'Your old plan.' }] };
+    workflow = { ...workflow, date: '2020-01-01', plan: plan(), messages: [{ id: 'past', role: 'assistant', content: 'Your old plan.' }] };
     mount(<New />, '/new?date=2020-01-01');
     expect(await screen.findByText('Your old plan.')).toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: 'Message about your day' })).not.toBeInTheDocument();
@@ -511,14 +500,11 @@ describe('Daily planning workflow', () => {
   it.each([0, 60])('lets users confirm all tasks with %i minutes available', async (availableMinutes) => {
     workflow = {
       ...workflow,
-      proposal: {
-        ...proposal(),
-        availableMinutes,
-        tasks: [
-          { title: 'Finish report', duration: 90, urgency: 'high', disposition: 'today', reason: 'Due this afternoon.' },
-          { title: 'Clean inbox', duration: 30, urgency: 'low', disposition: 'today', reason: 'Would also take time.' },
-        ],
-      },
+      availableMinutes,
+      plan: plan({ today: [
+        { ref: 'new:1', title: 'Finish report', duration: 90, badge: 'new', date: today },
+        { ref: 'new:2', title: 'Clean inbox', duration: 30, badge: 'new', date: today },
+      ] }),
     };
     mount(<New />, '/new');
     const confirm = await screen.findByRole('button', { name: 'Confirm plan' });
@@ -528,7 +514,7 @@ describe('Daily planning workflow', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(api.confirmDayPlan).not.toHaveBeenCalled();
     fireEvent.click(confirm);
-    await waitFor(() => expect(api.confirmDayPlan).toHaveBeenCalledWith({ date: today, proposalId: 'proposal-1', version: 2 }));
+    await waitFor(() => expect(api.confirmDayPlan).toHaveBeenCalledWith({ date: today, draftId: 'draft-1', version: 2 }));
   });
 
   it('shows estimates on Today without treating available time as a limit', async () => {
@@ -553,28 +539,32 @@ describe('Daily planning workflow', () => {
     expect(screen.getByRole('link', { name: 'Review day' })).toHaveAttribute('href', `/review?date=${today}`);
   });
 
-  it('shows a kept/added/deferred diff when revising an active day proposal', async () => {
+  it('shows the full resulting plan grouped with a badge on each change', async () => {
     workflow = {
       ...workflow,
       state: 'active',
       tasks: [task('report'), task('meeting')],
-      proposal: {
-        id: 'proposal-2',
-        summary: 'Protect the report and park the meeting.',
-        availableMinutes: 60,
-        tasks: [
-          { id: 'report', title: 'Finish report', duration: 30, urgency: 'high', disposition: 'today', reason: 'Still due.' },
-          { title: 'Ship hotfix', duration: 30, urgency: 'high', disposition: 'today', reason: 'New interruption.' },
-          { id: 'meeting', title: 'Team meeting', duration: 30, urgency: 'medium', disposition: 'backlog', reason: 'Can wait.' },
-        ],
-      },
+      messages: [
+        { id: 'u1', role: 'user', content: 'add a hotfix, push the meeting to Friday' },
+        { id: 'a1', role: 'assistant', content: 'Done: the hotfix is on and the meeting moves to Friday.' },
+        { id: 'e1', role: 'event', eventType: 'plan_update', content: 'Plan updated · Added Ship hotfix · Moved Team meeting', metadata: { changes: [{ ref: 'new:1', title: 'Ship hotfix', action: 'Added' }, { ref: 'meeting', title: 'Team meeting', action: 'Moved' }] } },
+      ],
+      plan: plan({
+        today: [{ ref: 'report', taskId: 'report', title: 'Finish report', date: today }, { ref: 'new:1', title: 'Ship hotfix', badge: 'new', date: today }],
+        carried: [{ ref: 'old', taskId: 'old', title: 'Fix publishing', date: today, carried: true, carriedSince: previousDate(today) }],
+        otherDays: [{ ref: 'meeting', taskId: 'meeting', title: 'Team meeting', badge: 'moved', date: nextDate(today) }],
+        doneCount: 2,
+        counts: { new: 1, edited: 0, moved: 1, removed: 0, carried: 1 },
+      }),
     };
     mount(<New />, '/new');
-    expect(await screen.findByRole('region', { name: 'Proposal changes' })).toBeInTheDocument();
-    expect(screen.getByText(/Kept · 1/i)).toBeInTheDocument();
-    expect(screen.getByText(/Added · 1/i)).toBeInTheDocument();
-    expect(screen.getByText(/Deferred or removed · 1/i)).toBeInTheDocument();
-    expect(screen.getAllByText('Ship hotfix').length).toBeGreaterThan(0);
+    const card = await screen.findByRole('region', { name: 'Proposed plan' });
+    expect(card).toHaveTextContent('1 new · 1 moved · 1 carried');
+    expect(screen.getByRole('region', { name: 'Today' })).toHaveTextContent(/Finish report.*Ship hotfixNew/);
+    expect(screen.getByRole('region', { name: 'Carried forward' })).toHaveTextContent('Fix publishing');
+    expect(screen.getByRole('region', { name: 'Other days' })).toHaveTextContent(`Team meeting${dateLabel(nextDate(today))}Moved`);
+    expect(card).toHaveTextContent('Done · 2');
+    expect(screen.getByRole('status', { name: 'Plan updated · Added Ship hotfix · Moved Team meeting' })).toBeInTheDocument();
   });
 
   it('offers Discuss in Plan from inbox items with seed context', async () => {
@@ -597,14 +587,16 @@ describe('Daily planning workflow', () => {
     expect(screen.getByRole('textbox', { name: 'Message about your day' })).toHaveValue('A meeting ran over and I have less time today. ');
   });
 
-  it('surfaces planner validation failures as readable chat errors', async () => {
-    vi.mocked(api.streamChatMessage).mockRejectedValueOnce(new Error('assistant response failed validation: proposal omitted an unfinished task'));
+  it('retries a failed plan update once on the fallback model, then says the plan was not updated', async () => {
+    const failure = () => Object.assign(new Error('I couldn\'t update the plan. Try again.'), { status: 400, code: 'plan_update_failed' });
+    vi.mocked(api.streamChatMessage).mockRejectedValueOnce(failure()).mockRejectedValueOnce(failure());
     mount(<New />, '/new');
     const input = await screen.findByRole('textbox', { name: 'Message about your day' });
     await waitFor(() => expect(input).toBeEnabled());
     fireEvent.change(input, { target: { value: 'Plan my day' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send prompt' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(/wasn’t complete enough to save/i);
+    expect(await screen.findByRole('alert')).toHaveTextContent('I couldn’t update the plan. Try again.');
+    expect(vi.mocked(api.streamChatMessage).mock.calls.map(([call]) => call.model)).toEqual(['groq/openai/gpt-oss-120b', 'groq/openai/gpt-oss-20b']);
   });
 });
 

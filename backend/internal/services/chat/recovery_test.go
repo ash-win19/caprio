@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/ashwinshanmugam/caprio/backend/internal/mastra"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
@@ -29,10 +30,8 @@ func TestCarryRequiresNextDayConfirmation(t *testing.T) {
 	require.Equal(t, "planning", next.State, "carried tasks are saved, but the next day's plan is not confirmed")
 	require.Len(t, next.Tasks, 1)
 	require.Equal(t, task.ID, next.Tasks[0].ID)
-	proposalTask := planTask("Report")
-	proposalTask.ID = &task.ID
-	draft := propose(t, s, a, user, nextDate, proposalTask)
-	confirmed, err := s.Confirm(ctx, user, nextDate, draft.Proposal.ID, draft.Version)
+	draft := propose(t, s, a, user, nextDate, "Write the summary")
+	confirmed, err := s.Confirm(ctx, user, nextDate, draft.Plan.DraftID, draft.Version)
 	require.NoError(t, err)
 	require.Equal(t, "active", confirmed.State)
 }
@@ -61,17 +60,17 @@ func TestWorkflowFindsTaskOnlyMissedDays(t *testing.T) {
 	}
 }
 
-func TestRejectedModelReplyPreservesValidationError(t *testing.T) {
+func TestEmptyModelReplyIsNotSaved(t *testing.T) {
 	s, a, user, date := testService(t)
 	createTask(t, s, user, date, "Must be accounted for")
-	a.response = `{"message":"Here is the plan.","phase":"proposal","availableMinutes":60,"tasks":[]}`
+	a.response = "   "
+	a.script = func(context.Context, mastra.Call, toolFunc) (string, error) { return "  ", nil }
 	_, err := s.Process(context.Background(), ProcessRequest{UserID: user, SessionDate: date, Content: "Plan my work", RequestID: uuid.New()})
-	var validation *ValidationError
-	require.ErrorAs(t, err, &validation)
+	require.Error(t, err)
 	w, err := s.Get(context.Background(), user, date)
 	require.NoError(t, err)
 	require.Empty(t, w.Messages)
-	require.Nil(t, w.Proposal)
+	require.Nil(t, w.Plan)
 	require.Len(t, w.Tasks, 1)
 }
 
@@ -126,16 +125,16 @@ func TestCarryInvalidatesDestinationDraftWithoutConfirmingIt(t *testing.T) {
 	ctx := context.Background()
 	task := createTask(t, s, user, date, "Carried report")
 	next, _ := ParseDate("2026-09-07")
-	draft := propose(t, s, a, user, next, planTask("Next day work"))
+	draft := propose(t, s, a, user, next, "Next day work")
 	req := CloseRequest{Date: "2026-09-06", TaskActions: []TaskAction{{task.ID, "tomorrow"}}}
 	_, err := s.Close(ctx, user, req)
 	require.NoError(t, err)
 	w, err := s.Get(ctx, user, next)
 	require.NoError(t, err)
 	require.Equal(t, "planning", w.State)
-	require.Nil(t, w.Proposal)
+	require.Nil(t, w.Plan)
 	require.Equal(t, draft.Version+1, w.Version)
-	_, err = s.Confirm(ctx, user, next, draft.Proposal.ID, draft.Version)
+	_, err = s.Confirm(ctx, user, next, draft.Plan.DraftID, draft.Version)
 	require.ErrorIs(t, err, ErrConflict)
 	_, err = s.Close(ctx, user, req)
 	require.NoError(t, err)
@@ -147,8 +146,12 @@ func TestCarryInvalidatesDestinationDraftWithoutConfirmingIt(t *testing.T) {
 
 func TestEmptyConfirmedDayRemainsActive(t *testing.T) {
 	s, a, user, date := testService(t)
-	draft := propose(t, s, a, user, date, []ProposalTask{}...)
-	w, err := s.Confirm(context.Background(), user, date, draft.Proposal.ID, draft.Version)
+	task := createTask(t, s, user, date, "Only task")
+	a.ops = []TaskOperation{{Kind: "remove", TaskID: &task.ID}}
+	r, err := s.Process(context.Background(), ProcessRequest{UserID: user, SessionDate: date, Content: "Clear my day", RequestID: uuid.New()})
+	require.NoError(t, err)
+	draft := r.Workflow
+	w, err := s.Confirm(context.Background(), user, date, draft.Plan.DraftID, draft.Version)
 	require.NoError(t, err)
 	require.Equal(t, "active", w.State)
 	require.Empty(t, w.Tasks)
@@ -163,18 +166,18 @@ func TestCarryPreservesActiveDestination(t *testing.T) {
 	ctx := context.Background()
 	task := createTask(t, s, user, date, "Carry")
 	next, _ := ParseDate("2026-09-07")
-	draft := propose(t, s, a, user, next, planTask("Already confirmed"))
-	confirmed, err := s.Confirm(ctx, user, next, draft.Proposal.ID, draft.Version)
+	draft := propose(t, s, a, user, next, "Already confirmed")
+	confirmed, err := s.Confirm(ctx, user, next, draft.Plan.DraftID, draft.Version)
 	require.NoError(t, err)
-	revision := planTask("Already confirmed")
-	revision.ID = &confirmed.Tasks[0].ID
-	propose(t, s, a, user, next, revision)
+	a.ops = []TaskOperation{{Kind: "update", TaskID: &confirmed.Tasks[0].ID, Fields: fields(map[string]any{"duration": 45})}}
+	_, err = s.Process(ctx, ProcessRequest{UserID: user, SessionDate: next, Content: "Make it 45 minutes", RequestID: uuid.New()})
+	require.NoError(t, err)
 	_, err = s.Close(ctx, user, CloseRequest{Date: "2026-09-06", TaskActions: []TaskAction{{task.ID, "tomorrow"}}})
 	require.NoError(t, err)
 	w, err := s.Get(ctx, user, next)
 	require.NoError(t, err)
 	require.Equal(t, "active", w.State)
-	require.Nil(t, w.Proposal)
+	require.Nil(t, w.Plan)
 	require.Len(t, w.Tasks, 2)
 }
 

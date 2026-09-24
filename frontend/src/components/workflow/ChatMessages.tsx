@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
+import { ListChecks } from 'lucide-react';
 import type { ChatThreadMessage } from '@/lib/api';
 
 export function MessageBubble({ role, children }: { role: 'user' | 'assistant'; children: ReactNode }) {
@@ -13,10 +14,18 @@ export function EventMarker({ children }: { children: string }) {
   return <p role="status" aria-label={children} className="text-center text-xs text-muted-foreground">{children}</p>;
 }
 
+// What one reply changed in the plan, written by the app under that reply.
+export function PlanUpdatedLine({ children }: { children: string }) {
+  return <p role="status" aria-label={children} className="flex items-center gap-1.5 px-4 text-xs text-muted-foreground">
+    <ListChecks size={13} aria-hidden className="shrink-0" /><span className="min-w-0">{children}</span>
+  </p>;
+}
+
 // The opener reads as Caprio's first line; other events are quiet markers.
 export function ThreadEntry({ message }: { message: ChatThreadMessage }) {
   if (message.role !== 'event') return <MessageBubble role={message.role}>{message.content}</MessageBubble>;
   if (message.eventType === 'opener') return <MessageBubble role="assistant">{message.content}</MessageBubble>;
+  if (message.eventType === 'plan_update') return <PlanUpdatedLine>{message.content}</PlanUpdatedLine>;
   return <EventMarker>{message.content}</EventMarker>;
 }
 

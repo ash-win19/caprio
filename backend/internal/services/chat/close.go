@@ -65,6 +65,7 @@ func validateClose(req CloseRequest, tasks []generated.Task) error {
 }
 
 func (s *Service) Close(ctx context.Context, userID uuid.UUID, req CloseRequest) (*CloseResult, error) {
+	ctx = withClock(ctx, s.now)
 	return s.close(ctx, userID, req, nil)
 }
 
@@ -154,7 +155,7 @@ func (s *Service) close(ctx context.Context, userID uuid.UUID, req CloseRequest,
 		if result.CarriedToTomorrowCount > 0 {
 			result.CarriedToDate = result.NextDate
 			// New arrivals invalidate the destination draft, but do not confirm it.
-			if _, err := tx.Exec(ctx, `UPDATE daily_plans SET proposal=NULL,proposal_snapshot=NULL,version=version+1,updated_at=clock_timestamp() WHERE user_id=$1 AND plan_date=$2`, userID, nextDate); err != nil {
+			if _, err := tx.Exec(ctx, `UPDATE daily_plans SET proposal=NULL,proposal_snapshot=NULL,draft=NULL,version=version+1,updated_at=clock_timestamp() WHERE user_id=$1 AND plan_date=$2`, userID, nextDate); err != nil {
 				return err
 			}
 		}
@@ -226,7 +227,7 @@ func (s *Service) close(ctx context.Context, userID uuid.UUID, req CloseRequest,
 		if err != nil {
 			return err
 		}
-		if _, err := tx.Exec(ctx, `UPDATE daily_plans SET state='closed',proposal=NULL,proposal_snapshot=NULL,review=$3,closed_tasks=$4,version=version+1,updated_at=clock_timestamp() WHERE user_id=$1 AND plan_date=$2`, userID, date, review, archived); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE daily_plans SET state='closed',proposal=NULL,proposal_snapshot=NULL,draft=NULL,review=$3,closed_tasks=$4,version=version+1,updated_at=clock_timestamp() WHERE user_id=$1 AND plan_date=$2`, userID, date, review, archived); err != nil {
 			return fmt.Errorf("save review: %w", err)
 		}
 		result.Workflow, err = load(ctx, tx, userID, date)

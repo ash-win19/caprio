@@ -23,6 +23,8 @@ func classifyAgentError(err error) error {
 		"overload",
 		"currently experiencing high demand",
 		"rate limit",
+		"rate-limit",
+		"exceeded your current quota",
 		"too many requests",
 	} {
 		if strings.Contains(msg, needle) {

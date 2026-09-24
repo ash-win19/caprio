@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ashwinshanmugam/caprio/backend/internal/db"
 	generated "github.com/ashwinshanmugam/caprio/backend/internal/db/generated"
@@ -25,125 +27,94 @@ func encode(t *testing.T, v any) string {
 	require.NoError(t, err)
 	return string(b)
 }
-func planTask(title string) ProposalTask {
-	return ProposalTask{Title: title, Duration: 30, Urgency: "medium", Disposition: "today", Reason: "Fits today's priorities"}
-}
 
-func TestParseAgentReply(t *testing.T) {
-	current := generated.Task{ID: uuid.New(), Status: generated.TaskStatusPlanned}
-	completed := generated.Task{ID: uuid.New(), Status: generated.TaskStatusCompleted, Completed: true}
-	inbox := generated.Task{ID: uuid.New(), Status: generated.TaskStatusBacklog}
-	category := generated.Category{ID: uuid.New()}
-	valid := AgentReply{Message: "Review this plan.", Phase: "proposal", AvailableMinutes: ptr(int32(60)), Tasks: []ProposalTask{planTask("Report"), planTask("Exercise")}}
-	valid.Tasks[0].ID = &current.ID
-	valid.Tasks[0].CategoryID = &category.ID
-	valid.Tasks[1].ID = &inbox.ID
-	parse := func(raw string) error {
-		_, err := ParseAgentReply(raw, []generated.Task{current, completed}, []generated.Task{inbox}, []generated.Category{category})
-		return err
-	}
-	require.NoError(t, parse(encode(t, valid)))
-	cases := map[string]func(*AgentReply){
-		"foreign task":            func(r *AgentReply) { r.Tasks[0].ID = ptr(uuid.New()) },
-		"completed task":          func(r *AgentReply) { r.Tasks[0].ID = &completed.ID },
-		"duplicate task":          func(r *AgentReply) { r.Tasks[1].ID = &current.ID },
-		"missing unfinished task": func(r *AgentReply) { r.Tasks = r.Tasks[1:] },
-		"foreign category":        func(r *AgentReply) { r.Tasks[0].CategoryID = ptr(uuid.New()) },
-		"negative available time": func(r *AgentReply) { r.AvailableMinutes = ptr(int32(-1)) },
-		"negative duration":       func(r *AgentReply) { r.Tasks[0].Duration = -1 },
-		"unsupported urgency":     func(r *AgentReply) { r.Tasks[0].Urgency = "critical" },
-		"unsupported disposition": func(r *AgentReply) { r.Tasks[0].Disposition = "delete" },
-		"clarifying with tasks":   func(r *AgentReply) { r.Phase = "clarifying" },
-	}
-	for name, change := range cases {
-		t.Run(name, func(t *testing.T) {
-			r := valid
-			r.Tasks = append([]ProposalTask{}, valid.Tasks...)
-			change(&r)
-			err := parse(encode(t, r))
-			require.Error(t, err)
-		})
-	}
-	require.Error(t, parse(encode(t, valid)+" trailing text"))
-	require.Error(t, parse(`{"message":"x","phase":"clarifying","availableMinutes":null,"tasks":[],"save":true}`))
-	require.Error(t, parse(`{"message":"x","phase":"clarifying","tasks":[]}`))
-	require.Error(t, parse("```json\n"+encode(t, valid)+"\n```"))
-	_, err := ParseAgentReply(`{"message":"Nothing planned today.","phase":"proposal","availableMinutes":0,"tasks":[]}`, nil, nil, nil)
-	require.NoError(t, err)
-}
+// toolFunc calls a planner tool the way the Mastra agent does: through
+// Service.ApplyTool with the turn's token.
+type toolFunc func(name string, input any) *ToolResult
 
-func TestTaskEstimatesDoNotLimitProposal(t *testing.T) {
-	for _, available := range []*int32{nil, ptr(int32(0)), ptr(int32(120))} {
-		reply := AgentReply{Message: "Review all five tasks.", Phase: "proposal", AvailableMinutes: available}
-		for _, title := range []string{"Ship workflow", "Fix publishing", "Restore brand", "Research decks", "Prepare demo"} {
-			task := planTask(title)
-			task.Duration = 120
-			reply.Tasks = append(reply.Tasks, task)
-		}
-		parsed, err := ParseAgentReply(encode(t, reply), nil, nil, nil)
-		require.NoError(t, err)
-		require.Len(t, parsed.Tasks, 5)
-		for _, task := range parsed.Tasks {
-			require.Equal(t, "today", task.Disposition)
-			require.EqualValues(t, 120, task.Duration)
-		}
-	}
-}
-
-func TestCloseRequiresEveryOutcomeOnce(t *testing.T) {
-	one := generated.Task{ID: uuid.New(), Status: generated.TaskStatusPlanned}
-	two := generated.Task{ID: uuid.New(), Status: generated.TaskStatusCompleted, Completed: true}
-	req := CloseRequest{TaskActions: []TaskAction{{TaskID: one.ID, Action: "tomorrow"}, {TaskID: two.ID, Action: "done"}}}
-	require.NoError(t, validateClose(req, []generated.Task{one, two}))
-	req.TaskActions = req.TaskActions[:1]
-	require.Error(t, validateClose(req, []generated.Task{one, two}))
-	req.TaskActions = append(req.TaskActions, req.TaskActions[0])
-	require.Error(t, validateClose(req, []generated.Task{one, two}))
-	req.TaskActions = []TaskAction{{TaskID: one.ID, Action: "done"}, {TaskID: two.ID, Action: "tomorrow"}}
-	require.Error(t, validateClose(req, []generated.Task{one, two}))
-}
-
+// fakeAgent stands in for the planner. By default it turns ops into tool calls
+// (as a model following the prompt would) and replies with response; script
+// replaces that for tests that need a specific turn.
 type fakeAgent struct {
 	mu        sync.Mutex
+	s         *Service
 	response  string
+	ops       []TaskOperation
+	script    func(ctx context.Context, call mastra.Call, tool toolFunc) (string, error)
 	calls     int
 	last      []mastra.ChatMessage
 	lastModel string
+	lastCall  mastra.Call
+	results   []*ToolResult
 }
 
-func (f *fakeAgent) Chat(_ context.Context, m []mastra.ChatMessage, _, _, model string) (*mastra.ChatResponse, error) {
+func (f *fakeAgent) Chat(ctx context.Context, call mastra.Call) (*mastra.ChatResponse, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.calls++
-	f.last = m
-	f.lastModel = model
-	return &mastra.ChatResponse{Message: f.response}, nil
+	f.last, f.lastModel, f.lastCall = call.Messages, call.Model, call
+	script, ops, response := f.script, f.ops, f.response
+	f.mu.Unlock()
+	token, _ := call.RequestContext["turnToken"].(string)
+	tool := func(name string, input any) *ToolResult {
+		raw, _ := json.Marshal(input)
+		result, err := f.s.ApplyTool(ctx, token, name, raw)
+		if err != nil {
+			result = &ToolResult{Error: &ToolError{Code: "rejected", Message: err.Error()}}
+		}
+		f.mu.Lock()
+		f.results = append(f.results, result)
+		f.mu.Unlock()
+		return result
+	}
+	if script != nil {
+		text, err := script(ctx, call, tool)
+		if err != nil {
+			return nil, err
+		}
+		return &mastra.ChatResponse{Message: text}, nil
+	}
+	for _, op := range ops {
+		callOperation(tool, op)
+	}
+	if response == "" {
+		response = "Here is the plan."
+	}
+	return &mastra.ChatResponse{Message: response}, nil
 }
 
-// StreamChat delivers the canned reply in small fragments, like a model would.
-func (f *fakeAgent) StreamChat(ctx context.Context, m []mastra.ChatMessage, thread, resource, model string, onDelta func(string)) (*mastra.ChatResponse, error) {
-	resp, err := f.Chat(ctx, m, thread, resource, model)
-	if err != nil {
-		return nil, err
+// callOperation expresses a task operation as the tool calls a model makes.
+// An "exists" result for a saved task becomes a move, as the prompt directs.
+func callOperation(tool toolFunc, op TaskOperation) {
+	input := map[string]any{}
+	for k, v := range op.Fields {
+		input[k] = v
 	}
-	for i := 0; i < len(resp.Message); i += 7 {
-		onDelta(resp.Message[i:min(i+7, len(resp.Message))])
+	ref := ""
+	if op.TaskID != nil {
+		ref = op.TaskID.String()
 	}
-	return resp, nil
+	switch op.Kind {
+	case "create":
+		input["date"], input["inbox"], input["newOccurrence"] = op.Date, op.Inbox, op.NewOccurrence
+		r := tool("add_task", input)
+		if r.OK && r.Status == "exists" && r.Existing.TaskID != nil && !r.Existing.Completed {
+			tool("move_task", map[string]any{"ref": r.Existing.Ref, "date": op.Date, "inbox": op.Inbox})
+		}
+	case "update":
+		tool("edit_task", map[string]any{"ref": ref, "fields": op.Fields})
+	case "move":
+		tool("move_task", map[string]any{"ref": ref, "date": op.Date, "inbox": op.Inbox})
+		if len(op.Fields) > 0 {
+			tool("edit_task", map[string]any{"ref": ref, "fields": op.Fields})
+		}
+	case "complete":
+		tool("set_completed", map[string]any{"ref": ref, "completed": *op.Completed})
+	case "remove":
+		tool("remove_task", map[string]any{"ref": ref})
+	}
 }
 
-func TestProcessStreamForwardsOnlyTheMessageText(t *testing.T) {
-	s, a, user, date := testService(t)
-	a.response = `{"message":"Start with the report, then rest.","phase":"clarifying","availableMinutes":null,"tasks":[]}`
-	var streamed strings.Builder
-	r, err := s.ProcessStream(context.Background(), ProcessRequest{UserID: user, SessionDate: date, Content: "Plan my day", RequestID: uuid.New(), Model: "groq/openai/gpt-oss-20b"}, func(text string) { streamed.WriteString(text) })
-	require.NoError(t, err)
-	require.Equal(t, "Start with the report, then rest.", streamed.String())
-	require.Equal(t, r.Text, streamed.String())
-	require.Len(t, r.Workflow.Messages, 2)
-	require.Equal(t, 1, a.calls)
-	require.Equal(t, "groq/openai/gpt-oss-20b", a.lastModel)
-}
+// testService runs on a fixed clock: 2026-09-06 is today, so it is writable.
 func testService(t *testing.T) (*Service, *fakeAgent, uuid.UUID, pgtype.Date) {
 	t.Helper()
 	url := os.Getenv("TEST_DATABASE_URL")
@@ -160,7 +131,10 @@ func testService(t *testing.T) (*Service, *fakeAgent, uuid.UUID, pgtype.Date) {
 	agent := &fakeAgent{}
 	date, err := ParseDate("2026-09-06")
 	require.NoError(t, err)
-	return NewService(store, agent), agent, user.ID, date
+	s := NewService(store, agent)
+	s.now = func() time.Time { return time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC) }
+	agent.s = s
+	return s, agent, user.ID, date
 }
 func createTask(t *testing.T, s *Service, user uuid.UUID, date pgtype.Date, title string) generated.Task {
 	t.Helper()
@@ -168,20 +142,130 @@ func createTask(t *testing.T, s *Service, user uuid.UUID, date pgtype.Date, titl
 	require.NoError(t, err)
 	return task
 }
-func propose(t *testing.T, s *Service, a *fakeAgent, user uuid.UUID, date pgtype.Date, tasks ...ProposalTask) *Workflow {
+
+// propose runs one turn that adds each title to the draft.
+func propose(t *testing.T, s *Service, a *fakeAgent, user uuid.UUID, date pgtype.Date, titles ...string) *Workflow {
 	t.Helper()
-	a.response = encode(t, AgentReply{Message: "Review and confirm these tasks.", Phase: "proposal", AvailableMinutes: ptr(int32(300)), Tasks: tasks})
+	a.ops = nil
+	for _, title := range titles {
+		a.ops = append(a.ops, add(title))
+	}
 	r, err := s.Process(context.Background(), ProcessRequest{UserID: user, SessionDate: date, Content: "Plan my day", RequestID: uuid.New()})
 	require.NoError(t, err)
 	return r.Workflow
 }
 
-func TestWorkflowConfirmationAndChatRetries(t *testing.T) {
+func planTitles(w *Workflow) []string {
+	out := []string{}
+	if w.Plan == nil {
+		return out
+	}
+	for _, group := range [][]PlanItem{w.Plan.Today, w.Plan.Carried, w.Plan.OtherDays} {
+		for _, i := range group {
+			out = append(out, i.Title+"|"+i.Badge)
+		}
+	}
+	return out
+}
+
+func events(w *Workflow, kind string) []generated.ChatMessage {
+	out := []generated.ChatMessage{}
+	for _, m := range w.Messages {
+		if m.EventType != nil && *m.EventType == kind {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+func TestTurnsBuildOneDraftForTheDayUntilConfirm(t *testing.T) {
 	s, a, user, date := testService(t)
 	ctx := context.Background()
-	a.response = encode(t, AgentReply{Message: "Review this plan.", Phase: "proposal", AvailableMinutes: ptr(int32(60)), Tasks: []ProposalTask{planTask("Report")}})
+	phenyx := createTask(t, s, user, date, "Ship Phenyx")
+	send := func(content string) *ProcessResponse {
+		t.Helper()
+		r, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: content, RequestID: uuid.New()})
+		require.NoError(t, err)
+		return r
+	}
+	a.ops = []TaskOperation{add("Ship slides and prepare for demo"), add("ship phenyx")}
+	first := send("my tasks are: ship slides and prepare for demo, ship phenyx")
+	require.Equal(t, []string{"Ship Phenyx|", "Ship slides and prepare for demo|new"}, planTitles(first.Workflow))
+	require.Empty(t, first.Workflow.Tasks[1:], "chat never saves tasks")
+
+	a.ops = []TaskOperation{add("Sleep early")}
+	second := send("add one task for sleep early")
+	require.Equal(t, []string{"Ship Phenyx|", "Ship slides and prepare for demo|new", "Sleep early|new"}, planTitles(second.Workflow))
+	require.Equal(t, first.Workflow.Plan.DraftID, second.Workflow.Plan.DraftID, "one draft for the day")
+	updates := events(second.Workflow, "plan_update")
+	require.Len(t, updates, 2)
+	require.Equal(t, "Plan updated · Added Ship slides and prepare for demo", updates[0].Content)
+	require.Equal(t, "Plan updated · Added Sleep early", updates[1].Content)
+	var meta struct{ Changes []TurnChange }
+	require.NoError(t, json.Unmarshal(updates[1].Metadata, &meta))
+	require.Equal(t, "Added", meta.Changes[0].Action)
+
+	sleepRef := second.Workflow.Plan.Today[2].Ref
+	require.Equal(t, "Sleep early", second.Workflow.Plan.Today[2].Title)
+	a.ops, a.script = nil, func(_ context.Context, _ mastra.Call, tool toolFunc) (string, error) {
+		tool("edit_task", map[string]any{"ref": sleepRef, "fields": map[string]any{"description": "Lights out by 10pm"}})
+		return "Sleep early now says lights out by 10pm.", nil
+	}
+	third := send("make sleep early 10pm")
+	require.Equal(t, "Plan updated · Edited Sleep early", events(third.Workflow, "plan_update")[2].Content)
+	a.script = nil
+	fourth := send("thanks, that's all")
+	require.Len(t, events(fourth.Workflow, "plan_update"), 3, "a turn that changes nothing adds no update line")
+	require.Equal(t, third.Workflow.Plan, fourth.Workflow.Plan)
+
+	w := fourth.Workflow
+	confirmed, err := s.Confirm(ctx, user, date, w.Plan.DraftID, w.Version)
+	require.NoError(t, err)
+	require.Nil(t, confirmed.Plan)
+	require.Equal(t, "active", confirmed.State)
+	titles := []string{}
+	for _, task := range confirmed.Tasks {
+		titles = append(titles, task.Title)
+	}
+	require.ElementsMatch(t, []string{"Ship Phenyx", "Ship slides and prepare for demo", "Sleep early"}, titles)
+	for _, task := range confirmed.Tasks {
+		if task.Title == "Sleep early" {
+			require.Equal(t, "Lights out by 10pm", *task.Description)
+		}
+		if task.Title == "Ship Phenyx" {
+			require.Equal(t, phenyx.ID, task.ID)
+		}
+	}
+	repeated, err := s.Confirm(ctx, user, date, w.Plan.DraftID, w.Version)
+	require.NoError(t, err)
+	require.Equal(t, confirmed.Tasks, repeated.Tasks)
+	restored, err := s.Get(ctx, user, date)
+	require.NoError(t, err)
+	require.Equal(t, confirmed, restored)
+}
+
+func TestTheAgentSeesTheDraftAndReceivesATurnToken(t *testing.T) {
+	s, a, user, date := testService(t)
+	w := propose(t, s, a, user, date, "Report")
+	require.Equal(t, "system", a.last[0].Role)
+	require.Contains(t, a.last[0].Content, `"date":"2026-09-06"`)
+	require.Contains(t, a.last[0].Content, "planner tools")
+	require.Equal(t, maxAgentSteps, a.lastCall.MaxSteps)
+	require.NotEmpty(t, a.lastCall.RequestContext["turnToken"])
+	propose(t, s, a, user, date)
+	require.Contains(t, a.last[0].Content, w.Plan.Today[0].Ref, "the next turn sees the draft's refs")
+}
+
+func TestConcurrentRetriesOfOneMessageShareOneTurn(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	release := make(chan struct{})
+	a.script = func(_ context.Context, _ mastra.Call, tool toolFunc) (string, error) {
+		tool("add_task", map[string]any{"title": "Report"})
+		<-release
+		return "The report is on for today.", nil
+	}
 	req := ProcessRequest{UserID: user, SessionDate: date, Content: "I need to write the report", RequestID: uuid.New()}
-	// Concurrent retries share one committed turn and one model call.
 	results := make([]*ProcessResponse, 2)
 	errs := make([]error, 2)
 	var wg sync.WaitGroup
@@ -189,78 +273,156 @@ func TestWorkflowConfirmationAndChatRetries(t *testing.T) {
 		wg.Add(1)
 		go func() { defer wg.Done(); results[i], errs[i] = s.Process(ctx, req) }()
 	}
+	time.Sleep(300 * time.Millisecond)
+	close(release)
 	wg.Wait()
 	require.NoError(t, errs[0])
 	require.NoError(t, errs[1])
 	require.Equal(t, 1, a.calls)
-	w := results[0].Workflow
-	require.Len(t, w.Messages, 2)
-	require.Empty(t, w.Tasks)
-	require.NotNil(t, w.Proposal)
-	require.Equal(t, "user", w.Messages[0].Role)
-	require.Equal(t, "assistant", w.Messages[1].Role)
-	require.Equal(t, "system", a.last[0].Role)
-	require.Contains(t, a.last[0].Content, `"date":"2026-09-06"`)
-	require.Equal(t, w.Proposal.ID, results[1].Workflow.Proposal.ID)
+	require.Equal(t, results[0].Text, results[1].Text)
+	require.Equal(t, results[0].Workflow.Plan.DraftID, results[1].Workflow.Plan.DraftID)
 	req.Content = "A different request"
 	_, err := s.Process(ctx, req)
 	require.Error(t, err)
-	confirmed, err := s.Confirm(ctx, user, date, w.Proposal.ID, w.Version)
-	require.NoError(t, err)
-	require.Equal(t, "active", confirmed.State)
-	require.Nil(t, confirmed.Proposal)
-	require.Equal(t, ptr(int32(60)), confirmed.AvailableMinutes)
-	require.Len(t, confirmed.Tasks, 1)
-	repeated, err := s.Confirm(ctx, user, date, w.Proposal.ID, w.Version)
-	require.NoError(t, err)
-	require.Len(t, repeated.Tasks, 1)
-	require.Equal(t, confirmed.Tasks[0].ID, repeated.Tasks[0].ID)
-	restored, err := s.Get(ctx, user, date)
-	require.NoError(t, err)
-	require.Equal(t, confirmed, restored)
 }
 
-func TestWorkflowRejectsStaleAndInvalidProposals(t *testing.T) {
+func TestOnlyOneTurnRunsPerDay(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	started, release := make(chan struct{}), make(chan struct{})
+	a.script = func(context.Context, mastra.Call, toolFunc) (string, error) {
+		close(started)
+		<-release
+		return "Done.", nil
+	}
+	done := make(chan error)
+	go func() {
+		_, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "First", RequestID: uuid.New()})
+		done <- err
+	}()
+	<-started
+	_, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "Second", RequestID: uuid.New()})
+	require.ErrorIs(t, err, ErrTurnInProgress)
+	close(release)
+	require.NoError(t, <-done)
+	a.script = nil
+	_, err = s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "Third", RequestID: uuid.New()})
+	require.NoError(t, err)
+}
+
+func TestAFailedOrStoppedTurnKeepsNoDraftChanges(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	w := propose(t, s, a, user, date, "Keep me")
+	before := planTitles(w)
+	send := func(ctx context.Context) error {
+		_, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "Add more", RequestID: uuid.New()})
+		return err
+	}
+	a.script = func(context.Context, mastra.Call, toolFunc) (string, error) {
+		return "", errors.New("mastra returned status 500: boom")
+	}
+	a.ops = []TaskOperation{add("Half done")}
+	a.script = func(ctx context.Context, call mastra.Call, tool toolFunc) (string, error) {
+		tool("add_task", map[string]any{"title": "Half done"})
+		return "", errors.New("mastra returned status 500: boom")
+	}
+	require.Error(t, send(ctx))
+	cancelled, cancel := context.WithCancel(ctx)
+	a.script = func(context.Context, mastra.Call, toolFunc) (string, error) {
+		cancel()
+		return "", context.Canceled
+	}
+	require.Error(t, send(cancelled))
+	after, err := s.Get(ctx, user, date)
+	require.NoError(t, err)
+	require.Equal(t, before, planTitles(after))
+	require.Len(t, after.Messages, len(w.Messages), "no messages from failed turns")
+
+	// A rejected tool call is retried once from the pre-turn draft.
+	attempts := 0
+	a.script = func(_ context.Context, _ mastra.Call, tool toolFunc) (string, error) {
+		attempts++
+		tool("add_task", map[string]any{"title": "Attempt " + string(rune('0'+attempts))})
+		if attempts == 1 {
+			return "", errors.New(`mastra returned status 400: {"error":{"code":"tool_use_failed"}}`)
+		}
+		return "Added it.", nil
+	}
+	r, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "Add one", RequestID: uuid.New()})
+	require.NoError(t, err)
+	require.Equal(t, append(append([]string{}, before...), "Attempt 2|new"), planTitles(r.Workflow))
+	a.script = func(_ context.Context, _ mastra.Call, tool toolFunc) (string, error) {
+		tool("add_task", map[string]any{"title": "Never saved"})
+		return "", errors.New("tool_use_failed")
+	}
+	_, err = s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "Add again", RequestID: uuid.New()})
+	var validation *ValidationError
+	require.ErrorAs(t, err, &validation)
+	require.Equal(t, "plan_update_failed", validation.Code)
+	final, err := s.Get(ctx, user, date)
+	require.NoError(t, err)
+	require.Equal(t, planTitles(r.Workflow), planTitles(final))
+}
+
+func TestToolCallsOnlyWorkDuringTheirTurn(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	var token string
+	a.script = func(_ context.Context, call mastra.Call, tool toolFunc) (string, error) {
+		token = call.RequestContext["turnToken"].(string)
+		bad := tool("edit_task", map[string]any{"ref": uuid.NewString(), "fields": map[string]any{"title": "x"}})
+		require.False(t, bad.OK)
+		require.Equal(t, "unknown_task", bad.Error.Code)
+		return "Which task?", nil
+	}
+	w := propose(t, s, a, user, date)
+	require.Nil(t, w.Plan)
+	_, err := s.ApplyTool(ctx, token, "add_task", json.RawMessage(`{"title":"Late"}`))
+	require.ErrorIs(t, err, ErrToolAuth, "the turn has ended")
+	_, err = s.ApplyTool(ctx, "forged.token", "add_task", json.RawMessage(`{"title":"Forged"}`))
+	require.ErrorIs(t, err, ErrToolAuth)
+	other := NewService(s.store, a)
+	_, err = other.ApplyTool(ctx, token, "add_task", json.RawMessage(`{"title":"Other key"}`))
+	require.ErrorIs(t, err, ErrToolAuth)
+}
+
+func TestStaleConfirmAndDiscardAreRejected(t *testing.T) {
 	s, a, user, date := testService(t)
 	ctx := context.Background()
 	task := createTask(t, s, user, date, "Report")
-	p := planTask("Report")
-	p.ID = &task.ID
-	w := propose(t, s, a, user, date, p)
+	w := propose(t, s, a, user, date, "Slides")
 	_, err := s.store.Pool.Exec(ctx, `UPDATE tasks SET title='Changed independently',updated_at=clock_timestamp() WHERE id=$1`, task.ID)
 	require.NoError(t, err)
-	_, err = s.Confirm(ctx, user, date, w.Proposal.ID, w.Version)
+	_, err = s.Confirm(ctx, user, date, w.Plan.DraftID, w.Version)
 	require.ErrorIs(t, err, ErrConflict)
-	a.response = `{"message":"I saved it!","phase":"proposal","availableMinutes":60,"tasks":[]}`
-	_, err = s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "Try again", RequestID: uuid.New()})
-	require.Error(t, err)
-	after, err := s.Get(ctx, user, date)
-	require.NoError(t, err)
-	require.Len(t, after.Messages, 2)
-	require.Equal(t, w.Proposal.ID, after.Proposal.ID)
-	require.Equal(t, "Changed independently", after.Tasks[0].Title)
+	_, err = s.Confirm(ctx, user, date, uuid.New(), w.Version)
+	require.ErrorIs(t, err, ErrConflict)
+	_, err = s.Discard(ctx, user, date, w.Plan.DraftID, w.Version-1)
+	require.ErrorIs(t, err, ErrConflict)
 }
 
-func TestClarifyingPreservesProposalAndDiscardPreservesTasks(t *testing.T) {
+func TestClarifyingTurnKeepsTheDraftAndDiscardKeepsTheThread(t *testing.T) {
 	s, a, user, date := testService(t)
 	ctx := context.Background()
-	w := propose(t, s, a, user, date, planTask("Report"))
-	a.response = `{"message":"How much time remains?","phase":"clarifying","availableMinutes":null,"tasks":[]}`
+	w := propose(t, s, a, user, date, "Report")
+	a.ops, a.response = nil, "How much time remains?"
 	r, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "Shorten the plan", RequestID: uuid.New()})
 	require.NoError(t, err)
-	require.Equal(t, w.Proposal.ID, r.Workflow.Proposal.ID)
-	discarded, err := s.Discard(ctx, user, date, r.Workflow.Proposal.ID, r.Workflow.Version)
+	require.Equal(t, w.Plan.DraftID, r.Workflow.Plan.DraftID)
+	discarded, err := s.Discard(ctx, user, date, r.Workflow.Plan.DraftID, r.Workflow.Version)
 	require.NoError(t, err)
-	require.Nil(t, discarded.Proposal)
-	require.Len(t, discarded.Messages, 5)
-	require.Equal(t, "event", discarded.Messages[4].Role)
+	require.Nil(t, discarded.Plan)
+	require.Empty(t, discarded.Tasks)
+	last := discarded.Messages[len(discarded.Messages)-1]
+	require.Equal(t, ptr("discarded"), last.EventType)
+	require.Len(t, discarded.Messages, len(r.Workflow.Messages)+1)
 	encoded, err := json.Marshal(discarded)
 	require.NoError(t, err)
 	require.Contains(t, string(encoded), `"metadata":null`)
-	require.Empty(t, discarded.Tasks)
-	_, err = s.Confirm(ctx, user, date, w.Proposal.ID, w.Version)
+	_, err = s.Confirm(ctx, user, date, w.Plan.DraftID, w.Version)
 	require.ErrorIs(t, err, ErrConflict)
-	_, err = s.Discard(ctx, user, date, w.Proposal.ID, w.Version)
+	_, err = s.Discard(ctx, user, date, w.Plan.DraftID, w.Version)
 	require.ErrorIs(t, err, ErrConflict)
 }
 
@@ -272,36 +434,77 @@ func TestConfirmKeepsAllRequestedTasksWhenEstimatesExceedAvailableTime(t *testin
 	require.NoError(t, err)
 	_, err = s.store.Pool.Exec(ctx, `INSERT INTO daily_plans(user_id,plan_date,state,available_minutes) VALUES ($1,$2,'active',120)`, user, date)
 	require.NoError(t, err)
-	reply := AgentReply{Message: "Review all five tasks.", Phase: "proposal", AvailableMinutes: ptr(int32(120))}
-	for _, title := range []string{"Ship workflow", "Fix publishing", "Restore brand", "Research decks", "Prepare demo"} {
-		task := planTask(title)
-		task.Duration = 120
-		reply.Tasks = append(reply.Tasks, task)
-	}
-	a.response = encode(t, reply)
-	draft, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "Add these five tasks, two hours each.", RequestID: uuid.New()})
-	require.NoError(t, err)
-	require.Len(t, draft.Workflow.Tasks, 1, "chat must wait for confirmation before adding tasks")
-	w := draft.Workflow
-	confirmed, err := s.Confirm(ctx, user, date, w.Proposal.ID, w.Version)
+	w := propose(t, s, a, user, date, "Ship workflow", "Fix publishing", "Restore brand", "Research decks", "Prepare demo")
+	require.Len(t, w.Tasks, 1, "chat must wait for confirmation before adding tasks")
+	confirmed, err := s.Confirm(ctx, user, date, w.Plan.DraftID, w.Version)
 	require.NoError(t, err)
 	require.Len(t, confirmed.Tasks, 6)
-	require.Empty(t, confirmed.Backlog)
 	require.Equal(t, ptr(int32(120)), confirmed.AvailableMinutes)
-	var unfinished int
 	for _, task := range confirmed.Tasks {
-		if task.ID == done.ID {
-			require.True(t, task.Completed)
-			continue
+		if task.ID != done.ID {
+			require.Equal(t, generated.TaskStatusPlanned, task.Status)
+			require.Equal(t, ptr(int32(120)), task.Duration)
 		}
-		unfinished++
-		require.Equal(t, generated.TaskStatusPlanned, task.Status)
-		require.Equal(t, ptr(int32(120)), task.Duration)
 	}
-	require.Equal(t, 5, unfinished)
-	replayed, err := s.Confirm(ctx, user, date, w.Proposal.ID, w.Version)
+}
+
+func TestConversationEventsFrameTheDaysThread(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	opened, err := s.Get(ctx, user, date)
 	require.NoError(t, err)
-	require.Equal(t, confirmed.Tasks, replayed.Tasks)
+	require.NotNil(t, opened.Opener)
+	require.Contains(t, *opened.Opener, "What's on today?")
+
+	w := propose(t, s, a, user, date, "Report")
+	require.Nil(t, w.Opener)
+	require.Equal(t, "event", w.Messages[0].Role)
+	require.Equal(t, ptr("opener"), w.Messages[0].EventType)
+	require.Equal(t, *opened.Opener, w.Messages[0].Content)
+	require.Equal(t, "user", w.Messages[1].Role)
+	require.Equal(t, "assistant", a.last[1].Role, "the opener reaches the model as Caprio's own first line")
+	require.Equal(t, *opened.Opener, a.last[1].Content)
+
+	discarded, err := s.Discard(ctx, user, date, w.Plan.DraftID, w.Version)
+	require.NoError(t, err)
+	last := discarded.Messages[len(discarded.Messages)-1]
+	require.Equal(t, "Proposal discarded", last.Content)
+
+	w = propose(t, s, a, user, date, "Report")
+	notes := []string{}
+	for _, m := range a.last {
+		if m.Role == "system" && strings.HasPrefix(m.Content, "[Caprio]") {
+			notes = append(notes, m.Content)
+		}
+	}
+	require.Equal(t, []string{"[Caprio] Plan updated · Added Report", "[Caprio] The user discarded the draft plan. Nothing from it was saved."}, notes)
+	require.Len(t, events(w, "opener"), 1, "the opener is written once per day")
+
+	confirmed, err := s.Confirm(ctx, user, date, w.Plan.DraftID, w.Version)
+	require.NoError(t, err)
+	last = confirmed.Messages[len(confirmed.Messages)-1]
+	require.Equal(t, ptr("plan_saved"), last.EventType)
+	require.Equal(t, "Plan saved · 1 task", last.Content)
+	after, err := s.Get(ctx, user, date)
+	require.NoError(t, err)
+	require.Nil(t, after.Opener, "an active day opens on the adjust prompt, not an opener")
+
+	sessions, err := s.store.Queries.ListChatSessionsByUser(ctx, user)
+	require.NoError(t, err)
+	require.EqualValues(t, 4, sessions[0].MessageCount, "events are not counted as messages")
+}
+
+func TestCloseRequiresEveryOutcomeOnce(t *testing.T) {
+	one := generated.Task{ID: uuid.New(), Status: generated.TaskStatusPlanned}
+	two := generated.Task{ID: uuid.New(), Status: generated.TaskStatusCompleted, Completed: true}
+	req := CloseRequest{TaskActions: []TaskAction{{TaskID: one.ID, Action: "tomorrow"}, {TaskID: two.ID, Action: "done"}}}
+	require.NoError(t, validateClose(req, []generated.Task{one, two}))
+	req.TaskActions = req.TaskActions[:1]
+	require.Error(t, validateClose(req, []generated.Task{one, two}))
+	req.TaskActions = append(req.TaskActions, req.TaskActions[0])
+	require.Error(t, validateClose(req, []generated.Task{one, two}))
+	req.TaskActions = []TaskAction{{TaskID: one.ID, Action: "done"}, {TaskID: two.ID, Action: "tomorrow"}}
+	require.Error(t, validateClose(req, []generated.Task{one, two}))
 }
 
 func TestClosePersistsOutcomesAndCarriesExactlyOnce(t *testing.T) {
@@ -382,60 +585,4 @@ func TestMigrationPreservesExistingOnboardingAndDefaultsNewUsers(t *testing.T) {
 	err = tx.QueryRow(ctx, `INSERT INTO users (id) VALUES ('10000000-0000-0000-0000-000000000002') RETURNING onboarding_complete`).Scan(&fresh)
 	require.NoError(t, err)
 	require.False(t, fresh)
-}
-
-func TestConversationEventsFrameTheDaysThread(t *testing.T) {
-	s, a, user, _ := testService(t)
-	ctx := context.Background()
-	date := CurrentDate(ctx)
-	opened, err := s.Get(ctx, user, date)
-	require.NoError(t, err)
-	require.NotNil(t, opened.Opener)
-	require.Contains(t, *opened.Opener, "What's on today?")
-
-	w := propose(t, s, a, user, date, planTask("Report"))
-	require.Nil(t, w.Opener)
-	require.Len(t, w.Messages, 3)
-	require.Equal(t, "event", w.Messages[0].Role)
-	require.Equal(t, ptr("opener"), w.Messages[0].EventType)
-	require.Equal(t, *opened.Opener, w.Messages[0].Content)
-	require.Equal(t, "user", w.Messages[1].Role)
-	require.Equal(t, "assistant", a.last[1].Role, "the opener reaches the model as Caprio's own first line")
-	require.Equal(t, *opened.Opener, a.last[1].Content)
-
-	discarded, err := s.Discard(ctx, user, date, w.Proposal.ID, w.Version)
-	require.NoError(t, err)
-	last := discarded.Messages[len(discarded.Messages)-1]
-	require.Equal(t, "event", last.Role)
-	require.Equal(t, ptr("discarded"), last.EventType)
-	require.Equal(t, "Proposal discarded", last.Content)
-
-	w = propose(t, s, a, user, date, planTask("Report"))
-	notes := []string{}
-	for _, m := range a.last {
-		if m.Role == "system" && strings.HasPrefix(m.Content, "[Caprio]") {
-			notes = append(notes, m.Content)
-		}
-	}
-	require.Equal(t, []string{"[Caprio] The user discarded the draft plan. Nothing from it was saved."}, notes)
-	openers := 0
-	for _, m := range w.Messages {
-		if m.EventType != nil && *m.EventType == "opener" {
-			openers++
-		}
-	}
-	require.Equal(t, 1, openers, "the opener is written once per day")
-
-	confirmed, err := s.Confirm(ctx, user, date, w.Proposal.ID, w.Version)
-	require.NoError(t, err)
-	last = confirmed.Messages[len(confirmed.Messages)-1]
-	require.Equal(t, ptr("plan_saved"), last.EventType)
-	require.Equal(t, "Plan saved · 1 task", last.Content)
-	after, err := s.Get(ctx, user, date)
-	require.NoError(t, err)
-	require.Nil(t, after.Opener, "an active day opens on the adjust prompt, not an opener")
-
-	sessions, err := s.store.Queries.ListChatSessionsByUser(ctx, user)
-	require.NoError(t, err)
-	require.EqualValues(t, 4, sessions[0].MessageCount, "events are not counted as messages")
 }

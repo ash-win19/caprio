@@ -64,9 +64,10 @@ func plural(n int, noun string) string {
 
 // Event entries are written by the app, never by the model.
 const (
-	eventOpener    = "opener"
-	eventDiscarded = "discarded"
-	eventPlanSaved = "plan_saved"
+	eventOpener     = "opener"
+	eventDiscarded  = "discarded"
+	eventPlanSaved  = "plan_saved"
+	eventPlanUpdate = "plan_update"
 )
 
 func writeEvent(ctx context.Context, q *generated.Queries, user uuid.UUID, date pgtype.Date, kind, content string, metadata any) error {
@@ -102,4 +103,3 @@ func modelMessage(m generated.ChatMessage) mastra.ChatMessage {
 		return mastra.ChatMessage{Role: "system", Content: "[Caprio] " + m.Content}
 	}
 }
-

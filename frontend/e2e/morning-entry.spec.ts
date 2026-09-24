@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { mockDay, date, tasksForDay } from './fixtures/day';
+import { mockDay, date, tasksForDay, planView } from './fixtures/day';
 import type { Workflow } from '../src/lib/api';
 
 for (const width of [320, 390, 1440]) {
@@ -103,7 +103,7 @@ for (const width of [390, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     const carried = tasksForDay().slice(0, 1).map(task => ({ ...task, deferCount: 1 }));
     await mockDay(page, { state: 'planning', tasks: carried, firstVisit: true });
-    let workflow: Workflow = { date, state: 'planning', version: 1, tasks: carried, messages: [], backlog: [], proposal: null, availableMinutes: null, review: null };
+    let workflow: Workflow = { date, state: 'planning', version: 1, tasks: carried, messages: [], backlog: [], plan: null, availableMinutes: null, review: null };
     let turns = 0;
     await page.route('**/api/**', async route => {
       const path = new URL(route.request().url()).pathname;
@@ -113,7 +113,7 @@ for (const width of [390, 1440]) {
       }
       if (path === '/api/tasks') return route.fulfill({ json: { tasks: workflow.tasks } });
       if (path === '/api/day/plan/confirm') {
-        workflow = { ...workflow, state: 'active', version: workflow.version + 1, proposal: null, tasks: [...carried, { ...tasksForDay()[0], id: 'report', title: 'Finish report' }] };
+        workflow = { ...workflow, state: 'active', version: workflow.version + 1, plan: null, tasks: [...carried, { ...tasksForDay()[0], id: 'report', title: 'Finish report' }] };
         return route.fulfill({ json: workflow });
       }
       if (path !== '/api/chat/stream') return route.fallback();
@@ -121,8 +121,7 @@ for (const width of [390, 1440]) {
       turns++;
       const text = turns === 1 ? 'What would you like to work on?' : 'Review this draft with Finish report.';
       if (turns === 2) {
-        workflow = { ...workflow, version: 2, proposal: { id: 'draft-plan', summary: 'Add Finish report.', availableMinutes: null, tasks: [],
-          operations: [{ kind: 'create', date, fields: { title: 'Finish report' } }] } };
+        workflow = { ...workflow, version: 2, plan: planView([{ ref: 'new:1', title: 'Finish report', badge: 'new', date }], { draftId: 'draft-plan', carried: carried.map(task => ({ ref: task.id, taskId: task.id, title: task.title, date, carried: true })) }) };
       }
       workflow = { ...workflow, messages: [...workflow.messages, { id: `user-${turns}`, role: 'user', content: request.content }, { id: `assistant-${turns}`, role: 'assistant', content: text }] };
       return route.fulfill({ contentType: 'text/event-stream', body: `event: done\ndata: ${JSON.stringify({ text, workflow })}\n\n` });
@@ -157,17 +156,16 @@ for (const width of [390, 1440]) {
 
 test('confirming a plan of carried tasks opens the task page', async ({ page }) => {
   const tasks = tasksForDay().map(task => ({ ...task, deferCount: 1 }));
-  const proposal: NonNullable<Workflow['proposal']> = {
-    id: 'carry-plan', summary: 'Focus on the work carried from yesterday.', availableMinutes: 240,
-    tasks: tasks.map(task => ({ id: task.id, title: task.title, duration: task.duration ?? 30, urgency: task.urgency, disposition: 'today', reason: 'Keep this priority.' })),
-  };
-  await mockDay(page, { state: 'planning', tasks, proposal, firstVisit: true });
-  let workflow: Workflow = { date, state: 'planning', version: 1, tasks, proposal, messages: [], backlog: [], availableMinutes: 240, review: null };
+  const plan = planView([{ ref: 'new:1', title: 'Plan the week', badge: 'new', date }], {
+    draftId: 'carry-plan', carried: tasks.map(task => ({ ref: task.id, taskId: task.id, title: task.title, date, carried: true })),
+  });
+  await mockDay(page, { state: 'planning', tasks, plan, firstVisit: true });
+  let workflow: Workflow = { date, state: 'planning', version: 1, tasks, plan, messages: [], backlog: [], availableMinutes: 240, review: null };
   await page.route('**/api/**', async route => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/workflow') return route.fulfill({ json: workflow });
     if (path === '/api/day/plan/confirm') {
-      workflow = { ...workflow, state: 'active', version: 2, proposal: null };
+      workflow = { ...workflow, state: 'active', version: 2, plan: null };
       return route.fulfill({ json: workflow });
     }
     return route.fallback();

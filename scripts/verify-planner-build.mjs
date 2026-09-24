@@ -13,5 +13,10 @@ assert.equal(await agent.getInstructions(), expected, 'The built planner must us
 assert.equal(agent.id, 'general-conversation-agent', 'The backend generate endpoint must keep its agent ID.');
 assert.deepEqual(Object.keys(mastra.listAgents()), ['generalConversationAgent']);
 assert.equal(await agent.getMemory(), undefined, 'Conversation history comes from the backend.');
+assert.deepEqual(
+  Object.keys(await agent.listTools()).sort(),
+  ['add_task', 'edit_task', 'move_task', 'read_plan', 'remove_task', 'revert_change', 'set_completed'],
+  'The planner changes the draft only through its planner tools.',
+);
 
-console.log('Built planner matches canonical Markdown, preserves its endpoint ID, and uses backend history.');
+console.log('Built planner matches canonical Markdown, preserves its endpoint ID, uses backend history, and has its planner tools.');

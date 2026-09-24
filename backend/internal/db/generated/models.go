@@ -246,6 +246,10 @@ type DailyPlan struct {
 	ClosedTasks         []byte             `json:"closedTasks"`
 	UpdatedAt           pgtype.Timestamptz `json:"updatedAt"`
 	AvailableMinutes    *int32             `json:"availableMinutes"`
+	Draft               []byte             `json:"draft"`
+	DraftStaged         []byte             `json:"draftStaged"`
+	TurnRequestID       *uuid.UUID         `json:"turnRequestId"`
+	TurnStartedAt       pgtype.Timestamptz `json:"turnStartedAt"`
 }
 
 type DayReview struct {
