@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -29,10 +30,46 @@ func (q *Queries) CountChatMessagesByUserAndDate(ctx context.Context, arg CountC
 	return count, err
 }
 
+const createChatEvent = `-- name: CreateChatEvent :one
+INSERT INTO chat_messages (user_id, session_date, role, event_type, content, metadata, created_at)
+VALUES ($1, $2, 'event', $3, $4, $5, clock_timestamp())
+RETURNING id, user_id, session_date, role, content, created_at, event_type, metadata
+`
+
+type CreateChatEventParams struct {
+	UserID      uuid.UUID       `json:"userId"`
+	SessionDate pgtype.Date     `json:"sessionDate"`
+	EventType   *string         `json:"eventType"`
+	Content     string          `json:"content"`
+	Metadata    json.RawMessage `json:"metadata"`
+}
+
+func (q *Queries) CreateChatEvent(ctx context.Context, arg CreateChatEventParams) (ChatMessage, error) {
+	row := q.db.QueryRow(ctx, createChatEvent,
+		arg.UserID,
+		arg.SessionDate,
+		arg.EventType,
+		arg.Content,
+		arg.Metadata,
+	)
+	var i ChatMessage
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.SessionDate,
+		&i.Role,
+		&i.Content,
+		&i.CreatedAt,
+		&i.EventType,
+		&i.Metadata,
+	)
+	return i, err
+}
+
 const createChatMessage = `-- name: CreateChatMessage :one
 INSERT INTO chat_messages (user_id, session_date, role, content, created_at)
 VALUES ($1, $2, $3, $4, clock_timestamp())
-RETURNING id, user_id, session_date, role, content, created_at
+RETURNING id, user_id, session_date, role, content, created_at, event_type, metadata
 `
 
 type CreateChatMessageParams struct {
@@ -57,6 +94,8 @@ func (q *Queries) CreateChatMessage(ctx context.Context, arg CreateChatMessagePa
 		&i.Role,
 		&i.Content,
 		&i.CreatedAt,
+		&i.EventType,
+		&i.Metadata,
 	)
 	return i, err
 }
@@ -77,7 +116,7 @@ func (q *Queries) DeleteChatMessagesByUserAndDate(ctx context.Context, arg Delet
 }
 
 const listChatMessagesByUserAndDate = `-- name: ListChatMessagesByUserAndDate :many
-SELECT id, user_id, session_date, role, content, created_at FROM chat_messages
+SELECT id, user_id, session_date, role, content, created_at, event_type, metadata FROM chat_messages
 WHERE user_id = $1 AND session_date = $2
 ORDER BY created_at ASC
 `
@@ -103,6 +142,8 @@ func (q *Queries) ListChatMessagesByUserAndDate(ctx context.Context, arg ListCha
 			&i.Role,
 			&i.Content,
 			&i.CreatedAt,
+			&i.EventType,
+			&i.Metadata,
 		); err != nil {
 			return nil, err
 		}
@@ -126,7 +167,7 @@ SELECT
         (ARRAY_AGG(m.content ORDER BY m.created_at) FILTER (WHERE m.role = 'user'))[1],
         'Daily plan'
     )::text AS title,
-    COUNT(m.id) AS message_count,
+    COUNT(m.id) FILTER (WHERE m.role <> 'event') AS message_count,
     GREATEST(MAX(m.created_at), MAX(p.updated_at))::timestamptz AS updated_at,
     COALESCE((ARRAY_AGG(p.state))[1], '')::text AS state,
     COALESCE(((ARRAY_AGG(p.review))[1]->>'completedCount')::int, 0)::int AS completed_count,

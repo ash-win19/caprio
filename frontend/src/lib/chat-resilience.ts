@@ -25,7 +25,12 @@ export function isModelCapacityError(error: unknown): boolean {
   return /overload|timed?\s*out|timeout|capacity|rate.?limit|unavailable|too many requests/i.test(message);
 }
 
+function isPlanUpdateFailure(error: unknown): boolean {
+  return Boolean(error && typeof error === 'object' && 'code' in error && error.code === 'plan_update_failed');
+}
+
+/** Overload, or a model that keeps failing its tool calls, is worth one retry on the fallback model. */
 export function shouldFallbackToGroq(error: unknown, currentModel?: string): boolean {
-  if (!isModelCapacityError(error)) return false;
+  if (!isModelCapacityError(error) && !isPlanUpdateFailure(error)) return false;
   return (currentModel || '') !== FALLBACK_CHAT_MODEL;
 }

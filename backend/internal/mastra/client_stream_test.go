@@ -52,7 +52,7 @@ func TestStreamChat_ForwardsDeltasAndReturnsFullText(t *testing.T) {
 	defer server.Close()
 
 	var deltas []string
-	resp, err := NewClient(server.URL).StreamChat(context.Background(), []ChatMessage{{Role: "user", Content: "hello"}}, "thread-1", "resource-1", "groq/openai/gpt-oss-20b", func(d string) { deltas = append(deltas, d) })
+	resp, err := NewClient(server.URL).StreamChat(context.Background(), Call{Messages: []ChatMessage{{Role: "user", Content: "hello"}}, Model: "groq/openai/gpt-oss-20b"}, func(d string) { deltas = append(deltas, d) })
 	if err != nil {
 		t.Fatalf("StreamChat failed: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestStreamChat_ErrorChunk(t *testing.T) {
 	)
 	defer server.Close()
 
-	_, err := NewClient(server.URL).StreamChat(context.Background(), []ChatMessage{{Role: "user", Content: "hello"}}, "t", "r", "groq/openai/gpt-oss-20b", func(string) {})
+	_, err := NewClient(server.URL).StreamChat(context.Background(), Call{Messages: []ChatMessage{{Role: "user", Content: "hello"}}, Model: "groq/openai/gpt-oss-20b"}, func(string) {})
 	if err == nil || !strings.Contains(err.Error(), "model exploded") {
 		t.Fatalf("expected stream error, got %v", err)
 	}
@@ -81,7 +81,7 @@ func TestStreamChat_EmptyStream(t *testing.T) {
 	server := sseServer(t, `{"type":"start","payload":{}}`, `{"type":"finish","payload":{}}`)
 	defer server.Close()
 
-	_, err := NewClient(server.URL).StreamChat(context.Background(), []ChatMessage{{Role: "user", Content: "hello"}}, "t", "r", "groq/openai/gpt-oss-20b", nil)
+	_, err := NewClient(server.URL).StreamChat(context.Background(), Call{Messages: []ChatMessage{{Role: "user", Content: "hello"}}, Model: "groq/openai/gpt-oss-20b"}, nil)
 	if err == nil || !strings.Contains(err.Error(), "empty text") {
 		t.Fatalf("expected empty text error, got %v", err)
 	}
@@ -93,7 +93,7 @@ func TestStreamChat_NonOKStatus(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := NewClient(server.URL).StreamChat(context.Background(), []ChatMessage{{Role: "user", Content: "hello"}}, "t", "r", "", nil)
+	_, err := NewClient(server.URL).StreamChat(context.Background(), Call{Messages: []ChatMessage{{Role: "user", Content: "hello"}}, Model: ""}, nil)
 	if err == nil || !strings.Contains(err.Error(), "502") {
 		t.Fatalf("expected status error, got %v", err)
 	}

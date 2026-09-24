@@ -6,12 +6,14 @@ import (
 	"sync"
 	"testing"
 
-	
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/require"
 )
 
+func add(title string) TaskOperation {
+	return TaskOperation{Kind: "create", Fields: fields(map[string]any{"title": title, "duration": 120})}
+}
 func fields(values map[string]any) map[string]json.RawMessage {
 	result := map[string]json.RawMessage{}
 	for key, value := range values {
@@ -19,17 +21,16 @@ func fields(values map[string]any) map[string]json.RawMessage {
 	}
 	return result
 }
+
+// command runs a turn whose tool calls express ops, then confirms the draft.
 func command(t *testing.T, s *Service, a *fakeAgent, user uuid.UUID, date pgtype.Date, ops ...TaskOperation) *ProcessResponse {
 	t.Helper()
-	for i := range ops {
-		ops[i].Quote = "Do this"
-	}
-	a.response = encode(t, AgentReply{ContractVersion: 2, Message: "Your request is ready.", Phase: "actions", Tasks: []ProposalTask{}, Operations: ops})
-	draft, err := s.Process(context.Background(), ProcessRequest{UserID: user, SessionDate: date, Content: "Do this", RequestID: uuid.New(), ContractVersion: 2})
+	a.ops, a.script = ops, nil
+	draft, err := s.Process(context.Background(), ProcessRequest{UserID: user, SessionDate: date, Content: "Do this", RequestID: uuid.New()})
 	require.NoError(t, err)
 	require.Nil(t, draft.AppliedChange)
-	require.NotNil(t, draft.Workflow.Proposal)
-	proposalID := draft.Workflow.Proposal.ID
+	require.NotNil(t, draft.Workflow.Plan)
+	proposalID := draft.Workflow.Plan.DraftID
 	confirmed, err := s.Confirm(context.Background(), user, date, proposalID, draft.Workflow.Version)
 	require.NoError(t, err)
 	result := &ProcessResponse{Text: draft.Text, Workflow: confirmed}
@@ -42,35 +43,28 @@ func command(t *testing.T, s *Service, a *fakeAgent, user uuid.UUID, date pgtype
 	require.NotNil(t, result.AppliedChange)
 	return result
 }
-func add(title string) TaskOperation {
-	return TaskOperation{Kind: "create", Fields: fields(map[string]any{"title": title, "duration": 120})}
-}
 
 func TestChatActionsBecomeDraftUntilConfirm(t *testing.T) {
-	s, a, user, _ := testService(t)
+	s, a, user, date := testService(t)
 	ctx := context.Background()
-	date := CurrentDate(ctx)
-	op := add("Draft report")
-	op.Quote = "Draft report"
-	a.response = encode(t, AgentReply{ContractVersion: 2, Message: "Review this draft.", Phase: "actions", Tasks: []ProposalTask{}, Operations: []TaskOperation{op}})
-	draft, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "Draft report", RequestID: uuid.New(), ContractVersion: 2})
+	a.ops = []TaskOperation{add("Draft report")}
+	draft, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "Draft report", RequestID: uuid.New()})
 	require.NoError(t, err)
 	require.Nil(t, draft.AppliedChange)
-	require.NotNil(t, draft.Workflow.Proposal)
+	require.NotNil(t, draft.Workflow.Plan)
 	require.Empty(t, draft.Workflow.Tasks)
 	require.Equal(t, "planning", draft.Workflow.State)
-	confirmed, err := s.Confirm(ctx, user, date, draft.Workflow.Proposal.ID, draft.Workflow.Version)
+	confirmed, err := s.Confirm(ctx, user, date, draft.Workflow.Plan.DraftID, draft.Workflow.Version)
 	require.NoError(t, err)
-	require.Nil(t, confirmed.Proposal)
+	require.Nil(t, confirmed.Plan)
 	require.Len(t, confirmed.Tasks, 1)
 	require.Equal(t, "Draft report", confirmed.Tasks[0].Title)
 	require.Equal(t, "active", confirmed.State)
 }
 
 func TestCommandsReuseFiveTasksBeyondCapacityAndAppend(t *testing.T) {
-	s, a, user, _ := testService(t)
+	s, a, user, date := testService(t)
 	ctx := context.Background()
-	date := CurrentDate(ctx)
 	titles := []string{"Ship workflow", "Fix publishing", "Restore Headlines brand and speed publishing", "Research Claude decks", "Prepare demo"}
 	ids := map[string]uuid.UUID{}
 	for i, title := range titles {
@@ -94,7 +88,7 @@ func TestCommandsReuseFiveTasksBeyondCapacityAndAppend(t *testing.T) {
 	require.Len(t, r.Workflow.Tasks, 6)
 	require.Empty(t, r.Workflow.Backlog)
 	require.NotNil(t, r.AppliedChange)
-	require.Nil(t, r.Workflow.Proposal)
+	require.Nil(t, r.Workflow.Plan)
 	require.EqualValues(t, 120, *r.Workflow.AvailableMinutes)
 	for _, task := range r.Workflow.Tasks {
 		if task.ID == done.ID {
@@ -121,13 +115,10 @@ func TestCommandsReuseFiveTasksBeyondCapacityAndAppend(t *testing.T) {
 }
 
 func TestCommandRetryIsAtomicAndReturnsSameDraft(t *testing.T) {
-	s, a, user, _ := testService(t)
+	s, a, user, date := testService(t)
 	ctx := context.Background()
-	date := CurrentDate(ctx)
-	op := add("Ship it")
-	op.Quote = "Ship it"
-	a.response = encode(t, AgentReply{ContractVersion: 2, Message: "Ready", Phase: "actions", Tasks: []ProposalTask{}, Operations: []TaskOperation{op}})
-	req := ProcessRequest{UserID: user, SessionDate: date, Content: "Ship it", RequestID: uuid.New(), ContractVersion: 2}
+	a.ops = []TaskOperation{add("Ship it")}
+	req := ProcessRequest{UserID: user, SessionDate: date, Content: "Ship it", RequestID: uuid.New()}
 	out := make([]*ProcessResponse, 2)
 	errs := make([]error, 2)
 	var wg sync.WaitGroup
@@ -140,10 +131,10 @@ func TestCommandRetryIsAtomicAndReturnsSameDraft(t *testing.T) {
 	require.NoError(t, errs[1])
 	require.Equal(t, 1, a.calls)
 	require.Nil(t, out[0].AppliedChange)
-	require.NotNil(t, out[0].Workflow.Proposal)
-	require.Equal(t, out[0].Workflow.Proposal.ID, out[1].Workflow.Proposal.ID)
+	require.NotNil(t, out[0].Workflow.Plan)
+	require.Equal(t, out[0].Workflow.Plan.DraftID, out[1].Workflow.Plan.DraftID)
 	require.Empty(t, out[0].Workflow.Tasks)
-	confirmed, err := s.Confirm(ctx, user, date, out[0].Workflow.Proposal.ID, out[0].Workflow.Version)
+	confirmed, err := s.Confirm(ctx, user, date, out[0].Workflow.Plan.DraftID, out[0].Workflow.Version)
 	require.NoError(t, err)
 	require.Len(t, confirmed.Tasks, 1)
 	require.NotEmpty(t, confirmed.ChangeReceipts)
@@ -158,9 +149,8 @@ func TestCommandRetryIsAtomicAndReturnsSameDraft(t *testing.T) {
 }
 
 func TestOperationsValidateOwnershipQuoteAndFieldPresence(t *testing.T) {
-	s, a, user, _ := testService(t)
+	s, a, user, date := testService(t)
 	ctx := context.Background()
-	date := CurrentDate(ctx)
 	task := createTask(t, s, user, date, "Preserve me")
 	op := TaskOperation{Kind: "update", TaskID: &task.ID, Fields: fields(map[string]any{"duration": nil, "description": "Keep brand behavior; speed up publishing per Cozad."})}
 	r := command(t, s, a, user, date, op)
@@ -170,35 +160,33 @@ func TestOperationsValidateOwnershipQuoteAndFieldPresence(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, task.Duration, undone.Tasks[0].Duration)
 	require.Nil(t, undone.Tasks[0].Description)
-	rejectedOnChat := []TaskOperation{
-		{Kind: "remove", TaskID: ptr(uuid.New()), Quote: "Do this"},
-		{Kind: "create", Quote: "not in the request", Fields: fields(map[string]any{"title": "Invented task"})},
-		{Kind: "update", TaskID: &task.ID, Quote: "Do this", Fields: fields(map[string]any{"sortOrder": 0})},
-	}
-	for _, bad := range rejectedOnChat {
-		a.response = encode(t, AgentReply{ContractVersion: 2, Message: "Ready", Phase: "actions", Tasks: []ProposalTask{}, Operations: []TaskOperation{bad}})
-		_, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "Do this", RequestID: uuid.New(), ContractVersion: 2})
-		require.Error(t, err)
-	}
-	for _, bad := range []TaskOperation{
-		{Kind: "update", TaskID: &task.ID, Quote: "Do this", Fields: fields(map[string]any{"categoryId": uuid.New()})},
-		{Kind: "update", TaskID: &task.ID, Quote: "Do this", Fields: fields(map[string]any{"title": nil})},
+	// Invalid changes are rejected at the tool, so the model can correct them;
+	// nothing reaches the draft.
+	for code, bad := range map[string]TaskOperation{
+		"unknown_task":     {Kind: "remove", TaskID: ptr(uuid.New())},
+		"validation":       {Kind: "update", TaskID: &task.ID, Fields: fields(map[string]any{"sortOrder": 0})},
+		"unknown_category": {Kind: "update", TaskID: &task.ID, Fields: fields(map[string]any{"categoryId": uuid.New()})},
 	} {
-		a.response = encode(t, AgentReply{ContractVersion: 2, Message: "Ready", Phase: "actions", Tasks: []ProposalTask{}, Operations: []TaskOperation{bad}})
-		draftBad, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "Do this", RequestID: uuid.New(), ContractVersion: 2})
+		a.ops = []TaskOperation{bad}
+		rejected, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "Do this", RequestID: uuid.New()})
 		require.NoError(t, err)
-		_, err = s.Confirm(ctx, user, date, draftBad.Workflow.Proposal.ID, draftBad.Workflow.Version)
-		require.Error(t, err)
+		require.Nil(t, rejected.Workflow.Plan, code)
+		result := a.results[len(a.results)-1]
+		require.False(t, result.OK, code)
+		require.Equal(t, code, result.Error.Code)
 	}
+	a.ops = []TaskOperation{{Kind: "update", TaskID: &task.ID, Fields: fields(map[string]any{"title": nil})}}
+	_, err = s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "Do this", RequestID: uuid.New()})
+	require.NoError(t, err)
+	require.False(t, a.results[len(a.results)-1].OK)
 	w, err := s.Get(ctx, user, date)
 	require.NoError(t, err)
 	require.Len(t, w.Tasks, 1)
 }
 
 func TestUndoDoesNotOverwriteLaterEditsOrReviews(t *testing.T) {
-	s, a, user, _ := testService(t)
+	s, a, user, date := testService(t)
 	ctx := context.Background()
-	date := CurrentDate(ctx)
 	r := command(t, s, a, user, date, add("Report"))
 	id := r.Workflow.Tasks[0].ID
 	_, err := s.store.Pool.Exec(ctx, `UPDATE tasks SET completed=true,status='completed',completed_at=clock_timestamp(),updated_at=clock_timestamp() WHERE id=$1`, id)
@@ -217,17 +205,16 @@ func TestUndoDoesNotOverwriteLaterEditsOrReviews(t *testing.T) {
 }
 
 func TestCurrentDayCanReopenAndCloseWithImmutableReviews(t *testing.T) {
-	s, a, user, _ := testService(t)
+	s, a, user, date := testService(t)
 	ctx := context.Background()
-	date := CurrentDate(ctx)
 	dateText := date.Time.Format("2006-01-02")
 	done := createTask(t, s, user, date, "Done already")
 	carry := createTask(t, s, user, date, "Carry this")
 	closed, err := s.Close(ctx, user, CloseRequest{Date: dateText, Notes: ptr("First review"), TaskActions: []TaskAction{{done.ID, "done"}, {carry.ID, "tomorrow"}}})
 	require.NoError(t, err)
 	require.Len(t, closed.Workflow.ReviewHistory, 1)
-	a.response = encode(t, AgentReply{ContractVersion: 2, Message: "What work?", Phase: "clarifying", Tasks: []ProposalTask{}})
-	question, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "Maybe more", RequestID: uuid.New(), ContractVersion: 2})
+	a.ops, a.response = nil, "What work?"
+	question, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "Maybe more", RequestID: uuid.New()})
 	require.NoError(t, err)
 	require.Equal(t, "closed", question.Workflow.State)
 	r := command(t, s, a, user, date, add("Late addition"))
@@ -263,9 +250,8 @@ func TestCurrentDayCanReopenAndCloseWithImmutableReviews(t *testing.T) {
 }
 
 func TestSuggestionsWaitAndDatesUseTheServerClock(t *testing.T) {
-	s, a, user, _ := testService(t)
+	s, a, user, today := testService(t)
 	ctx := context.Background()
-	today := CurrentDate(ctx)
 	future := pgtype.Date{Time: today.Time.AddDate(0, 0, 2), Valid: true}
 	op := add("Future task")
 	op.Date = future.Time.Format("2006-01-02")
@@ -275,48 +261,45 @@ func TestSuggestionsWaitAndDatesUseTheServerClock(t *testing.T) {
 	_, err := s.Undo(ctx, user, r.AppliedChange.ID)
 	require.NoError(t, err)
 	task := createTask(t, s, user, today, "Keep until approved")
-	suggestion := TaskOperation{Kind: "remove", TaskID: &task.ID}
-	a.response = encode(t, AgentReply{ContractVersion: 2, Message: "I suggest removing this task. Review it.", Phase: "proposal", Tasks: []ProposalTask{}, Operations: []TaskOperation{suggestion}})
-	draft, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: today, Content: "What can I cut?", RequestID: uuid.New(), ContractVersion: 2})
+	a.ops, a.response = []TaskOperation{{Kind: "remove", TaskID: &task.ID}}, "I suggest removing this task."
+	draft, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: today, Content: "What can I cut?", RequestID: uuid.New()})
 	require.NoError(t, err)
 	require.Len(t, draft.Workflow.Tasks, 1)
 	require.Nil(t, draft.AppliedChange)
 	w := draft.Workflow
-	confirmed, err := s.Confirm(ctx, user, today, w.Proposal.ID, w.Version)
+	require.Equal(t, []string{"Keep until approved|removed"}, planTitles(w))
+	confirmed, err := s.Confirm(ctx, user, today, w.Plan.DraftID, w.Version)
 	require.NoError(t, err)
 	require.Empty(t, confirmed.Tasks)
-	again, err := s.Confirm(ctx, user, today, w.Proposal.ID, w.Version)
+	again, err := s.Confirm(ctx, user, today, w.Plan.DraftID, w.Version)
 	require.NoError(t, err)
 	require.Equal(t, confirmed.Tasks, again.Tasks)
 	past := pgtype.Date{Time: today.Time.AddDate(0, 0, -1), Valid: true}
-	_, err = s.Process(ctx, ProcessRequest{UserID: user, SessionDate: past, Content: "Add work", RequestID: uuid.New(), ContractVersion: 2})
+	_, err = s.Process(ctx, ProcessRequest{UserID: user, SessionDate: past, Content: "Add work", RequestID: uuid.New()})
 	require.Error(t, err)
 	bad := add("Past task")
 	bad.Date = past.Time.Format("2006-01-02")
-	bad.Quote = "Do this"
-	a.response = encode(t, AgentReply{ContractVersion: 2, Message: "Ready", Phase: "actions", Tasks: []ProposalTask{}, Operations: []TaskOperation{bad}})
-	draftPast, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: today, Content: "Do this", RequestID: uuid.New(), ContractVersion: 2})
+	a.ops = []TaskOperation{bad}
+	draftPast, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: today, Content: "Do this", RequestID: uuid.New()})
 	require.NoError(t, err)
-	require.NotNil(t, draftPast.Workflow.Proposal)
-	_, err = s.Confirm(ctx, user, today, draftPast.Workflow.Proposal.ID, draftPast.Workflow.Version)
-	require.Error(t, err)
+	require.Nil(t, draftPast.Workflow.Plan, "a past destination is rejected by the tool")
+	require.Equal(t, "historical_day", a.results[len(a.results)-1].Error.Code)
 }
 
 func TestCompletedDuplicateNeedsAnExplicitNewOccurrence(t *testing.T) {
-	s, a, user, _ := testService(t)
+	s, a, user, date := testService(t)
 	ctx := context.Background()
-	date := CurrentDate(ctx)
 	task := createTask(t, s, user, date, "Exercise")
 	_, err := s.store.Pool.Exec(ctx, `UPDATE tasks SET completed=true,status='completed' WHERE id=$1`, task.ID)
 	require.NoError(t, err)
 	op := add("Exercise")
-	op.Quote = "Exercise"
-	a.response = encode(t, AgentReply{ContractVersion: 2, Message: "Ready", Phase: "actions", Tasks: []ProposalTask{}, Operations: []TaskOperation{op}})
-	draftDup, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "Exercise", RequestID: uuid.New(), ContractVersion: 2})
+	a.ops = []TaskOperation{op}
+	draftDup, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "Exercise", RequestID: uuid.New()})
 	require.NoError(t, err)
-	require.NotNil(t, draftDup.Workflow.Proposal)
-	_, err = s.Confirm(ctx, user, date, draftDup.Workflow.Proposal.ID, draftDup.Workflow.Version)
-	require.Error(t, err)
+	require.Nil(t, draftDup.Workflow.Plan, "a completed match is reported, not duplicated")
+	existing := a.results[len(a.results)-1]
+	require.Equal(t, "exists", existing.Status)
+	require.True(t, existing.Existing.Completed)
 	op.NewOccurrence = true
 	r := command(t, s, a, user, date, op)
 	require.Len(t, r.Workflow.Tasks, 2)

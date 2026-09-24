@@ -58,11 +58,8 @@ func workflowStatus(err error) (int, string) {
 	var validation *chat.ValidationError
 	switch {
 	case errors.As(err, &validation):
-		if validation.Code == "plan_incomplete" {
-			return http.StatusBadRequest, "The proposed plan is incomplete. Include every unfinished saved task or explicitly move it to the inbox."
-		}
 		return http.StatusBadRequest, validation.Message
-	case errors.Is(err, chat.ErrConflict), errors.Is(err, chat.ErrClosed):
+	case errors.Is(err, chat.ErrConflict), errors.Is(err, chat.ErrClosed), errors.Is(err, chat.ErrTurnInProgress):
 		return http.StatusConflict, err.Error()
 	case errors.Is(err, chat.ErrUnavailable):
 		return http.StatusServiceUnavailable, err.Error()
@@ -84,6 +81,8 @@ func workflowCode(err error) string {
 			return validation.Code
 		}
 		return "validation"
+	case errors.Is(err, chat.ErrTurnInProgress):
+		return "turn_in_progress"
 	case errors.Is(err, chat.ErrConflict), errors.Is(err, chat.ErrClosed):
 		return "conflict"
 	case errors.Is(err, chat.ErrUnavailable), errors.Is(err, chat.ErrModelCapacity):
@@ -135,12 +134,11 @@ func (h *ChatHandler) Sessions(c *gin.Context) {
 }
 
 type chatMessageRequest struct {
-	ContractVersion int        `json:"contractVersion"`
-	TaskID          *uuid.UUID `json:"taskId"`
-	Content         string     `json:"content" binding:"required"`
-	Date            string     `json:"date" binding:"required"`
-	RequestID       uuid.UUID  `json:"requestId" binding:"required"`
-	Model           string     `json:"model"`
+	TaskID    *uuid.UUID `json:"taskId"`
+	Content   string     `json:"content" binding:"required"`
+	Date      string     `json:"date" binding:"required"`
+	RequestID uuid.UUID  `json:"requestId" binding:"required"`
+	Model     string     `json:"model"`
 }
 
 // bindMessage validates a chat request. It has already answered the client
@@ -165,7 +163,7 @@ func (h *ChatHandler) bindMessage(c *gin.Context) (chat.ProcessRequest, bool) {
 		workflowError(c, err)
 		return chat.ProcessRequest{}, false
 	}
-	return chat.ProcessRequest{ContractVersion: req.ContractVersion, TaskID: req.TaskID, UserID: userID, SessionDate: date, Content: req.Content, RequestID: req.RequestID, Model: req.Model}, true
+	return chat.ProcessRequest{TaskID: req.TaskID, UserID: userID, SessionDate: date, Content: req.Content, RequestID: req.RequestID, Model: req.Model}, true
 }
 
 func (h *ChatHandler) SendMessage(c *gin.Context) {
@@ -237,9 +235,9 @@ func (h *ChatHandler) Confirm(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Date       string    `json:"date" binding:"required"`
-		ProposalID uuid.UUID `json:"proposalId" binding:"required"`
-		Version    int32     `json:"version"`
+		Date    string    `json:"date" binding:"required"`
+		DraftID uuid.UUID `json:"draftId" binding:"required"`
+		Version int32     `json:"version"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
@@ -254,7 +252,7 @@ func (h *ChatHandler) Confirm(c *gin.Context) {
 		workflowError(c, err)
 		return
 	}
-	result, err := h.chatService.Confirm(c.Request.Context(), userID, date, req.ProposalID, req.Version)
+	result, err := h.chatService.Confirm(c.Request.Context(), userID, date, req.DraftID, req.Version)
 	if err != nil {
 		workflowError(c, err)
 		return
@@ -269,9 +267,9 @@ func (h *ChatHandler) Discard(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Date       string    `json:"date" binding:"required"`
-		ProposalID uuid.UUID `json:"proposalId" binding:"required"`
-		Version    int32     `json:"version"`
+		Date    string    `json:"date" binding:"required"`
+		DraftID uuid.UUID `json:"draftId" binding:"required"`
+		Version int32     `json:"version"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
@@ -286,7 +284,7 @@ func (h *ChatHandler) Discard(c *gin.Context) {
 		workflowError(c, err)
 		return
 	}
-	result, err := h.chatService.Discard(c.Request.Context(), userID, date, req.ProposalID, req.Version)
+	result, err := h.chatService.Discard(c.Request.Context(), userID, date, req.DraftID, req.Version)
 	if err != nil {
 		workflowError(c, err)
 		return
