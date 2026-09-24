@@ -1,8 +1,8 @@
 import { clearDateDrafts } from '@/lib/dateDrafts';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactElement } from 'react';
 import * as api from '@/lib/api';
 import { localDate, nextDate, previousDate } from '@/lib/date';
@@ -564,7 +564,7 @@ describe('Daily planning workflow', () => {
     expect(screen.getByRole('region', { name: 'Carried forward' })).toHaveTextContent('Fix publishing');
     expect(screen.getByRole('region', { name: 'Other days' })).toHaveTextContent(`Team meeting${dateLabel(nextDate(today))}Moved`);
     expect(card).toHaveTextContent('Done · 2');
-    expect(screen.getByRole('status', { name: 'Plan updated · Added Ship hotfix · Moved Team meeting' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Plan updated · Added Ship hotfix · Moved Team meeting' })).toBeInTheDocument();
   });
 
   it('offers Discuss in Plan from inbox items with seed context', async () => {
@@ -600,6 +600,80 @@ describe('Daily planning workflow', () => {
   });
 });
 
+
+describe('Plan side panel', () => {
+  const wide = (on: boolean) => {
+    window.matchMedia = ((query: string) => ({ matches: on && query.includes('min-width: 1024px'), media: query, onchange: null, addListener: () => {}, removeListener: () => {}, addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => true })) as unknown as typeof window.matchMedia;
+  };
+  const reply = (text: string, next: Partial<api.Workflow>) => vi.mocked(api.streamChatMessage).mockImplementationOnce(async request => {
+    workflow = { ...workflow, ...next, version: workflow.version + 1, messages: [...workflow.messages, { id: `u-${request.requestId}`, role: 'user', content: request.content }, { id: `a-${request.requestId}`, role: 'assistant', content: text }, ...(next.messages ?? [])] };
+    return { text, workflow };
+  });
+  const send = async (text: string) => {
+    const input = screen.getByRole('textbox', { name: 'Message about your day' });
+    await waitFor(() => expect(input).toBeEnabled());
+    fireEvent.change(input, { target: { value: text } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send prompt' }));
+    await screen.findByText(text);
+  };
+  afterEach(() => wide(true));
+
+  it('slides in with the first change, stays through a clarifying turn, closes to a pill, and leaves on Discard', async () => {
+    wide(true);
+    mount(<New />, '/new');
+    await screen.findByRole('textbox', { name: 'Message about your day' });
+    expect(screen.queryByRole('complementary', { name: 'Today’s plan' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Plan ·/ })).not.toBeInTheDocument();
+
+    reply('Slides are on for today.', { plan: plan({ today: [{ ref: 'new:1', title: 'Ship slides', badge: 'new', date: today }] }), messages: [{ id: 'e1', role: 'event', eventType: 'plan_update', content: 'Plan updated · Added Ship slides', metadata: { changes: [{ ref: 'new:1', title: 'Ship slides', action: 'Added' }] } }] });
+    await send('ship slides');
+    const panel = await screen.findByRole('complementary', { name: 'Today’s plan' });
+    expect(panel).toHaveTextContent('Ship slides');
+    expect(screen.getByRole('region', { name: 'Planning conversation' })).not.toHaveTextContent('Confirm plan');
+
+    reply('How long will it take?', {});
+    await send('what do you think?');
+    await screen.findByText('How long will it take?');
+    expect(screen.getByRole('complementary', { name: 'Today’s plan' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close plan' }));
+    expect(screen.queryByRole('complementary', { name: 'Today’s plan' })).not.toBeInTheDocument();
+    const pill = screen.getByRole('button', { name: 'Plan · 1 change' });
+    expect(pill).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(pill);
+    expect(await screen.findByRole('complementary', { name: 'Today’s plan' })).toBeInTheDocument();
+
+    vi.mocked(api.discardDayPlan).mockImplementation(async () => { workflow = { ...workflow, plan: null, messages: [...workflow.messages, { id: 'd', role: 'event', eventType: 'discarded', content: 'Proposal discarded' }] }; return workflow; });
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    await screen.findByRole('status', { name: 'Proposal discarded' });
+    expect(screen.queryByRole('complementary', { name: 'Today’s plan' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Plan ·/ })).not.toBeInTheDocument();
+  });
+
+  it('highlights the rows a Plan updated line names', async () => {
+    wide(true);
+    workflow = { ...workflow, plan: plan({ today: [{ ref: 'report', taskId: 'report', title: 'Finish report', date: today }, { ref: 'new:1', title: 'Ship slides', badge: 'new', date: today }] }),
+      messages: [{ id: 'e1', role: 'event', eventType: 'plan_update', content: 'Plan updated · Added Ship slides', metadata: { changes: [{ ref: 'new:1', title: 'Ship slides', action: 'Added' }] } }] };
+    mount(<New />, '/new');
+    const panel = await screen.findByRole('complementary', { name: 'Today’s plan' });
+    fireEvent.click(screen.getByRole('button', { name: 'Plan updated · Added Ship slides' }));
+    await waitFor(() => expect(panel.querySelector('[data-ref="new:1"]')).toHaveAttribute('data-highlighted', 'true'));
+    expect(panel.querySelector('[data-ref="report"]')).not.toHaveAttribute('data-highlighted');
+  });
+
+  it('keeps the plan behind a pill and a bottom sheet on narrow screens', async () => {
+    wide(false);
+    workflow = { ...workflow, plan: plan() };
+    mount(<New />, '/new');
+    const pill = await screen.findByRole('button', { name: 'Plan · 1 change' });
+    expect(screen.queryByRole('complementary', { name: 'Today’s plan' })).not.toBeInTheDocument();
+    fireEvent.click(pill);
+    const sheet = await screen.findByRole('dialog', { name: 'Today’s plan' });
+    expect(sheet).toHaveTextContent('Finish report');
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Confirm plan' }));
+    await waitFor(() => expect(api.confirmDayPlan).toHaveBeenCalledWith({ date: today, draftId: 'draft-1', version: 2 }));
+  });
+});
 
 describe('Model resilience', () => {
   it('starts with GPT-OSS 120B and retries once with 20B after a capacity failure', async () => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ListChecks } from 'lucide-react';
@@ -9,7 +9,8 @@ import { SpeechMicButton } from '@/components/agents/SpeechMicButton';
 import { Button } from '@/components/ui/button';
 import { MessageBubble, StoppedNotice, StreamingReply, ThinkingIndicator, ThreadEntry } from './ChatMessages';
 import { WorkflowError } from './WorkflowUI';
-import { PlanCard } from './PlanCard';
+import { PlanPanel, PlanPill } from './PlanPanel';
+import { useMediaQuery } from '@/lib/useMediaQuery';
 import { dateLabel } from './dates';
 import { toast } from '@/hooks/use-toast';
 import { CHAT_MODELS, DEFAULT_CHAT_MODEL, FALLBACK_CHAT_MODEL } from '@/lib/chat-models';
@@ -64,6 +65,12 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
   const settling = pending?.status === 'settling';
   const shownReply = useRevealedText(pending && (pending.status === 'streaming' || settling) ? pending.reply : '');
   const settled = settling && shownReply === pending.reply;
+  const wide = useMediaQuery('(min-width: 1024px)');
+  // Wide screens keep the panel open unless the person closed this draft's
+  // panel; a new draft opens it again. Narrow screens open a sheet on demand.
+  const [closedDraft, setClosedDraft] = useDateDraft<string | null>('plan-panel-closed', date, null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [highlight, setHighlight] = useState<{ refs: string[]; nonce: number } | null>(null);
   const showInterruptChips = !readOnly && (intent === 'interrupt' || (intent !== 'plan' && workflow?.state === 'active' && workflow.tasks.length > 0));
 
   useEffect(() => {
@@ -106,7 +113,8 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
-    setPending({ ...request, reply: '', status: 'thinking', savedCount: workflow?.messages.length ?? 0 });
+    const savedCount = workflow?.messages.length ?? 0;
+    setPending({ ...request, reply: '', status: 'thinking', savedCount });
     try {
       const response = await api.streamChatMessage({
         ...request,
@@ -120,6 +128,9 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
       if (controller.signal.aborted || !mounted.current) return;
       queryClient.setQueryData(['workflow', date], response.workflow);
       updatePending(request.requestId, (turn) => ({ ...turn, reply: response.text, status: 'settling' }));
+      const update = response.workflow.messages.slice(savedCount).filter(message => message.eventType === 'plan_update').at(-1);
+      const refs = planUpdateRefs(update?.metadata);
+      if (refs.length) setHighlight({ refs, nonce: Date.now() });
       refresh();
     } catch (error) {
       if (controller.signal.aborted) return;
@@ -198,6 +209,21 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
     onError: () => { void workflowQuery.refetch(); },
   });
   const plan = workflow?.plan;
+  const panelOpen = Boolean(plan) && (wide ? closedDraft !== plan?.draftId : sheetOpen);
+  const setPanelOpen = (open: boolean) => {
+    if (wide) setClosedDraft(open ? null : plan?.draftId ?? null);
+    else setSheetOpen(open);
+  };
+  const showPill = Boolean(plan) && !readOnly && !(wide && panelOpen);
+  const showUpdate = (refs: string[]) => {
+    setHighlight({ refs, nonce: Date.now() });
+    setPanelOpen(true);
+  };
+  useEffect(() => {
+    if (!highlight) return;
+    const timer = window.setTimeout(() => setHighlight(null), 2000);
+    return () => window.clearTimeout(timer);
+  }, [highlight]);
   const busy = replying || confirm.isPending || discard.isPending || undo.isPending;
   useNavigationLock(busy, Boolean(input.trim()) || Boolean(pending && !settling));
   // While a reply is still being revealed, the thread shows the messages that
@@ -218,7 +244,7 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
           <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">{past ? 'Your saved plan and review are available from View tasks.' : showInterruptChips ? 'Tell Caprio what shifted: less time, new work, or something to drop. Review the draft, then confirm to update your list.' : 'Tell me what you need to do. Review the draft plan, then confirm to save your tasks.'}</p>
         </div>}
         {showOpener && <MessageBubble role="assistant">{opener}</MessageBubble>}
-        {messages.map(message => <ThreadEntry key={message.id} message={message} />)}
+        {messages.map(message => <ThreadEntry key={message.id} message={message} onShowUpdate={plan ? showUpdate : undefined} />)}
         {pending && <>
           <MessageBubble role="user">{pending.content}</MessageBubble>
           {pending.status === 'thinking' && <ThinkingIndicator />}
@@ -236,9 +262,6 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
           </div>)}
           {undo.error && <WorkflowError error={undo.error} />}
         </section>}
-        {plan && !readOnly && !settling && <PlanCard plan={plan} date={date} busy={busy} confirming={confirm.isPending} discarding={discard.isPending}
-          error={(confirm.error || discard.error) && <WorkflowError error={confirm.error || discard.error} />}
-          onConfirm={() => confirm.mutate()} onDiscard={() => discard.mutate()} />}
         {workflow?.state === 'closed' && !past && <p className="text-sm text-muted-foreground">Your review is saved. Add new work to continue this day; completed tasks and earlier reviews stay recorded.</p>}
       </>}
     </div></div>
@@ -256,8 +279,19 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
             </button>
           ))}
         </div>}
+        {showPill && plan && <PlanPill plan={plan} expanded={panelOpen} onClick={() => setPanelOpen(true)} />}
         <PromptInput id="day-message" value={input} onValueChange={setInput} models={CHAT_MODELS} model={model} defaultModel={DEFAULT_CHAT_MODEL} onModelChange={setModel} onSubmit={handleSend} loading={replying} onStop={stop} disabled={workflowQuery.isLoading || !!workflowQuery.error || confirm.isPending || discard.isPending || undo.isPending} leadingAction={<SpeechMicButton value={input} onTranscript={setInput} disabled={workflowQuery.isLoading || !!workflowQuery.error || confirm.isPending || discard.isPending || undo.isPending || replying} />} aria-label="Message about your day" maxLength={8000} placeholder={showInterruptChips ? 'Add a task or tell me what changed…' : 'Tell me what you want to work on…'} />
       </>}
     </div></div>
-  </section></>;
+  </section>
+  {plan && !readOnly && <PlanPanel wide={wide} open={panelOpen} onOpenChange={setPanelOpen} plan={plan} date={date} busy={busy} highlight={highlight}
+    confirming={confirm.isPending} discarding={discard.isPending}
+    error={(confirm.error || discard.error) && <WorkflowError error={confirm.error || discard.error} />}
+    onConfirm={() => confirm.mutate()} onDiscard={() => discard.mutate()} />}
+  </>;
+}
+
+function planUpdateRefs(metadata: unknown): string[] {
+  const changes = (metadata as api.PlanUpdateMetadata | null | undefined)?.changes;
+  return Array.isArray(changes) ? changes.map(change => change.ref) : [];
 }

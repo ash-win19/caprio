@@ -103,3 +103,10 @@ export function planView(today: PlanItem[], extra: Partial<PlanView> = {}): Plan
   counts.carried = (extra.carried ?? []).filter(item => item.badge !== 'removed').length;
   return { draftId: 'draft-1', today, carried: [], otherDays: [], doneCount: 0, counts, ...extra };
 }
+
+// On narrow screens the plan sits behind a pill; open it before using it.
+export async function openPlan(page: Page) {
+  const pill = page.getByRole('button', { name: /^Plan( ·|$)/ });
+  if (await pill.isVisible()) await pill.click();
+  return page.getByRole('region', { name: 'Proposed plan' });
+}
