@@ -250,6 +250,7 @@ type DailyPlan struct {
 	DraftStaged         []byte             `json:"draftStaged"`
 	TurnRequestID       *uuid.UUID         `json:"turnRequestId"`
 	TurnStartedAt       pgtype.Timestamptz `json:"turnStartedAt"`
+	TurnAttemptID       *uuid.UUID         `json:"turnAttemptId"`
 }
 
 type DayReview struct {

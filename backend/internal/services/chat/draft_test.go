@@ -181,3 +181,59 @@ func TestPlanViewShowsTheFullResultingPlanWithBadges(t *testing.T) {
 	require.Equal(t, []string{"Write report|moved", "Book flights|new"}, titles(view.OtherDays))
 	require.Equal(t, 1, view.Counts.Removed)
 }
+
+func TestDraftRejectsChangesConfirmCouldNotApply(t *testing.T) {
+	env, _, report := draftFixture(t)
+	past, _ := ParseDate("2026-09-20")
+	old := generated.Task{ID: uuid.New(), Title: "Old day task", Status: generated.TaskStatusPlanned, PlannedForDate: past, Urgency: generated.UrgencyLevelMedium}
+	env.Owned = append(env.Owned, old)
+	env.Writable = func(day pgtype.Date) error {
+		if day.Time.Before(env.Date.Time) {
+			return invalidCode("historical_day", "Past days are read-only.")
+		}
+		return nil
+	}
+	env.ClosedDays = map[string]bool{"2026-09-25": true}
+	d := newDraft()
+	turn := uuid.New()
+	_, err := d.EditTask(env, turn, old.ID.String(), map[string]json.RawMessage{"title": raw("Renamed")})
+	require.Equal(t, "historical_day", codeOf(err))
+	_, err = d.SetCompleted(env, turn, old.ID.String(), true)
+	require.Equal(t, "historical_day", codeOf(err))
+	_, err = d.MoveTask(env, turn, report.ID.String(), "2026-09-25", false)
+	require.Equal(t, "closed_day", codeOf(err))
+	_, err = d.AddTask(env, turn, AddTaskInput{Title: "Later", Date: "2026-09-25"})
+	require.Equal(t, "closed_day", codeOf(err))
+
+	a, _ := d.AddTask(env, turn, AddTaskInput{Title: "Slides"})
+	_, _ = d.AddTask(env, turn, AddTaskInput{Title: "Deck"})
+	_, err = d.EditTask(env, turn, a.Ref, map[string]json.RawMessage{"title": raw("deck")})
+	require.Equal(t, "duplicate_task", codeOf(err), "two new tasks cannot end up with the same title")
+	_, err = d.EditTask(env, turn, a.Ref, map[string]json.RawMessage{"title": raw("write report")})
+	require.Equal(t, "duplicate_task", codeOf(err))
+
+	_, err = d.SetCompleted(env, turn, report.ID.String(), true)
+	require.NoError(t, err)
+	_, err = d.EditTask(env, turn, report.ID.String(), map[string]json.RawMessage{"duration": raw(10)})
+	require.Equal(t, "conflicting_change", codeOf(err), "a completion cannot also carry edits Confirm would drop")
+	_, err = d.MoveTask(env, turn, report.ID.String(), "2026-09-24", false)
+	require.Equal(t, "conflicting_change", codeOf(err))
+}
+
+func TestReopeningATaskIsNotShownAsDone(t *testing.T) {
+	env, _, _ := draftFixture(t)
+	done := generated.Task{ID: uuid.New(), Title: "Finished", Status: generated.TaskStatusCompleted, Completed: true, PlannedForDate: env.Date, Urgency: generated.UrgencyLevelMedium}
+	env.Owned = append(env.Owned, done)
+	d := newDraft()
+	_, err := d.SetCompleted(env, uuid.New(), done.ID.String(), false)
+	require.NoError(t, err)
+	view := buildPlanView(env, d, nil)
+	var reopened *PlanItem
+	for i := range view.Today {
+		if view.Today[i].Title == "Finished" {
+			reopened = &view.Today[i]
+		}
+	}
+	require.NotNil(t, reopened)
+	require.Equal(t, "edited", reopened.Badge)
+}

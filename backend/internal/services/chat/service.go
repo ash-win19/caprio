@@ -246,6 +246,9 @@ func (s *Service) Confirm(ctx context.Context, userID uuid.UUID, date pgtype.Dat
 			result = w
 			return nil
 		}
+		if err := turnRunning(ctx, tx, userID, date); err != nil {
+			return err
+		}
 		if w.draft.empty() {
 			if w.State == "closed" {
 				return ErrClosed
@@ -307,6 +310,9 @@ func (s *Service) Discard(ctx context.Context, userID uuid.UUID, date pgtype.Dat
 	err := s.store.WithUserTx(ctx, userID, func(tx pgx.Tx, q *generated.Queries) error {
 		w, err := load(ctx, tx, userID, date)
 		if err != nil {
+			return err
+		}
+		if err := turnRunning(ctx, tx, userID, date); err != nil {
 			return err
 		}
 		if w.draft.empty() || w.draft.ID != draftID || w.Version != version {

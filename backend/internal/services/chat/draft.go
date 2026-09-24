@@ -39,9 +39,34 @@ type DraftEntry struct {
 // draftEnv is the saved state a change is validated against.
 type draftEnv struct {
 	Date       pgtype.Date
+	Today      string // the person's current day; a closed today can still receive new work
 	Owned      []generated.Task
 	Categories []generated.Category
+	ClosedDays map[string]bool
 	Writable   func(pgtype.Date) error
+}
+
+// canChange rejects edits Confirm could not apply: a planned task on a past or
+// closed day stays as it is.
+func (e draftEnv) canChange(saved *generated.Task) error {
+	if saved == nil || saved.Status == generated.TaskStatusBacklog {
+		return nil
+	}
+	if err := e.Writable(saved.PlannedForDate); err != nil {
+		return err
+	}
+	if e.ClosedDays[saved.PlannedForDate.Time.Format("2006-01-02")] {
+		return invalidCode("closed_day", "That task is on a closed day, so it can't change.")
+	}
+	return nil
+}
+
+// arrivable rejects destinations Confirm could not apply.
+func (e draftEnv) arrivable(day string) error {
+	if e.ClosedDays[day] && day != e.Today {
+		return invalidCode("closed_day", "That day is closed. Choose another day.")
+	}
+	return nil
 }
 
 type AddTaskInput struct {
@@ -255,16 +280,35 @@ func (e draftEnv) destination(date string, inbox bool) (string, error) {
 		return "", nil
 	}
 	if date == "" {
-		return e.Date.Time.Format("2006-01-02"), nil
+		date = e.Date.Time.Format("2006-01-02")
+	} else {
+		day, err := ParseDate(date)
+		if err != nil {
+			return "", err
+		}
+		if err := e.Writable(day); err != nil {
+			return "", err
+		}
 	}
-	day, err := ParseDate(date)
-	if err != nil {
-		return "", err
+	return date, e.arrivable(date)
+}
+
+// uniqueNewTitle keeps two tasks in the draft, or a new task and a saved one,
+// from sharing a title: Confirm would merge them into one.
+func (d *Draft) uniqueNewTitle(env draftEnv, ref string, title string) error {
+	key := titleKey(title)
+	for _, t := range env.Owned {
+		if t.Status != generated.TaskStatusDropped && titleKey(t.Title) == key {
+			return invalidCode("duplicate_task", "A saved task already has that title.")
+		}
 	}
-	if err := e.Writable(day); err != nil {
-		return "", err
+	for other, entry := range d.Entries {
+		var existing string
+		if other != ref && entry.Create && json.Unmarshal(entry.Fields["title"], &existing) == nil && titleKey(existing) == key {
+			return invalidCode("duplicate_task", "Another task in the plan already has that title.")
+		}
 	}
-	return date, nil
+	return nil
 }
 
 func (d *Draft) AddTask(env draftEnv, turn uuid.UUID, in AddTaskInput) (DraftResult, error) {
@@ -328,8 +372,20 @@ func (d *Draft) EditTask(env draftEnv, turn uuid.UUID, ref string, fields map[st
 	if entry != nil && entry.Remove {
 		return DraftResult{}, invalidCode("restore_first", "That task is marked for removal. Use revert_change first to keep it.")
 	}
+	if entry != nil && entry.Completed != nil {
+		return DraftResult{}, invalidCode("conflicting_change", "That task is already being marked done or not done. Keep one change per task, or revert the other first.")
+	}
 	if len(fields) == 0 {
 		return DraftResult{}, invalid("name at least one field to change")
+	}
+	if err := env.canChange(saved); err != nil {
+		return DraftResult{}, err
+	}
+	var title string
+	if entry != nil && entry.Create && json.Unmarshal(fields["title"], &title) == nil && title != "" {
+		if err := d.uniqueNewTitle(env, ref, title); err != nil {
+			return DraftResult{}, err
+		}
 	}
 	base, err := effective(saved, entry, env)
 	if err != nil {
@@ -360,6 +416,12 @@ func (d *Draft) MoveTask(env draftEnv, turn uuid.UUID, ref, date string, inbox b
 	if saved != nil && saved.Completed {
 		return DraftResult{}, invalidCode("completed_task", "Completed tasks stay on the day they were done.")
 	}
+	if entry != nil && entry.Completed != nil {
+		return DraftResult{}, invalidCode("conflicting_change", "That task is already being marked done or not done. Keep one change per task, or revert the other first.")
+	}
+	if err := env.canChange(saved); err != nil {
+		return DraftResult{}, err
+	}
 	dest, err := env.destination(date, inbox)
 	if err != nil {
 		return DraftResult{}, err
@@ -379,6 +441,9 @@ func (d *Draft) RemoveTask(env draftEnv, turn uuid.UUID, ref string) (DraftResul
 		d.drop(ref)
 		return DraftResult{Status: "removed", Ref: ref}, nil
 	}
+	if err := env.canChange(saved); err != nil {
+		return DraftResult{}, err
+	}
 	entry = d.touch(ref, saved, turn)
 	entry.Remove, entry.Fields, entry.Date, entry.Inbox, entry.Completed = true, nil, "", false, nil
 	return DraftResult{Status: "removed", Ref: ref}, nil
@@ -391,6 +456,9 @@ func (d *Draft) SetCompleted(env draftEnv, turn uuid.UUID, ref string, completed
 	}
 	if entry != nil && (entry.Create || entry.Remove || len(entry.Fields) > 0 || entry.Date != "" || entry.Inbox) {
 		return DraftResult{}, invalidCode("conflicting_change", "That task already has another change in the plan. Keep one change per task, or revert the other first.")
+	}
+	if err := env.canChange(saved); err != nil {
+		return DraftResult{}, err
 	}
 	entry = d.touch(ref, saved, turn)
 	entry.Completed = &completed
@@ -510,8 +578,10 @@ func buildPlanView(env draftEnv, d *Draft, origins map[string]string) *PlanView 
 			i.Badge, i.Date, i.Inbox = "new", entry.Date, entry.Inbox
 		case entry.Remove:
 			i.Badge = "removed"
+		case entry.Completed != nil && *entry.Completed:
+			i.Badge, i.Completed = "done", true
 		case entry.Completed != nil:
-			i.Badge, i.Completed = "done", *entry.Completed
+			i.Badge, i.Completed = "edited", false
 		case entry.Date != "" || entry.Inbox:
 			i.Badge, i.Date, i.Inbox = "moved", entry.Date, entry.Inbox
 		default:

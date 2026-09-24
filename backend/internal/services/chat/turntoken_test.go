@@ -31,3 +31,9 @@ func TestTurnTokenAuthorisesOnlyItsOwnTurnUntilItExpires(t *testing.T) {
 	_, err = signer.verify("garbage", now)
 	require.ErrorIs(t, err, ErrToolAuth)
 }
+
+func TestTurnTokensAreNotSignedWithTheHeaderSecretItself(t *testing.T) {
+	signer := newTurnSigner([]byte("shared"))
+	require.NotEqual(t, []byte("shared"), signer.key)
+	require.Len(t, signer.key, 32)
+}

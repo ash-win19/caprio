@@ -17,27 +17,32 @@ import (
 // progress.
 var ErrToolAuth = errors.New("planner tool call is not authorised for a turn in progress")
 
-const turnTokenLifetime = 3 * time.Minute
+// A turn is at most two agent calls of up to two minutes each.
+const turnTokenLifetime = 5 * time.Minute
 
 // turnClaim scopes a tool callback to one user, day, and chat request.
 type turnClaim struct {
 	User     uuid.UUID `json:"u"`
 	Date     string    `json:"d"`
 	Request  uuid.UUID `json:"r"`
+	Attempt  uuid.UUID `json:"a"` // one agent call; a retry or a stopped run gets a new one
 	Timezone string    `json:"z,omitempty"`
 	Expires  int64     `json:"exp"`
 }
 
 type turnSigner struct{ key []byte }
 
-// newTurnSigner uses the shared planner secret, or a process-local random key
-// when none is configured (tests and single-process development).
-func newTurnSigner(key []byte) turnSigner {
-	if len(key) == 0 {
-		key = make([]byte, 32)
+// newTurnSigner derives its key from the shared planner secret, so the header
+// value alone never doubles as the signing key. Without a secret it uses a
+// process-local random key (tests and single-process development).
+func newTurnSigner(secret []byte) turnSigner {
+	if len(secret) == 0 {
+		key := make([]byte, 32)
 		_, _ = rand.Read(key)
+		return turnSigner{key: key}
 	}
-	return turnSigner{key: key}
+	derived := sha256.Sum256(append([]byte("caprio turn token\x00"), secret...))
+	return turnSigner{key: derived[:]}
 }
 
 func (s turnSigner) mac(payload string) string {

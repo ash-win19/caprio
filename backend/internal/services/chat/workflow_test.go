@@ -586,3 +586,75 @@ func TestMigrationPreservesExistingOnboardingAndDefaultsNewUsers(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, fresh)
 }
+
+func TestAConfirmDiscardOrEditDuringAReplyCannotBeUndoneByIt(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	w := propose(t, s, a, user, date, "Slides")
+	started, release := make(chan struct{}), make(chan struct{})
+	a.ops, a.script = nil, func(_ context.Context, _ mastra.Call, tool toolFunc) (string, error) {
+		tool("add_task", map[string]any{"title": "Sleep early"})
+		close(started)
+		<-release
+		return "Sleep early is on too.", nil
+	}
+	done := make(chan error)
+	go func() {
+		_, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "add sleep early", RequestID: uuid.New()})
+		done <- err
+	}()
+	<-started
+	_, err := s.Confirm(ctx, user, date, w.Plan.DraftID, w.Version)
+	require.ErrorIs(t, err, ErrTurnInProgress, "confirm waits for the reply")
+	_, err = s.Discard(ctx, user, date, w.Plan.DraftID, w.Version)
+	require.ErrorIs(t, err, ErrTurnInProgress)
+	// A task edit elsewhere clears the draft; the reply must not bring it back.
+	_, err = s.store.Pool.Exec(ctx, `UPDATE daily_plans SET draft=NULL,version=version+1 WHERE user_id=$1 AND plan_date=$2`, user, date)
+	require.NoError(t, err)
+	close(release)
+	require.ErrorIs(t, <-done, ErrConflict)
+	after, err := s.Get(ctx, user, date)
+	require.NoError(t, err)
+	require.Nil(t, after.Plan)
+	a.script = nil
+	_, err = s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "next", RequestID: uuid.New()})
+	require.NoError(t, err, "the day is free for the next turn")
+}
+
+func TestAnOldAttemptOfTheSameMessageCannotEditTheDraft(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	var first string
+	attempts := 0
+	a.script = func(_ context.Context, call mastra.Call, tool toolFunc) (string, error) {
+		attempts++
+		if attempts == 1 {
+			first = call.RequestContext["turnToken"].(string)
+			return "", errors.New("tool_use_failed")
+		}
+		require.NotEqual(t, first, call.RequestContext["turnToken"], "each attempt gets its own token")
+		_, err := s.ApplyTool(ctx, first, "add_task", json.RawMessage(`{"title":"Orphan"}`))
+		require.ErrorIs(t, err, ErrToolAuth)
+		tool("add_task", map[string]any{"title": "Kept"})
+		return "Added it.", nil
+	}
+	r, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "add it", RequestID: uuid.New()})
+	require.NoError(t, err)
+	require.Equal(t, []string{"Kept|new"}, planTitles(r.Workflow))
+}
+
+func TestAReplyThatEndsOnAToolCallStillSavesItsChanges(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	a.script = func(_ context.Context, _ mastra.Call, tool toolFunc) (string, error) {
+		tool("add_task", map[string]any{"title": "Ten tasks later"})
+		return "", nil
+	}
+	r, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "a long list", RequestID: uuid.New()})
+	require.NoError(t, err)
+	require.Equal(t, "I've updated the plan.", r.Text)
+	require.Equal(t, []string{"Ten tasks later|new"}, planTitles(r.Workflow))
+	a.script = func(context.Context, mastra.Call, toolFunc) (string, error) { return " ", nil }
+	_, err = s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "hello?", RequestID: uuid.New()})
+	require.Error(t, err, "an empty reply with no change is not saved")
+}
