@@ -1,53 +1,24 @@
-import { useState } from 'react';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import {
   ArrowRight,
-  CalendarDays,
   Check,
+  ChevronDown,
   ChevronRight,
-  CircleDot,
+  Clock3,
   Inbox,
-  Layers3,
   ListTodo,
   MessageSquareText,
   Mic,
+  Moon,
   RefreshCw,
   Sparkles,
-  Target,
-  Zap,
+  X,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Logo } from '@/components/Logo';
+import { ConversationDemo } from '@/components/landing/ConversationDemo';
 
 const ease = [0.22, 1, 0.36, 1] as const;
-
-type PreviewTask = {
-  title: string;
-  meta: string;
-  color: string;
-  rank: string;
-  moved?: boolean;
-};
-
-const plannedTasks: PreviewTask[] = [
-  { title: 'Finalize launch brief', meta: 'Deep work · 90 min', color: '#F5F5F3', rank: '01', moved: false },
-  { title: 'Review product metrics', meta: 'Work · 30 min', color: '#B8B8B4', rank: '02', moved: false },
-  { title: 'Strength training', meta: 'Health · 45 min', color: '#7A7A76', rank: '03', moved: false },
-];
-
-const adaptedTasks: PreviewTask[] = [
-  { title: 'Review product metrics', meta: 'Deadline moved up · 30 min', color: '#F5F5F3', rank: '01', moved: true },
-  { title: 'Finalize launch brief', meta: 'Protected focus · 60 min', color: '#B8B8B4', rank: '02', moved: false },
-  { title: 'Strength training', meta: 'Moved to 5:30 PM · 45 min', color: '#7A7A76', rank: '03', moved: true },
-];
-
-const weekDays = [
-  { day: 'MON', date: '4' },
-  { day: 'TUE', date: '5' },
-  { day: 'WED', date: '6' },
-  { day: 'THU', date: '7', active: true },
-  { day: 'FRI', date: '8' },
-];
 
 function Reveal({ children, delay = 0, className = '' }: { children: React.ReactNode; delay?: number; className?: string }) {
   const reduceMotion = useReducedMotion();
@@ -65,235 +36,101 @@ function Reveal({ children, delay = 0, className = '' }: { children: React.React
   );
 }
 
-function ProductPreview() {
-  const [adapted, setAdapted] = useState(false);
-  const reduceMotion = useReducedMotion();
-  const tasks = adapted ? adaptedTasks : plannedTasks;
-
+function FeatureCard({ eyebrow, title, text, icon: Icon, children }: { eyebrow: string; title: React.ReactNode; text: string; icon: typeof Clock3; children: React.ReactNode }) {
   return (
-    <div className="relative mx-auto mt-16 w-full max-w-[1180px] md:mt-20">
-      <div className="absolute inset-x-[12%] -top-10 h-48 rounded-full bg-white/[0.08] blur-[100px]" />
-      <motion.div
-        initial={reduceMotion ? false : { opacity: 0, y: 36, scale: 0.985 }}
-        animate={reduceMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.9, delay: 0.3, ease }}
-        className="relative overflow-hidden rounded-[22px] border border-white/[0.12] bg-[#111111] shadow-[0_40px_120px_rgba(0,0,0,0.55)]"
-      >
-        <div className="flex h-11 items-center border-b border-white/[0.08] bg-white/[0.025] px-4">
-          <div className="flex gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-white/15" />
-            <span className="h-2.5 w-2.5 rounded-full bg-white/15" />
-            <span className="h-2.5 w-2.5 rounded-full bg-white/15" />
-          </div>
-          <div className="mx-auto flex items-center gap-2 text-[10px] font-medium tracking-[0.12em] text-white/35">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#F5F5F3] shadow-[0_0_10px_rgba(245,245,243,0.7)]" />
-            DAY ONLINE
-          </div>
-          <span className="w-[54px] text-right text-[10px] text-white/25">08:42</span>
-        </div>
-
-        <div className="flex min-h-[520px] text-left md:min-h-[590px]">
-          <aside className="hidden w-[184px] shrink-0 border-r border-white/[0.08] bg-black/10 p-4 lg:flex lg:flex-col">
-            <Logo />
-            <div className="mt-8 space-y-1 text-[12px]">
-              <div className="flex items-center gap-2.5 rounded-lg bg-white/[0.07] px-3 py-2.5 text-white">
-                <CircleDot size={14} className="text-[#F5F5F3]" /> Today
-              </div>
-              <div className="flex items-center gap-2.5 px-3 py-2.5 text-white/40"><CalendarDays size={14} /> Schedule</div>
-              <div className="flex items-center gap-2.5 px-3 py-2.5 text-white/40"><Inbox size={14} /> Capture</div>
-              <div className="flex items-center gap-2.5 px-3 py-2.5 text-white/40"><Layers3 size={14} /> Momentum</div>
-            </div>
-            <div className="mt-auto rounded-xl border border-white/[0.08] bg-white/[0.025] p-3">
-              <div className="flex items-center justify-between text-[10px] text-white/35">
-                <span>WEEKLY RHYTHM</span><span className="text-[#F5F5F3]">82%</span>
-              </div>
-              <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
-                <div className="h-full w-[82%] rounded-full bg-[#F5F5F3]" />
-              </div>
-            </div>
-          </aside>
-
-          <div className="min-w-0 flex-1 p-4 sm:p-6 md:p-8">
-            <div className="flex flex-col justify-between gap-5 border-b border-white/[0.08] pb-5 sm:flex-row sm:items-end">
-              <div>
-                <p className="text-[10px] font-semibold tracking-[0.15em] text-white/35">THURSDAY · AUGUST 7</p>
-                <h2 className="mt-1.5 text-xl font-medium tracking-[-0.035em] text-white md:text-2xl">Good morning, Ashwin.</h2>
-              </div>
-              <div className="flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[10px] text-white/45">
-                <Sparkles size={12} className="text-[#F5F5F3]" />
-                {adapted ? 'Plan adapted just now' : 'Plan built at 8:00 AM'}
-              </div>
-            </div>
-
-            <div className="grid gap-5 pt-5 xl:grid-cols-[1.25fr_0.9fr]">
-              <div className="min-w-0 rounded-2xl border border-white/[0.08] bg-white/[0.018] p-3 sm:p-4">
-                <div className="grid grid-cols-5 border-b border-white/[0.07] pb-3 pl-9">
-                  {weekDays.map((item) => (
-                    <div key={item.day} className="text-center">
-                      <div className="text-[8px] font-semibold tracking-[0.12em] text-white/25">{item.day}</div>
-                      <div className={`mx-auto mt-1 grid h-6 w-6 place-items-center rounded-full text-[10px] ${item.active ? 'bg-[#F5F5F3] font-semibold text-[#090909]' : 'text-white/45'}`}>{item.date}</div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="relative mt-3 h-[330px] overflow-hidden">
-                  {[9, 10, 11, 12, 1, 2, 3, 4].map((time, index) => (
-                    <div key={time} className="relative flex h-[41px] items-start">
-                      <span className="w-9 shrink-0 -translate-y-1 text-[8px] text-white/20">{time}:00</span>
-                      <span className="mt-px h-px flex-1 bg-white/[0.055]" />
-                      {index === 1 && <span className="absolute left-9 right-0 top-[18px] h-px bg-white/30"><span className="absolute -left-1 -top-[3px] h-[7px] w-[7px] rounded-full bg-[#F5F5F3]" /></span>}
-                    </div>
-                  ))}
-
-                  <motion.div
-                    layout
-                    transition={{ duration: 0.55, ease }}
-                    className="absolute left-[24%] right-[5%] rounded-lg border border-white/25 bg-white/[0.09] px-2.5 py-2"
-                    style={{ top: adapted ? 128 : 86, height: adapted ? 52 : 68 }}
-                  >
-                    <p className="truncate text-[9px] font-medium text-[#F5F5F3]">Finalize launch brief</p>
-                    <p className="mt-0.5 text-[8px] text-white/40">{adapted ? '12:00 — 1:00' : '11:00 — 12:30'}</p>
-                  </motion.div>
-                  <motion.div
-                    layout
-                    transition={{ duration: 0.55, ease }}
-                    className="absolute left-[43%] right-[8%] h-[45px] rounded-lg border border-white/20 bg-white/[0.06] px-2.5 py-2"
-                    style={{ top: adapted ? 66 : 174 }}
-                  >
-                    <p className="truncate text-[9px] font-medium text-[#C8C8C4]">Review metrics</p>
-                    <p className="mt-0.5 text-[8px] text-white/35">{adapted ? '10:30 — 11:00' : '1:00 — 1:30'}</p>
-                  </motion.div>
-                  <motion.div
-                    layout
-                    transition={{ duration: 0.55, ease }}
-                    className="absolute left-[16%] right-[24%] h-[44px] rounded-lg border border-white/15 bg-white/[0.035] px-2.5 py-2"
-                    style={{ top: adapted ? 280 : 248 }}
-                  >
-                    <p className="truncate text-[9px] font-medium text-[#A0A09C]">Strength training</p>
-                    <p className="mt-0.5 text-[8px] text-white/25">{adapted ? '5:30 — 6:15' : '3:00 — 3:45'}</p>
-                  </motion.div>
-                </div>
-              </div>
-
-              <div className="flex min-w-0 flex-col rounded-2xl border border-white/[0.08] bg-[#151515] p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[10px] font-semibold tracking-[0.14em] text-white/35">TODAY'S PRIORITIES</p>
-                    <p className="mt-1 text-[11px] text-white/25">Ordered by impact, energy, and time</p>
-                  </div>
-                  <Target size={16} className="text-[#F5F5F3]" />
-                </div>
-
-                <div className="mt-4 space-y-2">
-                  <AnimatePresence mode="popLayout" initial={false}>
-                    {tasks.map((task) => (
-                      <motion.div
-                        layout
-                        key={task.title}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -8 }}
-                        transition={{ duration: 0.35, ease }}
-                        className="group flex items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.025] p-3"
-                      >
-                        <span className="font-mono text-[9px] text-white/20">{task.rank}</span>
-                        <span className="h-8 w-[3px] rounded-full" style={{ background: task.color }} />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[11px] font-medium text-white/80">{task.title}</span>
-                          <span className={`mt-0.5 block truncate text-[9px] ${task.moved ? 'text-white/65' : 'text-white/25'}`}>{task.meta}</span>
-                        </span>
-                        {task.moved && <RefreshCw size={11} className="text-[#F5F5F3]" />}
-                      </motion.div>
-                    ))}
-                  </AnimatePresence>
-                </div>
-
-                <div className="mt-auto pt-5">
-                  <div className="mb-3 rounded-xl border border-white/[0.07] bg-black/15 p-3">
-                    <div className="flex items-start gap-2.5">
-                      <div className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white/[0.08]"><Mic size={11} className="text-[#F5F5F3]" /></div>
-                      <div>
-                        <p className="text-[10px] leading-relaxed text-white/55">“Metrics review moved to 10:30 and I need a shorter focus block.”</p>
-                        <p className="mt-1.5 text-[8px] text-white/20">CAPRIO UNDERSTANDS THE CHANGE</p>
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setAdapted((current) => !current)}
-                    className="group flex w-full items-center justify-between rounded-xl bg-[#F5F5F3] px-4 py-3 text-left text-[#090909] transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-[#151515]"
-                  >
-                    <span>
-                      <span className="block text-[11px] font-semibold">{adapted ? 'Restore morning plan' : 'Adapt to the change'}</span>
-                      <span className="mt-0.5 block text-[9px] text-black/55">{adapted ? 'See the original schedule' : 'Watch Caprio reshape the day'}</span>
-                    </span>
-                    <RefreshCw size={14} className={`transition-transform duration-500 ${adapted ? 'rotate-180' : 'group-hover:rotate-45'}`} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </motion.div>
-      <p className="mt-4 text-center text-[11px] text-white/25">Interactive preview — try adapting the day</p>
-    </div>
-  );
-}
-
-function CalendarCard() {
-  return (
-    <div className="relative h-full min-h-[400px] overflow-hidden rounded-[26px] border border-white/[0.09] bg-[#151515] p-6 md:p-8">
-      <div className="absolute right-[-80px] top-[-80px] h-52 w-52 rounded-full bg-white/[0.06] blur-3xl" />
-      <div className="relative flex items-start justify-between">
+    <div className="relative flex h-full flex-col overflow-hidden rounded-[26px] border border-white/[0.09] bg-[#151515] p-6 md:p-8">
+      <div className="absolute right-[-80px] top-[-80px] h-52 w-52 rounded-full bg-white/[0.05] blur-3xl" />
+      <div className="relative flex items-start justify-between gap-4">
         <div>
-          <span className="text-[10px] font-semibold tracking-[0.16em] text-[#D6D6D2]">CALENDAR</span>
-          <h3 className="mt-3 max-w-sm text-2xl font-medium tracking-[-0.045em] text-white">Time is a constraint,<br />not a suggestion.</h3>
-          <p className="mt-3 max-w-sm text-sm leading-6 text-white/40">Caprio plans around the hours you actually have, protecting focus time without overpacking the day.</p>
+          <span className="text-[10px] font-semibold tracking-[0.16em] text-[#D6D6D2]">{eyebrow}</span>
+          <h3 className="mt-3 max-w-sm text-2xl font-medium tracking-[-0.045em] text-white">{title}</h3>
+          <p className="mt-3 max-w-sm text-sm leading-6 text-white/40">{text}</p>
         </div>
-        <div className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/[0.04]"><CalendarDays size={18} className="text-[#D6D6D2]" /></div>
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.04]"><Icon size={18} className="text-[#D6D6D2]" /></div>
       </div>
-      <div className="absolute bottom-[-28px] left-8 right-8 h-40 rotate-[-2deg] rounded-2xl border border-white/[0.08] bg-[#101010] p-4 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-white/[0.07] pb-3 text-[9px] text-white/25"><span>THURSDAY 07</span><span>4H 20M PLANNED</span></div>
-        <div className="mt-3 grid grid-cols-[36px_1fr] gap-y-2 text-[8px] text-white/20">
-          <span>09:00</span><span className="h-7 rounded-md border border-white/25 bg-white/[0.09] px-2 py-2 text-[#F5F5F3]">Focus block</span>
-          <span>11:00</span><span className="h-7 rounded-md border border-white/20 bg-white/[0.06] px-2 py-2 text-[#C8C8C4]">Team sync</span>
-          <span>14:00</span><span className="h-7 rounded-md border border-white/15 bg-white/[0.035] px-2 py-2 text-[#A0A09C]">Training</span>
-        </div>
-      </div>
+      <div className="relative mt-8 flex flex-1 flex-col justify-end">{children}</div>
     </div>
   );
 }
 
-function PriorityCard() {
-  const cards = [
-    { title: 'Launch brief', label: 'HIGH IMPACT', color: '#F5F5F3' },
-    { title: 'Review metrics', label: 'TIME SENSITIVE', color: '#B8B8B4' },
-    { title: 'Strength training', label: 'ENERGY MATCH', color: '#7A7A76' },
+function DraftPlanCard() {
+  const rows = [
+    { title: 'CS problem set', reason: 'Due tonight', minutes: 120 },
+    { title: 'Finish pitch deck', reason: 'Blocks investor call', minutes: 90 },
+    { title: 'Gym', reason: 'Protects your energy', minutes: 45 },
   ];
 
   return (
-    <div className="relative h-full min-h-[400px] overflow-hidden rounded-[26px] border border-white/[0.09] bg-[#151515] p-6 md:p-8">
-      <div className="absolute right-[-80px] top-[-80px] h-52 w-52 rounded-full bg-white/[0.05] blur-3xl" />
-      <div className="relative flex items-start justify-between">
-        <div>
-          <span className="text-[10px] font-semibold tracking-[0.16em] text-[#D6D6D2]">PRIORITIZATION</span>
-          <h3 className="mt-3 max-w-sm text-2xl font-medium tracking-[-0.045em] text-white">Your list, with an<br />actual point of view.</h3>
-          <p className="mt-3 max-w-sm text-sm leading-6 text-white/40">Every task is weighed against urgency, impact, energy, and the rest of your life—not just a due date.</p>
+    <FeatureCard eyebrow="DRAFT PLAN" title={<>Time is a constraint,<br />not a suggestion.</>} text="Caprio drafts a plan around the hours you actually have. Nothing is saved until you confirm it." icon={Clock3}>
+      <div className="rounded-2xl border border-white/[0.08] bg-[#101010] p-4 shadow-2xl">
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-[13px] font-medium text-white">Today’s plan</p>
+          <span className="shrink-0 rounded-full bg-[#F5F5F3]/10 px-2.5 py-1 text-[10px] text-[#F5F5F3]">Needs your confirmation</span>
         </div>
-        <div className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/[0.04]"><ListTodo size={18} className="text-[#D6D6D2]" /></div>
+        <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-2.5 py-1 text-[10px] text-white/55"><Clock3 size={11} />5h 10m of 6h</span>
+        <ol className="mt-3 space-y-1.5">
+          {rows.map((row, index) => (
+            <li key={row.title} className="flex items-center gap-3 rounded-lg bg-white/[0.03] px-3 py-2">
+              <span className="font-mono text-[9px] text-white/25">0{index + 1}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[12px] font-medium text-white/80">{row.title}</span>
+                <span className="block truncate text-[10px] text-white/35">{row.reason}</span>
+              </span>
+              <span className="shrink-0 text-[10px] tabular-nums text-white/30">{row.minutes} min</span>
+            </li>
+          ))}
+        </ol>
+        <span className="mt-4 inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#F5F5F3] px-3.5 text-[11px] font-semibold text-[#090909]">Confirm plan <ArrowRight size={12} /></span>
       </div>
-      <div className="mt-8 space-y-2">
-        {cards.map((card, index) => (
-          <div key={card.title} className="flex items-center gap-3 rounded-xl border border-white/[0.07] bg-[#101010] px-3.5 py-3 shadow-lg" style={{ transform: `translateX(${index * 6}px)` }}>
-            <span className="font-mono text-[9px] text-white/20">0{index + 1}</span>
-            <span className="h-7 w-[3px] rounded-full" style={{ background: card.color }} />
-            <span className="text-[11px] font-medium text-white/70">{card.title}</span>
-            <span className="ml-auto text-[8px] tracking-[0.08em]" style={{ color: card.color }}>{card.label}</span>
-          </div>
-        ))}
-      </div>
-    </div>
+    </FeatureCard>
   );
 }
+
+function TodayListCard() {
+  const rows = [
+    { title: 'CS problem set', meta: 'School · 120 min' },
+    { title: 'Finish pitch deck', meta: 'Work · 90 min' },
+    { title: 'Reply to Carter', meta: 'Work · 15 min' },
+  ];
+  const line = (row: { title: string; meta: string }, carried = false) => (
+    <li key={row.title} className="flex items-center gap-3 py-2">
+      <span className="h-4 w-4 shrink-0 rounded-[5px] border border-white/25" />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[12px] font-medium text-white/80">{row.title}</span>
+        <span className="mt-0.5 flex items-center gap-2 text-[10px] text-white/35">{row.meta}{carried && <span className="rounded bg-white/[0.07] px-1.5 py-px text-white/55">From yesterday</span>}</span>
+      </span>
+    </li>
+  );
+
+  return (
+    <FeatureCard eyebrow="TODAY" title={<>Your list, with an<br />actual point of view.</>} text="Confirmed tasks land on Today in ranked order. Anything unfinished from yesterday is carried forward, not lost." icon={ListTodo}>
+      <div className="rounded-2xl border border-white/[0.08] bg-[#101010] p-4 shadow-2xl">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/35">Today</p>
+        <ol className="mt-1 divide-y divide-white/[0.05]">{rows.map((row) => line(row))}</ol>
+        <div className="mt-3 rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 pt-2.5">
+          <div className="flex items-center gap-2">
+            <ChevronDown size={13} className="text-white/40" />
+            <span className="text-[12px] font-medium text-white/75">Carried forward</span>
+            <span className="rounded-full bg-white/[0.08] px-1.5 text-[10px] text-white/60">1</span>
+          </div>
+          <ol>{line({ title: 'Email TA about lab report', meta: 'School · 10 min' }, true)}</ol>
+        </div>
+      </div>
+    </FeatureCard>
+  );
+}
+
+const reviewRows = [
+  { title: 'Finish pitch deck', choice: 'Done' },
+  { title: 'Groceries', choice: 'Tomorrow' },
+  { title: 'Reorganize notes app', choice: 'Drop' },
+];
+
+const reviewOutcomes = [
+  { label: 'Done', icon: Check },
+  { label: 'Tomorrow', icon: ArrowRight },
+  { label: 'Drop', icon: X },
+];
 
 export default function Landing() {
   const reduceMotion = useReducedMotion();
@@ -375,7 +212,7 @@ export default function Landing() {
             </motion.p>
           </div>
 
-          <ProductPreview />
+          <ConversationDemo />
         </section>
 
         <section id="product" className="border-y border-white/[0.07] bg-[#101010] px-5 py-24 md:px-8 md:py-32">
@@ -389,8 +226,8 @@ export default function Landing() {
             </Reveal>
 
             <div className="mt-14 grid gap-5 lg:grid-cols-2">
-              <Reveal><CalendarCard /></Reveal>
-              <Reveal delay={0.08}><PriorityCard /></Reveal>
+              <Reveal className="h-full"><DraftPlanCard /></Reveal>
+              <Reveal delay={0.08} className="h-full"><TodayListCard /></Reveal>
             </div>
           </div>
         </section>
@@ -446,20 +283,22 @@ export default function Landing() {
               <Reveal delay={0.08} className="overflow-hidden rounded-[26px] border border-white/[0.09] bg-[#151515] p-6 md:p-8">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-[10px] font-semibold tracking-[0.16em] text-[#D6D6D2]">MOMENTUM, NOT GUILT</p>
-                    <h3 className="mt-3 text-2xl font-medium tracking-[-0.045em]">See a balanced life.</h3>
+                    <p className="text-[10px] font-semibold tracking-[0.16em] text-[#D6D6D2]">CLOSE THE DAY</p>
+                    <h3 className="mt-3 text-2xl font-medium tracking-[-0.045em]">Done, tomorrow, or drop.</h3>
                   </div>
-                  <Zap size={19} className="text-[#F5F5F3]" />
+                  <Moon size={19} className="text-[#F5F5F3]" />
                 </div>
-                <div className="mt-10 space-y-5">
-                  {[
-                    { label: 'Work', value: 82, color: '#F5F5F3' },
-                    { label: 'Health', value: 64, color: '#B8B8B4' },
-                    { label: 'Personal', value: 48, color: '#7A7A76' },
-                  ].map((item) => (
-                    <div key={item.label}>
-                      <div className="mb-2 flex items-center justify-between text-[10px]"><span className="text-white/45">{item.label}</span><span className="text-white/25">{item.value}%</span></div>
-                      <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.06]"><motion.div initial={{ width: 0 }} whileInView={{ width: `${item.value}%` }} viewport={{ once: true }} transition={{ duration: 1, ease }} className="h-full rounded-full" style={{ background: item.color }} /></div>
+                <div className="mt-10 space-y-2.5">
+                  {reviewRows.map((row) => (
+                    <div key={row.title} className="rounded-xl border border-white/[0.08] bg-[#0D0D0D] p-3">
+                      <p className="text-[12px] font-medium text-white/75">{row.title}</p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {reviewOutcomes.map(({ label, icon: Icon }) => (
+                          <span key={label} className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] ${row.choice === label ? 'border-[#F5F5F3]/40 bg-[#F5F5F3]/10 text-[#F5F5F3]' : 'border-white/[0.08] text-white/35'}`}>
+                            <Icon size={11} />{label}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   ))}
                 </div>
