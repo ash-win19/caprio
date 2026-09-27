@@ -55,9 +55,9 @@ function FeatureCard({ eyebrow, title, text, icon: Icon, children }: { eyebrow: 
 
 function DraftPlanCard() {
   const rows = [
-    { title: 'CS problem set', reason: 'Due tonight', minutes: 120 },
-    { title: 'Finish pitch deck', reason: 'Blocks investor call', minutes: 90 },
-    { title: 'Gym', reason: 'Protects your energy', minutes: 45 },
+    { title: 'Stats problem set', reason: 'Due tonight', minutes: 100 },
+    { title: 'Office hours at 3', reason: 'Bring your pset questions', minutes: 30 },
+    { title: 'Finish pitch deck', reason: 'Pitch is Friday', minutes: 75 },
   ];
 
   return (
@@ -67,7 +67,7 @@ function DraftPlanCard() {
           <p className="text-[13px] font-medium text-white">Today’s plan</p>
           <span className="shrink-0 rounded-full bg-[#F5F5F3]/10 px-2.5 py-1 text-[10px] text-[#F5F5F3]">Needs your confirmation</span>
         </div>
-        <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-2.5 py-1 text-[10px] text-white/55"><Clock3 size={11} />5h 10m of 6h</span>
+        <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-2.5 py-1 text-[10px] text-white/55"><Clock3 size={11} />5h 20m of 6h</span>
         <ol className="mt-3 space-y-1.5">
           {rows.map((row, index) => (
             <li key={row.title} className="flex items-center gap-3 rounded-lg bg-white/[0.03] px-3 py-2">
@@ -88,9 +88,9 @@ function DraftPlanCard() {
 
 function TodayListCard() {
   const rows = [
-    { title: 'CS problem set', meta: 'School · 120 min' },
-    { title: 'Finish pitch deck', meta: 'Work · 90 min' },
-    { title: 'Reply to Carter', meta: 'Work · 15 min' },
+    { title: 'Stats problem set', meta: 'School · 100 min' },
+    { title: 'Office hours at 3', meta: 'School · 30 min' },
+    { title: 'Finish pitch deck', meta: 'Work · 75 min' },
   ];
   const line = (row: { title: string; meta: string }, carried = false) => (
     <li key={row.title} className="flex items-center gap-3 py-2">
@@ -121,9 +121,9 @@ function TodayListCard() {
 }
 
 const reviewRows = [
-  { title: 'Finish pitch deck', choice: 'Done' },
+  { title: 'Stats problem set', choice: 'Done' },
   { title: 'Groceries', choice: 'Tomorrow' },
-  { title: 'Reorganize notes app', choice: 'Drop' },
+  { title: '1 LeetCode', choice: 'Drop' },
 ];
 
 const reviewOutcomes = [

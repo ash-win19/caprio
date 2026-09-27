@@ -37,8 +37,10 @@ describe('ConversationDemo', () => {
     expect(screen.getByText('Your tasks')).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Today', hidden: true })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Carried forward', hidden: true })).toBeInTheDocument();
-    expect(screen.getByText('CS problem set')).toBeInTheDocument();
-    expect(screen.getByText('Call mom')).toBeInTheDocument();
+    expect(screen.getByText('Stats problem set')).toBeInTheDocument();
+    expect(screen.getByText('Office hours at 3')).toBeInTheDocument();
+    expect(screen.getByText('1 LeetCode')).toBeInTheDocument();
+    expect(screen.getByText('Email TA about lab report')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /replay/i })).not.toBeInTheDocument();
   });
 
