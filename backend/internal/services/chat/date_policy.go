@@ -8,6 +8,15 @@ import (
 )
 
 type timezoneKey struct{}
+type clockKey struct{}
+
+// withClock makes the service's clock the source of "now" for date policy.
+func withClock(ctx context.Context, now func() time.Time) context.Context {
+	if now == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, clockKey{}, now)
+}
 
 // WithTimezone validates a browser timezone. The server clock determines today.
 func WithTimezone(ctx context.Context, timezone string) (context.Context, error) {
@@ -21,12 +30,23 @@ func WithTimezone(ctx context.Context, timezone string) (context.Context, error)
 }
 
 func CurrentDate(ctx context.Context) pgtype.Date {
-	timezone, _ := ctx.Value(timezoneKey{}).(string)
-	if timezone == "" {
-		timezone = "UTC"
-	}
-	date, _ := LocalToday(time.Now(), timezone)
+	date, _ := ParseDate(LocalNow(ctx).Format("2006-01-02"))
 	return date
+}
+
+// LocalNow is the current wall-clock time in the request's timezone.
+// WithTimezone has already validated the zone.
+func LocalNow(ctx context.Context) time.Time {
+	timezone, _ := ctx.Value(timezoneKey{}).(string)
+	location, err := time.LoadLocation(timezone)
+	if timezone == "" || err != nil {
+		location = time.UTC
+	}
+	now := time.Now
+	if clock, ok := ctx.Value(clockKey{}).(func() time.Time); ok {
+		now = clock
+	}
+	return now().In(location)
 }
 
 func WritableDate(ctx context.Context, date pgtype.Date) error {

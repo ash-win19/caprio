@@ -26,6 +26,9 @@ type Config struct {
 
 	// Mastra Agent Server
 	MastraURL string
+	// PlannerToolSecret is shared with the planner agent. Its tools send it when
+	// they call back into /internal/planner, and it signs turn tokens.
+	PlannerToolSecret string
 
 	// CORS
 	CORSAllowedOrigins string
@@ -53,7 +56,8 @@ func Load() Config {
 		OpenAIModel:  getEnv("OPENAI_MODEL", "gpt-4o-mini"),
 
 		// Mastra
-		MastraURL: os.Getenv("MASTRA_URL"),
+		MastraURL:         os.Getenv("MASTRA_URL"),
+		PlannerToolSecret: os.Getenv("PLANNER_TOOL_SECRET"),
 
 		// CORS
 		CORSAllowedOrigins: getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173"),

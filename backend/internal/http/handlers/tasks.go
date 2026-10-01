@@ -409,7 +409,7 @@ func (h *TaskHandler) mutate(ctx context.Context, userID uuid.UUID, fn func(pgx.
 		if err := fn(tx, q); err != nil {
 			return err
 		}
-		_, err := tx.Exec(ctx, `UPDATE daily_plans SET proposal=NULL,proposal_snapshot=NULL,version=version+1,updated_at=clock_timestamp() WHERE user_id=$1 AND state <> 'closed'`, userID)
+		_, err := tx.Exec(ctx, `UPDATE daily_plans SET proposal=NULL,proposal_snapshot=NULL,draft=NULL,version=version+1,updated_at=clock_timestamp() WHERE user_id=$1 AND state <> 'closed'`, userID)
 		return err
 	})
 }

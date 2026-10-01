@@ -1,5 +1,5 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
-import { date, titles, tasksForDay, mockDay } from './fixtures/day';
+import { date, titles, tasksForDay, mockDay, planView } from './fixtures/day';
 
 async function box(locator: Locator) {
   const bounds = await locator.boundingBox();
@@ -202,7 +202,7 @@ test('failed completion restores the task and keeps the failure visible', async 
 });
 
 test('proposal and older recovery remain distinct from the daily review footer', async ({ page }) => {
-  const writes = await mockDay(page, { oldestUnclosedDate: '2026-09-06', proposal: { id: 'proposal', summary: 'Adjusted plan', availableMinutes: 220, tasks: [] } });
+  const writes = await mockDay(page, { oldestUnclosedDate: '2026-09-06', plan: planView([{ ref: 'new:1', title: 'Adjusted work', badge: 'new', date }]) });
   await page.goto('/today');
   await expect(page.getByRole('link', { name: 'Review proposal' })).toHaveAttribute('href', `/new?date=${date}`);
   await expect(page.getByRole('link', { name: 'Review day', exact: true })).toHaveAttribute('href', `/review?date=${date}`);

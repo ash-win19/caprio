@@ -41,6 +41,8 @@ func operationContext(w *Workflow, owned []generated.Task, categories []generate
 	for _, c := range categories {
 		cats = append(cats, category{c.ID, c.Name})
 	}
-	raw, _ := json.Marshal(map[string]any{"date": w.Date, "localToday": today, "operationsEnabled": true, "referencedTaskId": referenced, "state": w.State, "ownedTasks": tasks, "categories": cats, "availableMinutes": w.AvailableMinutes, "proposal": w.Proposal})
+	// plan is the day's draft applied to saved work; refs in it and task IDs in
+	// ownedTasks are what the planner tools accept.
+	raw, _ := json.Marshal(map[string]any{"date": w.Date, "localToday": today, "referencedTaskId": referenced, "state": w.State, "ownedTasks": tasks, "categories": cats, "availableMinutes": w.AvailableMinutes, "plan": w.Plan})
 	return raw
 }

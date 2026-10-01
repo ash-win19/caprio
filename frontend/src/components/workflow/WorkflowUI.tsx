@@ -5,42 +5,6 @@ import type { Workflow } from '@/lib/api';
 import { dateLabel, followingDate } from './dates';
 import { localDate } from '@/lib/date';
 
-export type ProposalRevisionDiff = {
-  kept: string[];
-  added: string[];
-  deferredOrRemoved: string[];
-};
-
-/** Compare an active day's unfinished tasks to a revision proposal (client-side). */
-export function proposalRevisionDiff(
-  currentTasks: Array<{ id: string; title: string; completed: boolean }>,
-  proposalTasks: Array<{ id?: string; title: string; disposition: 'today' | 'backlog' }>,
-): ProposalRevisionDiff {
-  const unfinished = currentTasks.filter((task) => !task.completed);
-  const proposedToday = proposalTasks.filter((task) => task.disposition === 'today');
-  const titleKey = (title: string) => title.trim().toLowerCase();
-  const keysFor = (task: { id?: string; title: string }) => {
-    const keys = new Set<string>([`title:${titleKey(task.title)}`]);
-    if (task.id) keys.add(`id:${task.id}`);
-    return keys;
-  };
-  const overlaps = (a: { id?: string; title: string }, b: { id?: string; title: string }) => {
-    const left = keysFor(a);
-    for (const key of keysFor(b)) if (left.has(key)) return true;
-    return false;
-  };
-  const kept: string[] = [];
-  const added: string[] = [];
-  for (const task of proposedToday) {
-    if (unfinished.some((current) => overlaps(current, task))) kept.push(task.title);
-    else added.push(task.title);
-  }
-  const deferredOrRemoved = unfinished
-    .filter((task) => !proposedToday.some((proposed) => overlaps(task, proposed)))
-    .map((task) => task.title);
-  return { kept, added, deferredOrRemoved };
-}
-
 const KNOWN_ERRORS: Record<string, string> = {
   'tomorrow is already closed': "The next calendar day is already closed, so these tasks cannot move there. Choose Done or Drop, or go back and leave this review open.",
   'Internal server error': 'Something went wrong on our end. Please try again.',
@@ -82,7 +46,8 @@ export function workflowErrorCategory(error: unknown): WorkflowErrorCategory {
 export function workflowErrorMessage(error: unknown): string {
   if (!(error instanceof Error)) return 'Something went wrong. Please try again.';
   const code = workflowErrorCode(error);
-  if (code === 'plan_incomplete') return 'The proposed plan is incomplete. Include every unfinished saved task or move it to the inbox, then try again.';
+  if (code === 'plan_update_failed') return 'I couldn’t update the plan. Try again.';
+  if (code === 'turn_in_progress') return 'Still replying to your last message.';
   if (code === 'over_capacity' || code === 'validation' || code === 'conflict') return KNOWN_ERRORS[error.message] || error.message;
   if (KNOWN_ERRORS[error.message]) return KNOWN_ERRORS[error.message];
 

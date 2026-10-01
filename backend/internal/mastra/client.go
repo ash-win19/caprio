@@ -21,8 +21,9 @@ type Client struct {
 // NewClient creates a Mastra HTTP client.
 func NewClient(baseURL string) *Client {
 	return &Client{
-		baseURL:    baseURL,
-		httpClient: &http.Client{Timeout: 60 * time.Second},
+		baseURL: baseURL,
+		// A planning turn can take several tool steps.
+		httpClient: &http.Client{Timeout: 120 * time.Second},
 	}
 }
 
@@ -32,12 +33,23 @@ type ChatMessage struct {
 	Content string `json:"content"`
 }
 
+// Call is one agent turn. RequestContext reaches the agent's tools; the
+// planner tools read the turn token from it.
+type Call struct {
+	Messages       []ChatMessage
+	ThreadID       string
+	ResourceID     string
+	Model          string
+	RequestContext map[string]any
+	MaxSteps       int
+}
+
 // GenerateRequest is the request to the Mastra agent generate endpoint.
 type GenerateRequest struct {
-	Messages   []ChatMessage `json:"messages"`
-	ThreadID   string        `json:"threadId"`
-	ResourceID string        `json:"resourceId"`
-	Model      string        `json:"model,omitempty"`
+	Messages       []ChatMessage  `json:"messages"`
+	RequestContext map[string]any `json:"requestContext,omitempty"`
+	MaxSteps       int            `json:"maxSteps,omitempty"`
+	Model          string         `json:"model,omitempty"`
 }
 
 // GenerateResponse is the response from the Mastra generate endpoint.
@@ -53,12 +65,12 @@ type ChatResponse struct {
 
 const agentPath = "/api/agents/general-conversation-agent"
 
-func (c *Client) newRequest(ctx context.Context, path string, messages []ChatMessage, threadID, resourceID, model string) (*http.Request, error) {
+func (c *Client) newRequest(ctx context.Context, path string, call Call) (*http.Request, error) {
 	bodyBytes, err := json.Marshal(GenerateRequest{
-		Messages:   messages,
-		ThreadID:   threadID,
-		ResourceID: resourceID,
-		Model:      model,
+		Messages:       call.Messages,
+		RequestContext: call.RequestContext,
+		MaxSteps:       call.MaxSteps,
+		Model:          call.Model,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
@@ -72,8 +84,8 @@ func (c *Client) newRequest(ctx context.Context, path string, messages []ChatMes
 }
 
 // Chat sends messages to the Mastra agent and returns the assistant's reply.
-func (c *Client) Chat(ctx context.Context, messages []ChatMessage, threadID, resourceID, model string) (*ChatResponse, error) {
-	httpReq, err := c.newRequest(ctx, "/generate", messages, threadID, resourceID, model)
+func (c *Client) Chat(ctx context.Context, call Call) (*ChatResponse, error) {
+	httpReq, err := c.newRequest(ctx, "/generate", call)
 	if err != nil {
 		return nil, err
 	}
@@ -150,8 +162,8 @@ func (c streamChunk) errorMessage() string {
 // StreamChat sends messages to the Mastra agent stream endpoint and passes each
 // text fragment to onDelta as it arrives. The complete reply is returned once
 // the stream ends.
-func (c *Client) StreamChat(ctx context.Context, messages []ChatMessage, threadID, resourceID, model string, onDelta func(string)) (*ChatResponse, error) {
-	httpReq, err := c.newRequest(ctx, "/stream", messages, threadID, resourceID, model)
+func (c *Client) StreamChat(ctx context.Context, call Call, onDelta func(string)) (*ChatResponse, error) {
+	httpReq, err := c.newRequest(ctx, "/stream", call)
 	if err != nil {
 		return nil, err
 	}

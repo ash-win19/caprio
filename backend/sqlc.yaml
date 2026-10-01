@@ -34,3 +34,7 @@ sql:
               import: "time"
               type: "Time"
               pointer: true
+          - column: "chat_messages.metadata"
+            go_type:
+              import: "encoding/json"
+              type: "RawMessage"
