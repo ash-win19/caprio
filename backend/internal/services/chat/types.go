@@ -88,6 +88,7 @@ type Workflow struct {
 	Backlog              []generated.Task        `json:"backlog"`
 	Review               *Review                 `json:"review"`
 	OldestUnclosedDate   *string                 `json:"oldestUnclosedDate"`
+	Opener               *string                 `json:"opener,omitempty"`
 	TaskDetailsAvailable bool                    `json:"taskDetailsAvailable"`
 }
 

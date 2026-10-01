@@ -364,6 +364,16 @@ export interface DayReview {
   energyLevel: number | null;
 }
 
+// App-written entries in the day's conversation. The model never writes them.
+export type ChatEventType = 'opener' | 'plan_update' | 'discarded' | 'plan_saved' | 'rebase_note';
+export interface ChatThreadMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'event';
+  content: string;
+  eventType?: ChatEventType | null;
+  metadata?: unknown;
+}
+
 export interface Workflow {
   changeReceipts?: ChangeReceipt[];
   reviewHistory?: ReviewRecord[];
@@ -373,7 +383,8 @@ export interface Workflow {
   date: string;
   state: 'planning' | 'active' | 'closed';
   version: number;
-  messages: Array<{ id: string; role: 'user' | 'assistant'; content: string }>;
+  messages: ChatThreadMessage[];
+  opener?: string;
   proposal: PlanProposal | null;
   availableMinutes: number | null;
   tasks: BackendTask[];

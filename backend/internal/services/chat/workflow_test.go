@@ -252,7 +252,11 @@ func TestClarifyingPreservesProposalAndDiscardPreservesTasks(t *testing.T) {
 	discarded, err := s.Discard(ctx, user, date, r.Workflow.Proposal.ID, r.Workflow.Version)
 	require.NoError(t, err)
 	require.Nil(t, discarded.Proposal)
-	require.Len(t, discarded.Messages, 4)
+	require.Len(t, discarded.Messages, 5)
+	require.Equal(t, "event", discarded.Messages[4].Role)
+	encoded, err := json.Marshal(discarded)
+	require.NoError(t, err)
+	require.Contains(t, string(encoded), `"metadata":null`)
 	require.Empty(t, discarded.Tasks)
 	_, err = s.Confirm(ctx, user, date, w.Proposal.ID, w.Version)
 	require.ErrorIs(t, err, ErrConflict)
@@ -378,4 +382,60 @@ func TestMigrationPreservesExistingOnboardingAndDefaultsNewUsers(t *testing.T) {
 	err = tx.QueryRow(ctx, `INSERT INTO users (id) VALUES ('10000000-0000-0000-0000-000000000002') RETURNING onboarding_complete`).Scan(&fresh)
 	require.NoError(t, err)
 	require.False(t, fresh)
+}
+
+func TestConversationEventsFrameTheDaysThread(t *testing.T) {
+	s, a, user, _ := testService(t)
+	ctx := context.Background()
+	date := CurrentDate(ctx)
+	opened, err := s.Get(ctx, user, date)
+	require.NoError(t, err)
+	require.NotNil(t, opened.Opener)
+	require.Contains(t, *opened.Opener, "What's on today?")
+
+	w := propose(t, s, a, user, date, planTask("Report"))
+	require.Nil(t, w.Opener)
+	require.Len(t, w.Messages, 3)
+	require.Equal(t, "event", w.Messages[0].Role)
+	require.Equal(t, ptr("opener"), w.Messages[0].EventType)
+	require.Equal(t, *opened.Opener, w.Messages[0].Content)
+	require.Equal(t, "user", w.Messages[1].Role)
+	require.Equal(t, "assistant", a.last[1].Role, "the opener reaches the model as Caprio's own first line")
+	require.Equal(t, *opened.Opener, a.last[1].Content)
+
+	discarded, err := s.Discard(ctx, user, date, w.Proposal.ID, w.Version)
+	require.NoError(t, err)
+	last := discarded.Messages[len(discarded.Messages)-1]
+	require.Equal(t, "event", last.Role)
+	require.Equal(t, ptr("discarded"), last.EventType)
+	require.Equal(t, "Proposal discarded", last.Content)
+
+	w = propose(t, s, a, user, date, planTask("Report"))
+	notes := []string{}
+	for _, m := range a.last {
+		if m.Role == "system" && strings.HasPrefix(m.Content, "[Caprio]") {
+			notes = append(notes, m.Content)
+		}
+	}
+	require.Equal(t, []string{"[Caprio] The user discarded the draft plan. Nothing from it was saved."}, notes)
+	openers := 0
+	for _, m := range w.Messages {
+		if m.EventType != nil && *m.EventType == "opener" {
+			openers++
+		}
+	}
+	require.Equal(t, 1, openers, "the opener is written once per day")
+
+	confirmed, err := s.Confirm(ctx, user, date, w.Proposal.ID, w.Version)
+	require.NoError(t, err)
+	last = confirmed.Messages[len(confirmed.Messages)-1]
+	require.Equal(t, ptr("plan_saved"), last.EventType)
+	require.Equal(t, "Plan saved · 1 task", last.Content)
+	after, err := s.Get(ctx, user, date)
+	require.NoError(t, err)
+	require.Nil(t, after.Opener, "an active day opens on the adjust prompt, not an opener")
+
+	sessions, err := s.store.Queries.ListChatSessionsByUser(ctx, user)
+	require.NoError(t, err)
+	require.EqualValues(t, 4, sessions[0].MessageCount, "events are not counted as messages")
 }

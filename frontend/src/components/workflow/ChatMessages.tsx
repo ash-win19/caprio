@@ -1,10 +1,23 @@
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
+import type { ChatThreadMessage } from '@/lib/api';
 
 export function MessageBubble({ role, children }: { role: 'user' | 'assistant'; children: ReactNode }) {
   return <div className={`flex ${role === 'user' ? 'justify-end' : 'justify-start'}`}>
     <div className={`max-w-[90%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed ${role === 'user' ? 'bg-accent text-foreground' : 'text-foreground'}`}>{children}</div>
   </div>;
+}
+
+// A marker the app writes into the thread, such as a discarded or saved plan.
+export function EventMarker({ children }: { children: string }) {
+  return <p role="status" aria-label={children} className="text-center text-xs text-muted-foreground">{children}</p>;
+}
+
+// The opener reads as Caprio's first line; other events are quiet markers.
+export function ThreadEntry({ message }: { message: ChatThreadMessage }) {
+  if (message.role !== 'event') return <MessageBubble role={message.role}>{message.content}</MessageBubble>;
+  if (message.eventType === 'opener') return <MessageBubble role="assistant">{message.content}</MessageBubble>;
+  return <EventMarker>{message.content}</EventMarker>;
 }
 
 // Shown from the moment a message is sent until the first token arrives.
