@@ -72,8 +72,8 @@ func TestConcurrentSuccessEventsObserveCommittedState(t *testing.T) {
 			require.NoError(t, err)
 		}
 	}
-	draft := propose(t, s, a, user, date, planTask("Private title"))
-	concurrent(func() error { _, err := s.Confirm(ctx, user, date, draft.Proposal.ID, draft.Version); return err })
+	draft := propose(t, s, a, user, date, "Private title")
+	concurrent(func() error { _, err := s.Confirm(ctx, user, date, draft.Plan.DraftID, draft.Version); return err })
 	w, err := s.Get(ctx, user, date)
 	require.NoError(t, err)
 	req := CloseRequest{Date: w.Date, Notes: ptr("Private notes"), TaskActions: []TaskAction{{w.Tasks[0].ID, "done"}}}
@@ -91,10 +91,10 @@ func TestSuccessEventsOnlyForCommittedTransitions(t *testing.T) {
 	t.Cleanup(func() { slog.SetDefault(previous) })
 	s, a, user, date := testService(t)
 	ctx := context.Background()
-	draft := propose(t, s, a, user, date, planTask("Private task title"))
-	confirmed, err := s.Confirm(ctx, user, date, draft.Proposal.ID, draft.Version)
+	draft := propose(t, s, a, user, date, "Private task title")
+	confirmed, err := s.Confirm(ctx, user, date, draft.Plan.DraftID, draft.Version)
 	require.NoError(t, err)
-	_, err = s.Confirm(ctx, user, date, draft.Proposal.ID, draft.Version)
+	_, err = s.Confirm(ctx, user, date, draft.Plan.DraftID, draft.Version)
 	require.NoError(t, err)
 	request := CloseRequest{Date: "2026-09-06", TaskActions: []TaskAction{{confirmed.Tasks[0].ID, "tomorrow"}}}
 	_, err = s.Close(ctx, user, request)

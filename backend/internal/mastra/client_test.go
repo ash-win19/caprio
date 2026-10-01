@@ -43,11 +43,16 @@ func TestChat_Success(t *testing.T) {
 		if req.Messages[0].Content != "hello" {
 			t.Errorf("expected content 'hello', got %s", req.Messages[0].Content)
 		}
-		if req.ThreadID != "user-123:2024-01-15" {
-			t.Errorf("expected threadId 'user-123:2024-01-15', got %s", req.ThreadID)
+		var raw map[string]any
+		_ = json.Unmarshal(bodyBytes, &raw)
+		if _, ok := raw["threadId"]; ok {
+			t.Errorf("v1 generate ignores top-level threadId; it must not be sent")
 		}
-		if req.ResourceID != "user-123" {
-			t.Errorf("expected resourceId 'user-123', got %s", req.ResourceID)
+		if req.RequestContext["turnToken"] != "token-1" {
+			t.Errorf("expected the turn token in requestContext, got %v", req.RequestContext)
+		}
+		if req.MaxSteps != 10 {
+			t.Errorf("expected maxSteps 10, got %d", req.MaxSteps)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -62,7 +67,7 @@ func TestChat_Success(t *testing.T) {
 	client := NewClient(server.URL)
 	messages := []ChatMessage{{Role: "user", Content: "hello"}}
 
-	resp, err := client.Chat(context.Background(), messages, "user-123:2024-01-15", "user-123", "")
+	resp, err := client.Chat(context.Background(), Call{Messages: messages, ThreadID: "user-123:2024-01-15", ResourceID: "user-123", RequestContext: map[string]any{"turnToken": "token-1"}, MaxSteps: 10})
 	if err != nil {
 		t.Fatalf("Chat failed: %v", err)
 	}
@@ -82,7 +87,7 @@ func TestChat_NonOKStatus(t *testing.T) {
 	client := NewClient(server.URL)
 	messages := []ChatMessage{{Role: "user", Content: "hello"}}
 
-	_, err := client.Chat(context.Background(), messages, "thread-1", "resource-1", "")
+	_, err := client.Chat(context.Background(), Call{Messages: messages, Model: ""})
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -106,7 +111,7 @@ func TestChat_EmptyText(t *testing.T) {
 	client := NewClient(server.URL)
 	messages := []ChatMessage{{Role: "user", Content: "hello"}}
 
-	_, err := client.Chat(context.Background(), messages, "thread-1", "resource-1", "")
+	_, err := client.Chat(context.Background(), Call{Messages: messages, Model: ""})
 	if err == nil {
 		t.Fatal("expected error for empty text, got nil")
 	}
@@ -127,7 +132,7 @@ func TestChat_InvalidJSON(t *testing.T) {
 	client := NewClient(server.URL)
 	messages := []ChatMessage{{Role: "user", Content: "hello"}}
 
-	_, err := client.Chat(context.Background(), messages, "thread-1", "resource-1", "")
+	_, err := client.Chat(context.Background(), Call{Messages: messages, Model: ""})
 	if err == nil {
 		t.Fatal("expected error for invalid JSON, got nil")
 	}
@@ -164,7 +169,7 @@ func TestChat_IncludesModel(t *testing.T) {
 	client := NewClient(server.URL)
 	messages := []ChatMessage{{Role: "user", Content: "hello"}}
 
-	resp, err := client.Chat(context.Background(), messages, "thread-1", "resource-1", "groq/openai/gpt-oss-20b")
+	resp, err := client.Chat(context.Background(), Call{Messages: messages, Model: "groq/openai/gpt-oss-20b"})
 	if err != nil {
 		t.Fatalf("Chat failed: %v", err)
 	}

@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import type { BackendTask, Workflow } from '../../src/lib/api';
+import type { BackendTask, PlanItem, PlanView, Workflow } from '../../src/lib/api';
 
 export const date = '2026-09-14';
 export const titles = [
@@ -21,11 +21,12 @@ export async function mockDay(page: Page, options: {
   collapsed?: boolean;
   tasks?: BackendTask[];
   state?: Workflow['state'];
-  proposal?: Workflow['proposal'];
+  plan?: Workflow['plan'];
   messages?: Workflow['messages'];
   oldestUnclosedDate?: string;
   carryoverOrigins?: Record<string, string>;
   firstVisit?: boolean;
+  opener?: string;
 } = {}) {
   const tasks = options.tasks ?? tasksForDay();
   const writes: Array<{ path: string; body: unknown }> = [];
@@ -73,10 +74,11 @@ export async function mockDay(page: Page, options: {
       const requestedDate = url.searchParams.get('date');
       await route.fulfill({ json: {
         date: requestedDate, oldestUnclosedDate: options.oldestUnclosedDate ?? null, state: requestedDate === date ? options.state ?? 'active' : 'planning',
-        version: 1, messages: options.messages ?? [], proposal: options.proposal ?? null, availableMinutes: 220,
+        version: 1, messages: options.messages ?? [], plan: options.plan ?? null, availableMinutes: 220,
         tasks, backlog: [], review: options.state === 'closed'
           ? { completedCount: 1, carriedToTomorrowCount: 1, droppedCount: 1, notes: null, energyLevel: null } : null,
         carryoverOrigins: options.carryoverOrigins ?? {},
+        ...(requestedDate === date && options.opener ? { opener: options.opener } : {}),
       } });
     } else if (url.pathname === '/api/tasks') {
       await route.fulfill({ json: { tasks } });
@@ -87,4 +89,17 @@ export async function mockDay(page: Page, options: {
     }
   });
   return writes;
+}
+
+// A plan view as the backend returns it: saved work with the draft applied.
+export function planView(today: PlanItem[], extra: Partial<PlanView> = {}): PlanView {
+  const counts = { new: 0, edited: 0, moved: 0, removed: 0, carried: 0 };
+  for (const item of [...today, ...(extra.carried ?? []), ...(extra.otherDays ?? [])]) {
+    if (item.badge === 'new') counts.new++;
+    if (item.badge === 'edited' || item.badge === 'done') counts.edited++;
+    if (item.badge === 'moved') counts.moved++;
+    if (item.badge === 'removed') counts.removed++;
+  }
+  counts.carried = (extra.carried ?? []).filter(item => item.badge !== 'removed').length;
+  return { draftId: 'draft-1', today, carried: [], otherDays: [], doneCount: 0, counts, ...extra };
 }

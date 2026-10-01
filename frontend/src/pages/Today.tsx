@@ -40,7 +40,7 @@ export default function Today({ embedded = false }: { embedded?: boolean }) {
   const interruptHref = `/new?date=${date}&intent=interrupt`;
   const remainingMinutes = active.reduce((sum, task) => sum + (task.duration || 0), 0);
   const unestimatedCount = active.filter(task => task.duration == null).length;
-  const availableMinutes = workflow?.availableMinutes ?? workflow?.proposal?.availableMinutes ?? null;
+  const availableMinutes = workflow?.availableMinutes ?? null;
   const busy = reorder.isPending || toggle.isPending;
   const cardReadOnly = readOnly || !isToday || busy;
   const focusAfterTaskAction = useRef<({ id: string; date: string } & (
@@ -102,7 +102,7 @@ export default function Today({ embedded = false }: { embedded?: boolean }) {
         {tasks.length > 0 && <p className="today-capacity text-muted-foreground">
           {remainingMinutes} min estimated remaining{unestimatedCount > 0 ? ` · ${unestimatedCount} ${unestimatedCount === 1 ? 'task' : 'tasks'} without an estimate` : ''}{availableMinutes !== null ? ` · ${availableMinutes} min available` : ''}
         </p>}
-        {workflow?.proposal && <div className="today-plan-notice"><p>Plan changes are waiting for your confirmation.</p><Link to={`/new?date=${date}`}>Review proposal<ArrowRight size={14} aria-hidden /></Link></div>}
+        {workflow?.plan && <div className="today-plan-notice"><p>Plan changes are waiting for your confirmation.</p><Link to={`/new?date=${date}`}>Review proposal<ArrowRight size={14} aria-hidden /></Link></div>}
         {workflow?.state === 'planning' && tasks.length > 0 && <p className="today-plan-notice">These tasks are saved. You can check them off or use Plan day to add more.</p>}
         {(reorder.error || toggle.error) && <WorkflowError error={reorder.error || toggle.error} />}
         {!tasks.length ? <section className="today-empty">

@@ -7,7 +7,8 @@ describe('workflowErrorMessage', () => {
     const capacity = new ApiError(400, '60 minutes planned, 30 minutes available', 'over_capacity');
     expect(workflowErrorCategory(capacity)).toBe('validation');
     expect(workflowErrorMessage(capacity)).toBe('60 minutes planned, 30 minutes available');
-    expect(workflowErrorMessage(new ApiError(400, 'Incomplete', 'plan_incomplete'))).toMatch(/every unfinished saved task/i);
+    expect(workflowErrorMessage(new ApiError(400, 'failed', 'plan_update_failed'))).toBe('I couldn’t update the plan. Try again.');
+    expect(workflowErrorMessage(new ApiError(409, 'still replying to your last message', 'turn_in_progress'))).toBe('Still replying to your last message.');
   });
   it('maps capacity, validation, auth, and generic failures', () => {
     expect(workflowErrorCategory(new ApiError(503, 'the planning model is overloaded or timed out; try again or switch models'))).toBe('capacity');
