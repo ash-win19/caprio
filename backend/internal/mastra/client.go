@@ -49,6 +49,7 @@ type GenerateResponse struct {
 // ChatResponse is the parsed response from Mastra.
 type ChatResponse struct {
 	Message string
+	Title   string
 }
 
 const agentPath = "/api/agents/general-conversation-agent"
@@ -102,12 +103,13 @@ func (c *Client) Chat(ctx context.Context, messages []ChatMessage, threadID, res
 }
 
 // streamChunk is one server-sent event from the Mastra stream endpoint. Only
-// text deltas and errors matter here; other chunk types are ignored.
+// text deltas, thread titles, and errors matter here; other chunk types are ignored.
 type streamChunk struct {
 	Type      string          `json:"type"`
 	TextDelta string          `json:"textDelta"`
 	ErrorText string          `json:"errorText"`
 	Payload   json.RawMessage `json:"payload"`
+	Data      json.RawMessage `json:"data"`
 }
 
 func (c streamChunk) text() string {
@@ -169,6 +171,7 @@ func (c *Client) StreamChat(ctx context.Context, messages []ChatMessage, threadI
 	}
 
 	var text strings.Builder
+	var title string
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 	for scanner.Scan() {
@@ -194,6 +197,13 @@ func (c *Client) StreamChat(ctx context.Context, messages []ChatMessage, threadI
 			if onDelta != nil {
 				onDelta(delta)
 			}
+		case "data-thread-title":
+			var titlePayload struct {
+				Title string `json:"title"`
+			}
+			if len(chunk.Data) > 0 && json.Unmarshal(chunk.Data, &titlePayload) == nil {
+				title = titlePayload.Title
+			}
 		case "error":
 			return nil, fmt.Errorf("mastra stream error: %s", chunk.errorMessage())
 		}
@@ -206,5 +216,5 @@ func (c *Client) StreamChat(ctx context.Context, messages []ChatMessage, threadI
 		return nil, fmt.Errorf("mastra returned empty text")
 	}
 
-	return &ChatResponse{Message: text.String()}, nil
+	return &ChatResponse{Message: text.String(), Title: title}, nil
 }

@@ -7,6 +7,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Search,
+  Settings,
 } from "lucide-react";
 import { NAV_ITEMS, useReviewNav } from "@/lib/navigation";
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
@@ -15,6 +16,12 @@ import { useAppStore } from "@/lib/store";
 import { sidebarShortcutLabel, useSidebarFocus, useSidebarShortcut, useSidebarStore } from "@/lib/sidebar";
 import { UserAvatar } from "@/components/UserAvatar";
 import { CaprioMark, Logo } from "@/components/Logo";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface ConversationSidebarProps {
   sessions: ChatSession[];
@@ -27,13 +34,6 @@ interface ConversationSidebarProps {
   onMobileOpenChange?: (open: boolean) => void;
 }
 
-function formatSessionDate(value: string) {
-  const date = new Date(`${value}T12:00:00`);
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-  }).format(date);
-}
 
 function SidebarContent({
   sessions,
@@ -98,7 +98,6 @@ function SidebarContent({
       <div className="px-3">
         <nav aria-label="Primary" className="mb-3 space-y-1">
           {NAV_ITEMS.map(item => <NavLink key={item.path} to={item.path === '/review' ? reviewPath : item.path} onClick={onClose} className={({ isActive }) => `flex items-center gap-3 rounded-md px-3 py-2 text-sm ${isActive ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent/50'}`}><item.icon size={16} />{item.label}</NavLink>)}
-          <Link to="/settings" onClick={onClose} className="block rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent">Settings</Link>
         </nav>
         <button
           type="button"
@@ -144,21 +143,15 @@ function SidebarContent({
                 key={session.sessionDate}
                 type="button"
                 onClick={() => chooseSession(session.sessionDate)}
-                className={`group flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2.5 text-left transition ${
+                className={`group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition ${
                   selectedDate === session.sessionDate
                     ? "bg-accent text-foreground"
                     : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
                 }`}
               >
-                <MessageSquare className="mt-0.5 h-4 w-4 shrink-0" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm">
-                    {session.title}
-                  </span>
-                  <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                    {formatSessionDate(session.sessionDate)} ·{" "}
-                    {session.messageCount} messages
-                  </span>
+                <MessageSquare className="h-4 w-4 shrink-0" />
+                <span className="min-w-0 flex-1 truncate text-sm">
+                  {session.title}
                 </span>
               </button>
             ))
@@ -172,20 +165,34 @@ function SidebarContent({
         </div>
       </div>
 
-      <Link
-        to="/settings"
-        className="flex items-center gap-3 border-t border-border px-4 py-4 transition hover:bg-accent/60"
-      >
-        <UserAvatar user={user} className="h-9 w-9" />
-        <span className="min-w-0">
-          <span className="block truncate text-sm font-medium text-foreground">
-            {user?.name || "Caprio user"}
-          </span>
-          <span className="block truncate text-xs text-muted-foreground">
-            {user?.email || "View profile"}
-          </span>
-        </span>
-      </Link>
+      <div className="border-t border-border">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className="flex w-full items-center gap-3 px-4 py-4 text-left transition hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+              aria-label={user?.name ? `${user.name}'s account menu` : "Account menu"}
+            >
+              <UserAvatar user={user} className="h-9 w-9" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-foreground">
+                  {user?.name || "Caprio user"}
+                </span>
+                <span className="block truncate text-xs text-muted-foreground">
+                  {user?.email || "View profile"}
+                </span>
+              </span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" side="top" className="w-56">
+            <DropdownMenuItem asChild>
+              <Link to="/settings" onClick={onClose} className="flex items-center gap-2">
+                <Settings className="h-4 w-4" />
+                Settings
+              </Link>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </div>
   );
 }

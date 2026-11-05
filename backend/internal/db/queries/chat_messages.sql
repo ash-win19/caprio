@@ -12,6 +12,7 @@ WITH dates AS (
 SELECT
     dates.session_date,
     COALESCE(
+        NULLIF((ARRAY_AGG(p.conversation_title))[1], ''),
         (ARRAY_AGG(m.content ORDER BY m.created_at) FILTER (WHERE m.role = 'user'))[1],
         'Daily plan'
     )::text AS title,
