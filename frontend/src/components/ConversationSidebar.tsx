@@ -255,14 +255,27 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
           <nav aria-label="Primary" className="mt-3 flex flex-col gap-1">
             {NAV_ITEMS.map(item => <NavLink key={item.path} to={item.path === '/review' ? reviewPath : item.path} aria-label={item.label} title={item.label} className={({ isActive }) => `grid h-10 w-10 place-items-center rounded-lg ${isActive ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent'}`}><item.icon size={18} /></NavLink>)}
           </nav>
-          <Link
-            to="/settings"
-            aria-label={user?.name ? `Open ${user.name}'s profile` : "Open profile"}
-            className="mt-auto grid h-10 w-10 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground"
-            title={user?.name || "Caprio user"}
-          >
-            <UserAvatar user={user} />
-          </Link>
+          <div className="mt-auto flex w-full flex-col items-center border-t border-border pt-3">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  aria-label={user?.name ? `${user.name}'s account menu` : 'Account menu'}
+                  title={user?.name || 'Caprio user'}
+                  className="grid h-10 w-10 place-items-center rounded-lg transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <UserAvatar user={user} className="h-8 w-8" fallbackClassName="bg-accent text-xs font-medium text-foreground" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" side="top" className="w-56">
+                <DropdownMenuItem asChild>
+                  <Link to="/settings" className="flex items-center gap-2">
+                    <Settings className="h-4 w-4" />
+                    Settings
+                  </Link>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </aside>
 
