@@ -32,12 +32,30 @@ type ChatMessage struct {
 	Content string `json:"content"`
 }
 
+// MemoryOptions configures memory behavior for the agent.
+type MemoryOptions struct {
+	GenerateTitle bool `json:"generateTitle"`
+}
+
+// Memory configures thread and memory options for the agent.
+type Memory struct {
+	Thread  ThreadInfo     `json:"thread"`
+	Resource string        `json:"resource,omitempty"`
+	Options *MemoryOptions `json:"options,omitempty"`
+}
+
+// ThreadInfo identifies the conversation thread.
+type ThreadInfo struct {
+	ID string `json:"id"`
+}
+
 // GenerateRequest is the request to the Mastra agent generate endpoint.
 type GenerateRequest struct {
-	Messages   []ChatMessage `json:"messages"`
-	ThreadID   string        `json:"threadId"`
-	ResourceID string        `json:"resourceId"`
-	Model      string        `json:"model,omitempty"`
+	Messages []ChatMessage `json:"messages"`
+	ThreadID string        `json:"threadId,omitempty"` // Deprecated, use Memory.Thread
+	ResourceID string      `json:"resourceId,omitempty"` // Deprecated, use Memory.Resource
+	Memory   *Memory       `json:"memory,omitempty"`
+	Model    string        `json:"model,omitempty"`
 }
 
 // GenerateResponse is the response from the Mastra generate endpoint.
@@ -55,12 +73,23 @@ type ChatResponse struct {
 const agentPath = "/api/agents/general-conversation-agent"
 
 func (c *Client) newRequest(ctx context.Context, path string, messages []ChatMessage, threadID, resourceID, model string) (*http.Request, error) {
-	bodyBytes, err := json.Marshal(GenerateRequest{
-		Messages:   messages,
-		ThreadID:   threadID,
-		ResourceID: resourceID,
-		Model:      model,
-	})
+	req := GenerateRequest{
+		Messages: messages,
+		Model:    model,
+	}
+	
+	// Use new Memory structure with title generation enabled
+	if threadID != "" || resourceID != "" {
+		req.Memory = &Memory{
+			Thread: ThreadInfo{ID: threadID},
+			Resource: resourceID,
+			Options: &MemoryOptions{
+				GenerateTitle: true,
+			},
+		}
+	}
+	
+	bodyBytes, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}

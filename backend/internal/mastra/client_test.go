@@ -43,12 +43,19 @@ func TestChat_Success(t *testing.T) {
 		if req.Messages[0].Content != "hello" {
 			t.Errorf("expected content 'hello', got %s", req.Messages[0].Content)
 		}
-		if req.ThreadID != "user-123:2024-01-15" {
-			t.Errorf("expected threadId 'user-123:2024-01-15', got %s", req.ThreadID)
-		}
-		if req.ResourceID != "user-123" {
-			t.Errorf("expected resourceId 'user-123', got %s", req.ResourceID)
-		}
+	// Check new Memory structure
+	if req.Memory == nil {
+		t.Fatal("expected Memory to be set")
+	}
+	if req.Memory.Thread.ID != "user-123:2024-01-15" {
+		t.Errorf("expected thread id 'user-123:2024-01-15', got %s", req.Memory.Thread.ID)
+	}
+	if req.Memory.Resource != "user-123" {
+		t.Errorf("expected resource id 'user-123', got %s", req.Memory.Resource)
+	}
+	if req.Memory.Options == nil || !req.Memory.Options.GenerateTitle {
+		t.Error("expected generateTitle to be enabled")
+	}
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
