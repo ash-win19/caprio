@@ -6,6 +6,12 @@ import { useAppStore } from '@/lib/store';
 import { SIDEBAR_WIDTH_CLASS, sidebarShortcutLabel, useSidebarFocus, useSidebarShortcut, useSidebarStore } from '@/lib/sidebar';
 import { UserAvatar } from '@/components/UserAvatar';
 import { CaprioMark, Logo } from '@/components/Logo';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 const railLink = ({ isActive }: { isActive: boolean }) =>
   `grid h-10 w-10 place-items-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
@@ -88,22 +94,25 @@ export function AppSidebar({ externalToggle = false }: { externalToggle?: boolea
         </nav>
 
         <div className="border-t border-border px-3 py-2">
-          <NavLink
-            to="/settings"
-            className={({ isActive }) =>
-              `flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors ${
-                isActive ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent/50'
-              }`
-            }
-          >
-            <Settings size={16} />
-            Settings
-          </NavLink>
-        </div>
-
-        <div className="flex items-center gap-3 border-t border-border px-5 py-3">
-          <UserAvatar user={user} className="h-8 w-8" fallbackClassName="bg-accent text-xs font-medium text-foreground" />
-          <span className="truncate text-xs text-muted-foreground">{user?.name || 'Caprio user'}</span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                aria-label={user?.name ? `${user.name}'s account menu` : "Account menu"}
+              >
+                <UserAvatar user={user} className="h-8 w-8" fallbackClassName="bg-accent text-xs font-medium text-foreground" />
+                <span className="min-w-0 flex-1 truncate text-muted-foreground">{user?.name || 'Caprio user'}</span>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" side="top" className="w-56">
+              <DropdownMenuItem asChild>
+                <Link to="/settings" className="flex items-center gap-2">
+                  <Settings className="h-4 w-4" />
+                  Settings
+                </Link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -138,18 +147,26 @@ export function AppSidebar({ externalToggle = false }: { externalToggle?: boolea
           ))}
         </nav>
 
-        <div className="mt-auto flex w-full flex-col items-center gap-2 border-t border-border pt-3">
-          <NavLink to="/settings" aria-label="Settings" title="Settings" className={railLink}>
-            <Settings size={18} />
-          </NavLink>
-          <Link
-            to="/settings"
-            aria-label={user?.name ? `Open ${user.name}'s profile` : 'Open profile'}
-            title={user?.name || 'Caprio user'}
-            className="grid h-10 w-10 place-items-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          >
-            <UserAvatar user={user} className="h-8 w-8" fallbackClassName="bg-accent text-xs font-medium text-foreground" />
-          </Link>
+        <div className="mt-auto flex w-full flex-col items-center border-t border-border pt-3">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                aria-label={user?.name ? `${user.name}'s account menu` : 'Account menu'}
+                title={user?.name || 'Caprio user'}
+                className="grid h-10 w-10 place-items-center rounded-lg transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                <UserAvatar user={user} className="h-8 w-8" fallbackClassName="bg-accent text-xs font-medium text-foreground" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" side="top" className="w-56">
+              <DropdownMenuItem asChild>
+                <Link to="/settings" className="flex items-center gap-2">
+                  <Settings className="h-4 w-4" />
+                  Settings
+                </Link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </aside>
