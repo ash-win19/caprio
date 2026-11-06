@@ -2,180 +2,148 @@ package mastra
 
 import (
 	"context"
-	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
-func TestChat_Success(t *testing.T) {
+// TestStreamChatParsesTitle verifies that the client correctly parses
+// data-thread-title events from the SSE stream and returns the title.
+func TestStreamChatParsesTitle(t *testing.T) {
+	// Mock Mastra server that returns SSE stream with title event
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			t.Errorf("expected POST, got %s", r.Method)
-		}
-		if r.URL.Path != "/api/agents/general-conversation-agent/generate" {
-			t.Errorf("expected /api/agents/general-conversation-agent/generate, got %s", r.URL.Path)
-		}
-
-		contentType := r.Header.Get("Content-Type")
-		if contentType != "application/json" {
-			t.Errorf("expected application/json, got %s", contentType)
+		if !strings.HasSuffix(r.URL.Path, "/stream") {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+			http.NotFound(w, r)
+			return
 		}
 
-		bodyBytes, err := io.ReadAll(r.Body)
-		if err != nil {
-			t.Fatalf("failed to read request body: %v", err)
-		}
-
-		var req GenerateRequest
-		if err := json.Unmarshal(bodyBytes, &req); err != nil {
-			t.Fatalf("failed to unmarshal request: %v", err)
-		}
-
-		if len(req.Messages) != 1 {
-			t.Errorf("expected 1 message, got %d", len(req.Messages))
-		}
-		if req.Messages[0].Role != "user" {
-			t.Errorf("expected role 'user', got %s", req.Messages[0].Role)
-		}
-		if req.Messages[0].Content != "hello" {
-			t.Errorf("expected content 'hello', got %s", req.Messages[0].Content)
-		}
-	// Check new Memory structure
-	if req.Memory == nil {
-		t.Fatal("expected Memory to be set")
-	}
-	if req.Memory.Thread.ID != "user-123:2024-01-15" {
-		t.Errorf("expected thread id 'user-123:2024-01-15', got %s", req.Memory.Thread.ID)
-	}
-	if req.Memory.Resource != "user-123" {
-		t.Errorf("expected resource id 'user-123', got %s", req.Memory.Resource)
-	}
-	if req.Memory.Options == nil || !req.Memory.Options.GenerateTitle {
-		t.Error("expected generateTitle to be enabled")
-	}
-
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(GenerateResponse{
-			Text:         "Hello! How can I help you?",
-			FinishReason: "stop",
-		})
+
+		// Simulate Mastra SSE stream with title generation
+		stream := `data: {"type":"start"}
+
+data: {"type":"step-start"}
+
+data: {"type":"text-delta","textDelta":"Let's"}
+
+data: {"type":"text-delta","textDelta":" plan"}
+
+data: {"type":"text-delta","textDelta":" your"}
+
+data: {"type":"text-delta","textDelta":" morning!"}
+
+data: {"type":"data-thread-title","data":{"title":"Morning Workout Planning"}}
+
+data: {"type":"step-finish"}
+
+data: {"type":"finish"}
+
+data: [DONE]
+
+`
+		w.Write([]byte(stream))
 	}))
 	defer server.Close()
 
 	client := NewClient(server.URL)
-	messages := []ChatMessage{{Role: "user", Content: "hello"}}
+	messages := []ChatMessage{
+		{Role: "user", Content: "Help me plan my morning workout"},
+	}
 
-	resp, err := client.Chat(context.Background(), messages, "user-123:2024-01-15", "user-123", "")
+	var deltas []string
+	response, err := client.StreamChat(context.Background(), messages, "test-thread-1", "test-user", "", func(delta string) {
+		deltas = append(deltas, delta)
+	})
+
 	if err != nil {
-		t.Fatalf("Chat failed: %v", err)
+		t.Fatalf("StreamChat failed: %v", err)
 	}
 
-	if resp.Message != "Hello! How can I help you?" {
-		t.Errorf("expected 'Hello! How can I help you?', got %s", resp.Message)
-	}
-}
-
-func TestChat_NonOKStatus(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("internal error"))
-	}))
-	defer server.Close()
-
-	client := NewClient(server.URL)
-	messages := []ChatMessage{{Role: "user", Content: "hello"}}
-
-	_, err := client.Chat(context.Background(), messages, "thread-1", "resource-1", "")
-	if err == nil {
-		t.Fatal("expected error, got nil")
+	// Verify text was assembled correctly
+	expectedText := "Let's plan your morning!"
+	if response.Message != expectedText {
+		t.Errorf("got message %q, want %q", response.Message, expectedText)
 	}
 
-	if !strings.Contains(err.Error(), "mastra returned status 500") {
-		t.Errorf("expected error about status 500, got: %v", err)
+	// Verify title was parsed
+	expectedTitle := "Morning Workout Planning"
+	if response.Title != expectedTitle {
+		t.Errorf("got title %q, want %q", response.Title, expectedTitle)
+	}
+
+	// Verify deltas were called
+	if len(deltas) != 4 {
+		t.Errorf("got %d deltas, want 4", len(deltas))
 	}
 }
 
-func TestChat_EmptyText(t *testing.T) {
+// TestStreamChatHandlesNoTitle verifies graceful handling when no title is generated
+func TestStreamChatHandlesNoTitle(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(GenerateResponse{
-			Text:         "",
-			FinishReason: "stop",
-		})
+
+		// Stream without title event
+		stream := `data: {"type":"start"}
+
+data: {"type":"text-delta","textDelta":"Here's your plan"}
+
+data: {"type":"finish"}
+
+data: [DONE]
+
+`
+		w.Write([]byte(stream))
 	}))
 	defer server.Close()
 
 	client := NewClient(server.URL)
-	messages := []ChatMessage{{Role: "user", Content: "hello"}}
+	messages := []ChatMessage{{Role: "user", Content: "What should I do?"}}
 
-	_, err := client.Chat(context.Background(), messages, "thread-1", "resource-1", "")
-	if err == nil {
-		t.Fatal("expected error for empty text, got nil")
-	}
+	response, err := client.StreamChat(context.Background(), messages, "test-thread-2", "test-user", "", nil)
 
-	if !strings.Contains(err.Error(), "empty text") {
-		t.Errorf("expected error about empty text, got: %v", err)
-	}
-}
-
-func TestChat_InvalidJSON(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("not json"))
-	}))
-	defer server.Close()
-
-	client := NewClient(server.URL)
-	messages := []ChatMessage{{Role: "user", Content: "hello"}}
-
-	_, err := client.Chat(context.Background(), messages, "thread-1", "resource-1", "")
-	if err == nil {
-		t.Fatal("expected error for invalid JSON, got nil")
-	}
-
-	if !strings.Contains(err.Error(), "decode response") {
-		t.Errorf("expected decode error, got: %v", err)
-	}
-}
-
-func TestChat_IncludesModel(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		bodyBytes, err := io.ReadAll(r.Body)
-		if err != nil {
-			t.Fatalf("failed to read request body: %v", err)
-		}
-
-		var req GenerateRequest
-		if err := json.Unmarshal(bodyBytes, &req); err != nil {
-			t.Fatalf("failed to unmarshal request: %v", err)
-		}
-		if req.Model != "groq/openai/gpt-oss-20b" {
-			t.Errorf("expected model 'groq/openai/gpt-oss-20b', got %q", req.Model)
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(GenerateResponse{
-			Text:         "ok",
-			FinishReason: "stop",
-		})
-	}))
-	defer server.Close()
-
-	client := NewClient(server.URL)
-	messages := []ChatMessage{{Role: "user", Content: "hello"}}
-
-	resp, err := client.Chat(context.Background(), messages, "thread-1", "resource-1", "groq/openai/gpt-oss-20b")
 	if err != nil {
-		t.Fatalf("Chat failed: %v", err)
+		t.Fatalf("StreamChat should not fail without title: %v", err)
 	}
-	if resp.Message != "ok" {
-		t.Errorf("expected 'ok', got %s", resp.Message)
+
+	if response.Message != "Here's your plan" {
+		t.Errorf("got message %q, want %q", response.Message, "Here's your plan")
+	}
+
+	// Title should be empty when not provided
+	if response.Title != "" {
+		t.Errorf("got title %q, want empty string", response.Title)
+	}
+}
+
+// TestStreamChatHandlesError verifies error chunk handling
+func TestStreamChatHandlesError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+
+		stream := `data: {"type":"start"}
+
+data: {"type":"error","errorText":"Model unavailable"}
+
+`
+		w.Write([]byte(stream))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	messages := []ChatMessage{{Role: "user", Content: "test"}}
+
+	_, err := client.StreamChat(context.Background(), messages, "test-thread-3", "test-user", "", nil)
+
+	if err == nil {
+		t.Fatal("StreamChat should fail on error event")
+	}
+
+	if !strings.Contains(err.Error(), "Model unavailable") {
+		t.Errorf("error should contain 'Model unavailable', got: %v", err)
 	}
 }
