@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -180,7 +181,7 @@ func (c streamChunk) errorMessage() string {
 
 // StreamChat sends messages to the Mastra agent stream endpoint and passes each
 // text fragment to onDelta as it arrives. After stream completes, attempts to
-// retrieve generated title from storage API (bounded, non-blocking).
+// retrieve generated title from storage API with strict 1.5s timeout.
 func (c *Client) StreamChat(ctx context.Context, messages []ChatMessage, threadID, resourceID, model string, onDelta func(string)) (*ChatResponse, error) {
 	httpReq, err := c.newRequest(ctx, "/stream", messages, threadID, resourceID, model)
 	if err != nil {
@@ -238,52 +239,79 @@ func (c *Client) StreamChat(ctx context.Context, messages []ChatMessage, threadI
 	}
 
 	// Title generation happens in background after stream finishes.
-	// Poll storage API with bounded retries (non-blocking, best-effort).
-	title := c.retrieveTitle(ctx, threadID, resourceID)
+	// Bounded inline retrieval with strict 1.5s timeout (best-effort).
+	// Chat succeeds regardless of title availability.
+	title := c.retrieveTitle(threadID, resourceID)
 
 	return &ChatResponse{Message: text.String(), Title: title}, nil
 }
 
 // retrieveTitle attempts to retrieve generated title from Mastra storage API.
-// Uses bounded polling (3 attempts over 1.5s) to handle background generation race.
-// Returns empty string on failure (non-fatal - chat succeeds without title).
-func (c *Client) retrieveTitle(ctx context.Context, threadID, resourceID string) string {
-	// Bounded retries: title generation usually completes within 500ms
+// Strict 1.5s timeout covers all retries and network operations.
+// Returns empty string on any failure (timeout, 4xx/5xx, etc) - title retrieval
+// failure never causes chat to fail.
+func (c *Client) retrieveTitle(threadID, resourceID string) string {
+	// Strict timeout for all title retrieval attempts (prevents blocking chat response)
+	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer cancel()
+
+	// URL-escape parameters
+	escapedThreadID := url.QueryEscape(threadID)
+	escapedResourceID := url.QueryEscape(resourceID)
+	
+	requestURL := fmt.Sprintf("%s/api/memory/threads/%s?agentId=general-conversation-agent&resourceId=%s",
+		c.baseURL, escapedThreadID, escapedResourceID)
+
+	// Retry with exponential backoff within timeout budget
 	for attempt := 0; attempt < 3; attempt++ {
 		if attempt > 0 {
+			// Exponential backoff: 200ms, 400ms
+			backoff := time.Duration(200*(1<<uint(attempt-1))) * time.Millisecond
 			select {
-			case <-time.After(500 * time.Millisecond):
+			case <-time.After(backoff):
 			case <-ctx.Done():
-				return ""
+				return "" // Timeout reached
 			}
 		}
 
-		url := fmt.Sprintf("%s/api/memory/threads/%s?agentId=general-conversation-agent&resourceId=%s",
-			c.baseURL, threadID, resourceID)
-		
-		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", requestURL, nil)
 		if err != nil {
 			continue
 		}
 
+		// Apply same auth headers as stream requests (if configured)
+		// Note: Current client has no auth headers configured
+		// If auth is added later, copy headers from c.httpClient.Transport
+
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
-			continue
+			continue // Network error or timeout
+		}
+
+		// Check HTTP status before decoding
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+				return "" // Auth error - don't retry
+			}
+			continue // 404, 500, etc - retry
 		}
 
 		var thread struct {
 			Title string `json:"title"`
 		}
-		if err := json.NewDecoder(resp.Body).Decode(&thread); err != nil {
-			resp.Body.Close()
+		err = json.NewDecoder(io.LimitReader(resp.Body, 1024*1024)).Decode(&thread)
+		resp.Body.Close()
+		
+		if err != nil {
 			continue
 		}
-		resp.Body.Close()
 
 		if thread.Title != "" {
 			return thread.Title
 		}
+		// Empty title - generation may still be in progress, retry
 	}
 
-	return "" // Title generation incomplete or failed (non-fatal)
+	return "" // Title not available within timeout (async generation incomplete)
 }
