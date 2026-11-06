@@ -10,11 +10,7 @@ export const generalConversationAgent = new Agent({
   model: 'groq/openai/gpt-oss-120b',
   memory: new Memory({
     options: {
-      generateTitle: {
-        instructions: 'Generate a brief, descriptive title (2-6 words) that captures the main focus or theme of this planning conversation.',
-        minMessages: 2,
-        emitEvent: true,
-      },
+      generateTitle: true,
     },
   }),
 });
