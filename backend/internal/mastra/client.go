@@ -179,8 +179,8 @@ func (c streamChunk) errorMessage() string {
 }
 
 // StreamChat sends messages to the Mastra agent stream endpoint and passes each
-// text fragment to onDelta as it arrives. The complete reply is returned once
-// the stream ends.
+// text fragment to onDelta as it arrives. After stream completes, attempts to
+// retrieve generated title from storage API (bounded, non-blocking).
 func (c *Client) StreamChat(ctx context.Context, messages []ChatMessage, threadID, resourceID, model string, onDelta func(string)) (*ChatResponse, error) {
 	httpReq, err := c.newRequest(ctx, "/stream", messages, threadID, resourceID, model)
 	if err != nil {
@@ -200,7 +200,6 @@ func (c *Client) StreamChat(ctx context.Context, messages []ChatMessage, threadI
 	}
 
 	var text strings.Builder
-	var title string
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 	for scanner.Scan() {
@@ -226,13 +225,6 @@ func (c *Client) StreamChat(ctx context.Context, messages []ChatMessage, threadI
 			if onDelta != nil {
 				onDelta(delta)
 			}
-		case "data-thread-title":
-			var titlePayload struct {
-				Title string `json:"title"`
-			}
-			if len(chunk.Data) > 0 && json.Unmarshal(chunk.Data, &titlePayload) == nil {
-				title = titlePayload.Title
-			}
 		case "error":
 			return nil, fmt.Errorf("mastra stream error: %s", chunk.errorMessage())
 		}
@@ -245,5 +237,53 @@ func (c *Client) StreamChat(ctx context.Context, messages []ChatMessage, threadI
 		return nil, fmt.Errorf("mastra returned empty text")
 	}
 
+	// Title generation happens in background after stream finishes.
+	// Poll storage API with bounded retries (non-blocking, best-effort).
+	title := c.retrieveTitle(ctx, threadID, resourceID)
+
 	return &ChatResponse{Message: text.String(), Title: title}, nil
+}
+
+// retrieveTitle attempts to retrieve generated title from Mastra storage API.
+// Uses bounded polling (3 attempts over 1.5s) to handle background generation race.
+// Returns empty string on failure (non-fatal - chat succeeds without title).
+func (c *Client) retrieveTitle(ctx context.Context, threadID, resourceID string) string {
+	// Bounded retries: title generation usually completes within 500ms
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-time.After(500 * time.Millisecond):
+			case <-ctx.Done():
+				return ""
+			}
+		}
+
+		url := fmt.Sprintf("%s/api/memory/threads/%s?agentId=general-conversation-agent&resourceId=%s",
+			c.baseURL, threadID, resourceID)
+		
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
+			continue
+		}
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			continue
+		}
+
+		var thread struct {
+			Title string `json:"title"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&thread); err != nil {
+			resp.Body.Close()
+			continue
+		}
+		resp.Body.Close()
+
+		if thread.Title != "" {
+			return thread.Title
+		}
+	}
+
+	return "" // Title generation incomplete or failed (non-fatal)
 }
