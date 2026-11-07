@@ -40,7 +40,7 @@ func TestRolloverPreservesOriginsHistoryAndCheckboxesAcrossMissedDays(t *testing
 	_, err = s.store.Pool.Exec(ctx, `UPDATE tasks SET completed=true,status='completed',completed_at='2026-09-05T12:00:00Z' WHERE id=$1`, done.ID)
 	require.NoError(t, err)
 	// A draft cannot survive new arrivals that its task snapshot did not cover.
-	draft := propose(t, s, a, user, today, planTask("New work"))
+	draft := propose(t, s, a, user, today, "New work")
 	var wg sync.WaitGroup
 	errors := make([]error, 2)
 	for i := range errors {
@@ -54,7 +54,7 @@ func TestRolloverPreservesOriginsHistoryAndCheckboxesAcrossMissedDays(t *testing
 	w, err := s.Get(ctx, user, today)
 	require.NoError(t, err)
 	require.Len(t, w.Tasks, 2)
-	require.Nil(t, w.Proposal)
+	require.Nil(t, w.Plan)
 	require.Nil(t, w.AvailableMinutes)
 	require.Equal(t, "planning", w.State)
 	require.Nil(t, w.OldestUnclosedDate)
@@ -65,7 +65,7 @@ func TestRolloverPreservesOriginsHistoryAndCheckboxesAcrossMissedDays(t *testing
 		require.False(t, task.Completed)
 		require.EqualValues(t, 1, task.DeferCount, "concurrent requests must not carry a task twice")
 	}
-	_, err = s.Confirm(ctx, user, today, draft.Proposal.ID, draft.Version)
+	_, err = s.Confirm(ctx, user, today, draft.Plan.DraftID, draft.Version)
 	require.ErrorIs(t, err, ErrConflict)
 	archive, err := s.Get(ctx, user, yesterday)
 	require.NoError(t, err)

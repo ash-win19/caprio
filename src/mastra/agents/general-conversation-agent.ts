@@ -1,28 +1,12 @@
 import { Agent } from '@mastra/core/agent';
-import { Memory } from '@mastra/memory';
-import { LibSQLStore } from '@mastra/libsql';
 import { dailyPlannerInstructions } from './generated/daily-planner-instructions';
-
-const storage = new LibSQLStore({
-  id: 'agent-storage',
-  url: process.env.TURSO_DATABASE_URL ?? 'file:../mastra.db',
-  authToken: process.env.TURSO_AUTH_TOKEN,
-});
+import { plannerTools } from '../tools/planner-tools';
 
 export const generalConversationAgent = new Agent({
   id: 'general-conversation-agent',
   name: 'Caprio Daily Planner',
-  description: 'Proposes a realistic daily plan and adapts it for the user to confirm.',
+  description: 'Talks through the day and edits its draft plan with planner tools for the person to confirm.',
   instructions: dailyPlannerInstructions,
   model: 'groq/openai/gpt-oss-120b',
-  memory: new Memory({
-    storage,
-    options: {
-      generateTitle: {
-        model: 'groq/openai/gpt-oss-120b', // Uses same model as agent
-        instructions: 'Generate a brief, descriptive title for this daily planning conversation (max 6 words).'
-      },
-      observationalMemory: false, // Not needed for title generation
-    },
-  }),
+  tools: plannerTools,
 });

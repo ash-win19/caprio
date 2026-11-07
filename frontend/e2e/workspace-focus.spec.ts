@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { date, titles, tasksForDay, mockDay } from './fixtures/day';
+import { date, titles, tasksForDay, mockDay, planView } from './fixtures/day';
 import type { BackendTask, BackendCategory } from '../src/lib/api';
 
 async function workspace(page: Page, onboardingComplete = true) {
@@ -129,17 +129,18 @@ test('inbox adds a task to the current day only on the primary row action', asyn
 
 test('proposal keeps the conversation visible beside its decisions and the model picker inside the composer', async ({ page }, info) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  const writes = await mockDay(page, { messages: [{ id: 'm1', role: 'assistant', content: 'Previous planning conversation', createdAt: date }], proposal: { id: 'proposal-1', summary: 'A smaller plan for today.', availableMinutes: 220, tasks: [
-    { id: 'task-0', title: titles[0], duration: 40, urgency: 'medium', disposition: 'today', reason: 'Due today.' },
-    { title: 'Prepare a handoff', duration: 30, urgency: 'high', disposition: 'today', reason: 'Help the team.' },
-    { id: 'task-1', title: titles[1], duration: 90, urgency: 'medium', disposition: 'backlog', reason: 'Can wait.' },
-    { id: 'task-2', title: titles[2], duration: 90, urgency: 'medium', disposition: 'backlog', reason: 'Can wait.' },
-  ] } });
+  const writes = await mockDay(page, { messages: [{ id: 'm1', role: 'assistant', content: 'Previous planning conversation', createdAt: date }], plan: planView([
+    { ref: 'task-0', taskId: 'task-0', title: titles[0], duration: 40, date },
+    { ref: 'new:1', title: 'Prepare a handoff', duration: 30, badge: 'new', date },
+  ], { otherDays: [
+    { ref: 'task-1', taskId: 'task-1', title: titles[1], inbox: true, badge: 'moved' },
+    { ref: 'task-2', taskId: 'task-2', title: titles[2], inbox: true, badge: 'moved' },
+  ] }) });
   await page.goto('/new');
   await expect(page.getByRole('region', { name: 'Proposed plan' })).toBeVisible();
   await expect(page.getByText('Previous planning conversation')).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Proposal changes' })).toContainText('Prepare a handoff');
-  await expect(page.getByText('Deferred or removed · 2')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Today' })).toContainText('Prepare a handoff');
+  await expect(page.getByRole('region', { name: 'Other days' }).getByText('Inbox')).toHaveCount(2);
   const composer = page.locator('.conversation-composer form');
   await expect(composer.getByRole('button', { name: 'GPT-OSS 120B' })).toBeVisible();
   await composer.getByRole('button', { name: 'GPT-OSS 120B' }).click();

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 )
@@ -22,8 +21,9 @@ type Client struct {
 // NewClient creates a Mastra HTTP client.
 func NewClient(baseURL string) *Client {
 	return &Client{
-		baseURL:    baseURL,
-		httpClient: &http.Client{Timeout: 60 * time.Second},
+		baseURL: baseURL,
+		// A planning turn can take several tool steps.
+		httpClient: &http.Client{Timeout: 120 * time.Second},
 	}
 }
 
@@ -33,30 +33,23 @@ type ChatMessage struct {
 	Content string `json:"content"`
 }
 
-// MemoryOptions configures memory behavior for the agent.
-type MemoryOptions struct {
-	GenerateTitle bool `json:"generateTitle"`
-}
-
-// Memory configures thread and memory options for the agent.
-type Memory struct {
-	Thread  ThreadInfo     `json:"thread"`
-	Resource string        `json:"resource,omitempty"`
-	Options *MemoryOptions `json:"options,omitempty"`
-}
-
-// ThreadInfo identifies the conversation thread.
-type ThreadInfo struct {
-	ID string `json:"id"`
+// Call is one agent turn. RequestContext reaches the agent's tools; the
+// planner tools read the turn token from it.
+type Call struct {
+	Messages       []ChatMessage
+	ThreadID       string
+	ResourceID     string
+	Model          string
+	RequestContext map[string]any
+	MaxSteps       int
 }
 
 // GenerateRequest is the request to the Mastra agent generate endpoint.
 type GenerateRequest struct {
-	Messages []ChatMessage `json:"messages"`
-	ThreadID string        `json:"threadId,omitempty"` // Deprecated, use Memory.Thread
-	ResourceID string      `json:"resourceId,omitempty"` // Deprecated, use Memory.Resource
-	Memory   *Memory       `json:"memory,omitempty"`
-	Model    string        `json:"model,omitempty"`
+	Messages       []ChatMessage  `json:"messages"`
+	RequestContext map[string]any `json:"requestContext,omitempty"`
+	MaxSteps       int            `json:"maxSteps,omitempty"`
+	Model          string         `json:"model,omitempty"`
 }
 
 // GenerateResponse is the response from the Mastra generate endpoint.
@@ -68,29 +61,17 @@ type GenerateResponse struct {
 // ChatResponse is the parsed response from Mastra.
 type ChatResponse struct {
 	Message string
-	Title   string
 }
 
 const agentPath = "/api/agents/general-conversation-agent"
 
-func (c *Client) newRequest(ctx context.Context, path string, messages []ChatMessage, threadID, resourceID, model string) (*http.Request, error) {
-	req := GenerateRequest{
-		Messages: messages,
-		Model:    model,
-	}
-	
-	// Use new Memory structure with title generation enabled
-	if threadID != "" || resourceID != "" {
-		req.Memory = &Memory{
-			Thread: ThreadInfo{ID: threadID},
-			Resource: resourceID,
-			Options: &MemoryOptions{
-				GenerateTitle: true,
-			},
-		}
-	}
-	
-	bodyBytes, err := json.Marshal(req)
+func (c *Client) newRequest(ctx context.Context, path string, call Call) (*http.Request, error) {
+	bodyBytes, err := json.Marshal(GenerateRequest{
+		Messages:       call.Messages,
+		RequestContext: call.RequestContext,
+		MaxSteps:       call.MaxSteps,
+		Model:          call.Model,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
@@ -103,8 +84,8 @@ func (c *Client) newRequest(ctx context.Context, path string, messages []ChatMes
 }
 
 // Chat sends messages to the Mastra agent and returns the assistant's reply.
-func (c *Client) Chat(ctx context.Context, messages []ChatMessage, threadID, resourceID, model string) (*ChatResponse, error) {
-	httpReq, err := c.newRequest(ctx, "/generate", messages, threadID, resourceID, model)
+func (c *Client) Chat(ctx context.Context, call Call) (*ChatResponse, error) {
+	httpReq, err := c.newRequest(ctx, "/generate", call)
 	if err != nil {
 		return nil, err
 	}
@@ -133,13 +114,12 @@ func (c *Client) Chat(ctx context.Context, messages []ChatMessage, threadID, res
 }
 
 // streamChunk is one server-sent event from the Mastra stream endpoint. Only
-// text deltas, thread titles, and errors matter here; other chunk types are ignored.
+// text deltas and errors matter here; other chunk types are ignored.
 type streamChunk struct {
 	Type      string          `json:"type"`
 	TextDelta string          `json:"textDelta"`
 	ErrorText string          `json:"errorText"`
 	Payload   json.RawMessage `json:"payload"`
-	Data      json.RawMessage `json:"data"`
 }
 
 func (c streamChunk) text() string {
@@ -180,10 +160,10 @@ func (c streamChunk) errorMessage() string {
 }
 
 // StreamChat sends messages to the Mastra agent stream endpoint and passes each
-// text fragment to onDelta as it arrives. After stream completes, attempts to
-// retrieve generated title from storage API with strict 1.5s timeout.
-func (c *Client) StreamChat(ctx context.Context, messages []ChatMessage, threadID, resourceID, model string, onDelta func(string)) (*ChatResponse, error) {
-	httpReq, err := c.newRequest(ctx, "/stream", messages, threadID, resourceID, model)
+// text fragment to onDelta as it arrives. The complete reply is returned once
+// the stream ends.
+func (c *Client) StreamChat(ctx context.Context, call Call, onDelta func(string)) (*ChatResponse, error) {
+	httpReq, err := c.newRequest(ctx, "/stream", call)
 	if err != nil {
 		return nil, err
 	}
@@ -238,80 +218,5 @@ func (c *Client) StreamChat(ctx context.Context, messages []ChatMessage, threadI
 		return nil, fmt.Errorf("mastra returned empty text")
 	}
 
-	// Title generation happens in background after stream finishes.
-	// Bounded inline retrieval with strict 1.5s timeout (best-effort).
-	// Chat succeeds regardless of title availability.
-	title := c.retrieveTitle(threadID, resourceID)
-
-	return &ChatResponse{Message: text.String(), Title: title}, nil
-}
-
-// retrieveTitle attempts to retrieve generated title from Mastra storage API.
-// Strict 1.5s timeout covers all retries and network operations.
-// Returns empty string on any failure (timeout, 4xx/5xx, etc) - title retrieval
-// failure never causes chat to fail.
-func (c *Client) retrieveTitle(threadID, resourceID string) string {
-	// Strict timeout for all title retrieval attempts (prevents blocking chat response)
-	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
-	defer cancel()
-
-	// URL-escape parameters
-	escapedThreadID := url.QueryEscape(threadID)
-	escapedResourceID := url.QueryEscape(resourceID)
-	
-	requestURL := fmt.Sprintf("%s/api/memory/threads/%s?agentId=general-conversation-agent&resourceId=%s",
-		c.baseURL, escapedThreadID, escapedResourceID)
-
-	// Retry with exponential backoff within timeout budget
-	for attempt := 0; attempt < 3; attempt++ {
-		if attempt > 0 {
-			// Exponential backoff: 200ms, 400ms
-			backoff := time.Duration(200*(1<<uint(attempt-1))) * time.Millisecond
-			select {
-			case <-time.After(backoff):
-			case <-ctx.Done():
-				return "" // Timeout reached
-			}
-		}
-
-		req, err := http.NewRequestWithContext(ctx, "GET", requestURL, nil)
-		if err != nil {
-			continue
-		}
-
-		// Apply same auth headers as stream requests (if configured)
-		// Note: Current client has no auth headers configured
-		// If auth is added later, copy headers from c.httpClient.Transport
-
-		resp, err := c.httpClient.Do(req)
-		if err != nil {
-			continue // Network error or timeout
-		}
-
-		// Check HTTP status before decoding
-		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
-			if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-				return "" // Auth error - don't retry
-			}
-			continue // 404, 500, etc - retry
-		}
-
-		var thread struct {
-			Title string `json:"title"`
-		}
-		err = json.NewDecoder(io.LimitReader(resp.Body, 1024*1024)).Decode(&thread)
-		resp.Body.Close()
-		
-		if err != nil {
-			continue
-		}
-
-		if thread.Title != "" {
-			return thread.Title
-		}
-		// Empty title - generation may still be in progress, retry
-	}
-
-	return "" // Title not available within timeout (async generation incomplete)
+	return &ChatResponse{Message: text.String()}, nil
 }

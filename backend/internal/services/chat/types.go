@@ -6,9 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"sort"
-	"strings"
 	"time"
 
 	generated "github.com/ashwinshanmugam/caprio/backend/internal/db/generated"
@@ -20,6 +18,7 @@ var ErrConflict = errors.New("the plan changed; reload and review a new proposal
 var ErrClosed = errors.New("this day is closed; start the next day's plan")
 var ErrUnavailable = errors.New("the planning assistant is not configured")
 var ErrModelCapacity = errors.New("the planning model is overloaded or timed out; try again or switch models")
+var ErrTurnInProgress = errors.New("still replying to your last message")
 
 type ValidationError struct {
 	Code    string
@@ -32,31 +31,6 @@ func invalidCode(code, format string, args ...any) error {
 	return &ValidationError{Code: code, Message: fmt.Sprintf(format, args...)}
 }
 
-type ProposalTask struct {
-	ID          *uuid.UUID `json:"id,omitempty"`
-	Title       string     `json:"title"`
-	Duration    int32      `json:"duration"`
-	Urgency     string     `json:"urgency"`
-	CategoryID  *uuid.UUID `json:"categoryId,omitempty"`
-	Disposition string     `json:"disposition"`
-	Reason      string     `json:"reason"`
-}
-type AgentReply struct {
-	ContractVersion  int             `json:"contractVersion,omitempty"`
-	Operations       []TaskOperation `json:"operations,omitempty"`
-	Message          string          `json:"message"`
-	Phase            string          `json:"phase"`
-	AvailableMinutes *int32          `json:"availableMinutes"`
-	Tasks            []ProposalTask  `json:"tasks"`
-}
-type Proposal struct {
-	TaskTitles       map[string]string `json:"taskTitles,omitempty"`
-	Operations       []TaskOperation   `json:"operations,omitempty"`
-	ID               uuid.UUID         `json:"id"`
-	Summary          string            `json:"summary"`
-	AvailableMinutes *int32            `json:"availableMinutes"`
-	Tasks            []ProposalTask    `json:"tasks"`
-}
 type Review struct {
 	CarriedToDate          string `json:"carriedToDate,omitempty"`
 	Automatic              bool   `json:"automatic,omitempty"`
@@ -82,14 +56,15 @@ type Workflow struct {
 	State                string                  `json:"state"`
 	Version              int32                   `json:"version"`
 	Messages             []generated.ChatMessage `json:"messages"`
-	Proposal             *Proposal               `json:"proposal"`
+	Plan                 *PlanView               `json:"plan"`
 	AvailableMinutes     *int32                  `json:"availableMinutes"`
 	Tasks                []generated.Task        `json:"tasks"`
 	Backlog              []generated.Task        `json:"backlog"`
 	Review               *Review                 `json:"review"`
 	OldestUnclosedDate   *string                 `json:"oldestUnclosedDate"`
 	Opener               *string                 `json:"opener,omitempty"`
-	TaskDetailsAvailable bool                    `json:"taskDetailsAvailable"`
+	draft                *Draft
+	TaskDetailsAvailable bool `json:"taskDetailsAvailable"`
 }
 
 func ParseDate(value string) (pgtype.Date, error) {
@@ -98,104 +73,6 @@ func ParseDate(value string) (pgtype.Date, error) {
 		return pgtype.Date{}, invalid("invalid date format, expected YYYY-MM-DD")
 	}
 	return pgtype.Date{Time: t, Valid: true}, nil
-}
-
-// ParseAgentReply accepts only the documented JSON contract. Model-generated IDs
-// and category IDs are checked against the authenticated user's current data.
-func ParseAgentReply(text string, tasks, backlog []generated.Task, categories []generated.Category) (*AgentReply, error) {
-	if len(text) > 100000 {
-		return nil, invalid("assistant response too large")
-	}
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(text), &fields); err != nil {
-		return nil, invalid("assistant returned invalid plan JSON")
-	}
-	for _, field := range []string{"message", "phase", "availableMinutes", "tasks"} {
-		if _, ok := fields[field]; !ok {
-			return nil, invalid("assistant omitted required field %s", field)
-		}
-	}
-	dec := json.NewDecoder(strings.NewReader(text))
-	dec.DisallowUnknownFields()
-	var reply AgentReply
-	if err := dec.Decode(&reply); err != nil {
-		return nil, invalid("assistant returned invalid plan JSON")
-	}
-	if err := dec.Decode(new(any)); err != io.EOF {
-		return nil, invalid("assistant returned trailing content")
-	}
-	reply.Message = strings.TrimSpace(reply.Message)
-	if reply.Message == "" || len(reply.Message) > 6000 {
-		return nil, invalid("assistant message must contain 1 to 6000 characters")
-	}
-	if reply.AvailableMinutes != nil && (*reply.AvailableMinutes < 0 || *reply.AvailableMinutes > 1440) {
-		return nil, invalid("availableMinutes must be between 0 and 1440")
-	}
-	if len(reply.Operations) > 0 || reply.Phase == "actions" {
-		if reply.ContractVersion != 2 || len(reply.Tasks) != 0 || (reply.Phase != "actions" && reply.Phase != "proposal") {
-			return nil, invalid("invalid operation contract")
-		}
-		if err := validateOperations(reply.Operations, "", false); err != nil {
-			return nil, err
-		}
-		return &reply, nil
-	}
-	if reply.Phase == "clarifying" {
-		if reply.Tasks == nil || len(reply.Tasks) != 0 {
-			return nil, invalid("clarifying responses require an empty tasks array")
-		}
-		return &reply, nil
-	}
-	if reply.Phase != "proposal" || reply.Tasks == nil || len(reply.Tasks) > 100 {
-		return nil, invalid("invalid proposal phase or tasks")
-	}
-	eligible := map[uuid.UUID]bool{}
-	required := map[uuid.UUID]bool{}
-	for _, task := range tasks {
-		if task.Status == generated.TaskStatusPlanned && !task.Completed {
-			eligible[task.ID] = true
-			required[task.ID] = true
-		}
-	}
-	for _, task := range backlog {
-		if !task.Completed {
-			eligible[task.ID] = true
-		}
-	}
-	cats := map[uuid.UUID]bool{}
-	for _, cat := range categories {
-		cats[cat.ID] = true
-	}
-	seen := map[uuid.UUID]bool{}
-	for i := range reply.Tasks {
-		task := &reply.Tasks[i]
-		task.Title = strings.TrimSpace(task.Title)
-		task.Reason = strings.TrimSpace(task.Reason)
-		if task.Title == "" || len(task.Title) > 500 || task.Duration < 5 || task.Duration > 1440 || len(task.Reason) == 0 || len(task.Reason) > 1000 {
-			return nil, invalid("invalid proposal task details")
-		}
-		if task.Urgency != "low" && task.Urgency != "medium" && task.Urgency != "high" {
-			return nil, invalid("invalid task urgency")
-		}
-		if task.Disposition != "today" && task.Disposition != "backlog" {
-			return nil, invalid("invalid task disposition")
-		}
-		if task.CategoryID != nil && !cats[*task.CategoryID] {
-			return nil, invalid("unknown category in proposal")
-		}
-		if task.ID != nil {
-			if !eligible[*task.ID] || seen[*task.ID] {
-				return nil, invalid("unknown, completed, or repeated task in proposal")
-			}
-			seen[*task.ID] = true
-		}
-	}
-	for id := range required {
-		if !seen[id] {
-			return nil, invalidCode("plan_incomplete", "proposal omitted an unfinished task")
-		}
-	}
-	return &reply, nil
 }
 
 func snapshot(tasks, backlog []generated.Task) string {

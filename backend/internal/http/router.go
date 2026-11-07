@@ -1,6 +1,7 @@
 package http
 
 import (
+	"log/slog"
 	"strings"
 
 	"github.com/gin-contrib/cors"
@@ -56,8 +57,16 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 	var agent chat.Agent
 	if cfg.MastraURL != "" {
 		agent = mastra.NewClient(cfg.MastraURL)
+		if cfg.PlannerToolSecret == "" {
+			slog.Warn("PLANNER_TOOL_SECRET is not set; the planner cannot change the draft plan")
+		}
 	}
-	chatH := handlers.NewChatHandler(store, chat.NewService(store, agent))
+	chatService := chat.NewService(store, agent, chat.WithToolSecret(cfg.PlannerToolSecret))
+	chatH := handlers.NewChatHandler(store, chatService)
+
+	// Planner tool callbacks come from the Mastra agent, not a user session.
+	internal := r.Group("/internal/planner", handlers.PlannerToolAuth(cfg.PlannerToolSecret))
+	internal.POST("/tools/:name", handlers.NewPlannerToolHandler(chatService).Apply)
 
 	// Handlers
 	bootstrap := handlers.NewBootstrapHandler(store)

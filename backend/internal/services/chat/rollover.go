@@ -26,6 +26,7 @@ func LocalToday(now time.Time, timezone string) (pgtype.Date, error) {
 // user never opened. Each source day is archived and moved in one transaction.
 // A retry or another tab can safely resume after any already-completed day.
 func (s *Service) Rollover(ctx context.Context, userID uuid.UUID, today pgtype.Date) (*Workflow, error) {
+	ctx = withClock(ctx, s.now)
 	current, err := s.Get(ctx, userID, today)
 	if err != nil || current.State == "closed" {
 		return current, err

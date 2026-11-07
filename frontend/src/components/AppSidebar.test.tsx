@@ -16,7 +16,7 @@ vi.mock('@/lib/queries', async () => {
   const actual = await vi.importActual<typeof import('@/lib/queries')>('@/lib/queries');
   return {
     ...actual,
-    useWorkflow: vi.fn((date: string) => ({ data: { date, state: 'planning', version: 1, messages: [], proposal: null, availableMinutes: null, tasks: [], backlog: [], review: null }, isLoading: false, error: null })),
+    useWorkflow: vi.fn((date: string) => ({ data: { date, state: 'planning', version: 1, messages: [], plan: null, availableMinutes: null, tasks: [], backlog: [], review: null }, isLoading: false, error: null })),
   };
 });
 
@@ -26,7 +26,7 @@ const stored = () => JSON.parse(localStorage.getItem('caprio-sidebar') || '{}').
 beforeEach(() => {
   localStorage.clear();
   useSidebarStore.setState({ collapsed: false });
-  vi.mocked(useWorkflow).mockImplementation((date: string) => ({ data: { date, state: 'planning', version: 1, messages: [], proposal: null, availableMinutes: null, tasks: [], backlog: [], review: null }, isLoading: false, error: null } as ReturnType<typeof useWorkflow>));
+  vi.mocked(useWorkflow).mockImplementation((date: string) => ({ data: { date, state: 'planning', version: 1, messages: [], plan: null, availableMinutes: null, tasks: [], backlog: [], review: null }, isLoading: false, error: null } as ReturnType<typeof useWorkflow>));
 });
 
 describe('AppSidebar', () => {
@@ -112,7 +112,7 @@ describe('AppSidebar', () => {
         state: date === today ? 'active' : 'closed',
         version: 1,
         messages: [],
-        proposal: null,
+        plan: null,
         availableMinutes: null,
         tasks: date === today ? [{ id: 'a', completed: false }, { id: 'b', completed: true }] : [],
         backlog: [],
@@ -137,7 +137,7 @@ describe('AppSidebar', () => {
         oldestUnclosedDate: date === today ? yesterday : null,
         version: 1,
         messages: [],
-        proposal: null,
+        plan: null,
         availableMinutes: null,
         tasks: date === yesterday ? [{ id: 'a', completed: false }] : [],
         backlog: [],
@@ -153,7 +153,7 @@ describe('AppSidebar', () => {
 
   it('does not count archived carries as an unfinished review', () => {
     vi.mocked(useWorkflow).mockImplementation((date: string) => ({
-      data: { date, state: 'closed', version: 1, messages: [], proposal: null, availableMinutes: null,
+      data: { date, state: 'closed', version: 1, messages: [], plan: null, availableMinutes: null,
         tasks: [{ id: 'archived-carry', completed: false }], backlog: [], review: null },
       isLoading: false, error: null,
     } as ReturnType<typeof useWorkflow>));

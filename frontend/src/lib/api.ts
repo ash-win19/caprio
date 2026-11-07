@@ -319,23 +319,32 @@ export async function completeOnboarding(preferences: Partial<UserPrefs>, catego
   });
 }
 
-export interface PlanTask {
-  id?: string;
-  title: string;
-  duration: number;
-  urgency: 'low' | 'medium' | 'high';
-  categoryId?: string;
-  disposition: 'today' | 'backlog';
-  reason: string;
-}
-
-export interface TaskOperation {
-  kind: 'create' | 'update' | 'move' | 'complete' | 'remove';
+// One row of the day's plan: saved work with the draft applied. The badge
+// says what Confirm would change, compared with what is saved.
+export type PlanBadge = 'new' | 'edited' | 'moved' | 'removed' | 'done';
+export interface PlanItem {
+  ref: string;
   taskId?: string;
+  title: string;
   date?: string;
   inbox?: boolean;
-  fields?: Record<string, unknown>;
+  duration?: number | null;
+  badge?: PlanBadge;
+  carried?: boolean;
+  carriedSince?: string;
   completed?: boolean;
+}
+export interface PlanView {
+  draftId: string;
+  today: PlanItem[];
+  carried: PlanItem[];
+  otherDays: PlanItem[];
+  doneCount: number;
+  counts: { new: number; edited: number; moved: number; removed: number; carried: number };
+}
+// The changes one reply made, carried by a plan_update event.
+export interface PlanUpdateMetadata {
+  changes: Array<{ ref: string; title: string; action: string }>;
 }
 export interface ChangeReceipt {
   id: string; requestId: string; summary: string;
@@ -344,14 +353,6 @@ export interface ChangeReceipt {
 }
 export interface ReviewRecord {
   id: string; createdAt: string; review: DayReview; tasks: BackendTask[]; taskDetailsAvailable: boolean;
-}
-export interface PlanProposal {
-  operations?: TaskOperation[];
-  taskTitles?: Record<string, string>;
-  id: string;
-  summary: string;
-  availableMinutes: number | null;
-  tasks: PlanTask[];
 }
 
 export interface DayReview {
@@ -385,7 +386,7 @@ export interface Workflow {
   version: number;
   messages: ChatThreadMessage[];
   opener?: string;
-  proposal: PlanProposal | null;
+  plan: PlanView | null;
   availableMinutes: number | null;
   tasks: BackendTask[];
   backlog: BackendTask[];
@@ -416,7 +417,7 @@ export interface ChatReply {
 }
 
 function chatMessageBody(content: string, date: string, requestId: string, model?: string, taskId?: string) {
-  const body = { content, date, requestId, contractVersion: 2, model, taskId };
+  const body = { content, date, requestId, model, taskId };
   if (model) body.model = model;
   return JSON.stringify(body);
 }
@@ -520,13 +521,13 @@ export async function streamChatMessage({
   return result.reply;
 }
 
-export async function confirmDayPlan(input: { date: string; proposalId: string; version: number }): Promise<Workflow> {
+export async function confirmDayPlan(input: { date: string; draftId: string; version: number }): Promise<Workflow> {
   return (await fetchWithAuth('/api/day/plan/confirm', {
     method: 'POST', body: JSON.stringify(input),
   })).json();
 }
 
-export async function discardDayPlan(input: { date: string; proposalId: string; version: number }): Promise<Workflow> {
+export async function discardDayPlan(input: { date: string; draftId: string; version: number }): Promise<Workflow> {
   return (await fetchWithAuth('/api/day/plan/discard', {
     method: 'POST', body: JSON.stringify(input),
   })).json();

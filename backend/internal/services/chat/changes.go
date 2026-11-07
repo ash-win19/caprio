@@ -24,7 +24,6 @@ type TaskOperation struct {
 	Date          string                     `json:"date,omitempty"`
 	Inbox         bool                       `json:"inbox,omitempty"`
 	Fields        map[string]json.RawMessage `json:"fields,omitempty"`
-	Quote         string                     `json:"quote,omitempty"`
 	NewOccurrence bool                       `json:"newOccurrence,omitempty"`
 	Completed     *bool                      `json:"completed,omitempty"`
 }
@@ -60,63 +59,6 @@ type changeBatch struct {
 	Changes   []TaskChange
 	Days      map[string]dayState
 	Undone    bool
-}
-
-func validateOperations(ops []TaskOperation, content string, direct bool) error {
-	if len(ops) > 100 {
-		return invalid("at most 100 task changes are allowed")
-	}
-	seen := map[uuid.UUID]bool{}
-	for _, op := range ops {
-		switch op.Kind {
-		case "create", "update", "move", "complete", "remove":
-		default:
-			return invalid("unknown task operation")
-		}
-		if op.Kind != "create" && op.TaskID == nil {
-			return invalid("an existing task ID is required")
-		}
-		if op.Kind == "create" && op.TaskID != nil {
-			return invalid("new tasks must not invent an ID")
-		}
-		if op.TaskID != nil {
-			if seen[*op.TaskID] {
-				return invalid("a task can only be changed once per turn")
-			}
-			seen[*op.TaskID] = true
-		}
-		if direct && (strings.TrimSpace(op.Quote) == "" || !strings.Contains(strings.ToLower(content), strings.ToLower(op.Quote))) {
-			return invalid("each saved change must reference the user's current instruction")
-		}
-		if op.Kind == "complete" && op.Completed == nil {
-			return invalid("completion changes require completed")
-		}
-		if op.Kind != "complete" && op.Completed != nil {
-			return invalid("completed is only allowed for a completion change")
-		}
-		if op.Kind != "create" && op.Kind != "move" && (op.Date != "" || op.Inbox) {
-			return invalid("date changes require a move operation")
-		}
-		if op.Kind != "create" && op.NewOccurrence {
-			return invalid("newOccurrence is only allowed for new tasks")
-		}
-		if op.Date != "" {
-			if _, err := ParseDate(op.Date); err != nil {
-				return err
-			}
-		}
-		if (op.Kind == "complete" || op.Kind == "remove") && len(op.Fields) > 0 {
-			return invalid("this operation cannot also edit fields")
-		}
-		for key := range op.Fields {
-			switch key {
-			case "title", "description", "categoryId", "urgency", "duration", "dueDate":
-			default:
-				return invalid("unsupported task field %s", key)
-			}
-		}
-	}
-	return nil
 }
 
 func titleKey(s string) string {
@@ -348,12 +290,12 @@ func applyOperations(ctx context.Context, tx pgx.Tx, user uuid.UUID, date pgtype
 	}
 	// Inbox changes can invalidate a suggestion on any day. Versions advance for
 	// touched days; unrelated days advance only when their suggestion is cleared.
-	if _, err := tx.Exec(ctx, `UPDATE daily_plans SET proposal=NULL,proposal_snapshot=NULL,version=version+1,updated_at=clock_timestamp() WHERE user_id=$1 AND proposal IS NOT NULL`, user); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE daily_plans SET proposal=NULL,proposal_snapshot=NULL,draft=NULL,version=version+1,updated_at=clock_timestamp() WHERE user_id=$1 AND (proposal IS NOT NULL OR draft IS NOT NULL)`, user); err != nil {
 		return nil, err
 	}
 	for day, prior := range batch.Days {
 		var version int32
-		if err := tx.QueryRow(ctx, `UPDATE daily_plans SET state='active',proposal=NULL,proposal_snapshot=NULL,version=version+1,updated_at=clock_timestamp() WHERE user_id=$1 AND plan_date=$2 RETURNING version`, user, day).Scan(&version); err != nil {
+		if err := tx.QueryRow(ctx, `UPDATE daily_plans SET state='active',proposal=NULL,proposal_snapshot=NULL,draft=NULL,version=version+1,updated_at=clock_timestamp() WHERE user_id=$1 AND plan_date=$2 RETURNING version`, user, day).Scan(&version); err != nil {
 			return nil, err
 		}
 		prior.AfterVersion = version
@@ -469,6 +411,7 @@ func receipt(ctx context.Context, conn generated.DBTX, user uuid.UUID, b changeB
 }
 
 func (s *Service) Undo(ctx context.Context, user uuid.UUID, id uuid.UUID) (*Workflow, error) {
+	ctx = withClock(ctx, s.now)
 	var result *Workflow
 	err := s.store.WithUserTx(ctx, user, func(tx pgx.Tx, q *generated.Queries) error {
 		var date pgtype.Date
@@ -508,11 +451,11 @@ func (s *Service) Undo(ctx context.Context, user uuid.UUID, id uuid.UUID) (*Work
 			}
 		}
 		for day, prior := range batch.Days {
-			if _, err := tx.Exec(ctx, `UPDATE daily_plans SET state=CASE WHEN version=$3 THEN $4 ELSE state END,version=version+1,proposal=NULL,proposal_snapshot=NULL,updated_at=clock_timestamp() WHERE user_id=$1 AND plan_date=$2`, user, day, prior.AfterVersion, prior.State); err != nil {
+			if _, err := tx.Exec(ctx, `UPDATE daily_plans SET state=CASE WHEN version=$3 THEN $4 ELSE state END,version=version+1,proposal=NULL,proposal_snapshot=NULL,draft=NULL,updated_at=clock_timestamp() WHERE user_id=$1 AND plan_date=$2`, user, day, prior.AfterVersion, prior.State); err != nil {
 				return err
 			}
 		}
-		if _, err := tx.Exec(ctx, `UPDATE daily_plans SET proposal=NULL,proposal_snapshot=NULL,version=version+1,updated_at=clock_timestamp() WHERE user_id=$1 AND proposal IS NOT NULL`, user); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE daily_plans SET proposal=NULL,proposal_snapshot=NULL,draft=NULL,version=version+1,updated_at=clock_timestamp() WHERE user_id=$1 AND (proposal IS NOT NULL OR draft IS NOT NULL)`, user); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, `UPDATE task_change_batches SET undone_at=clock_timestamp() WHERE id=$1 AND user_id=$2`, id, user); err != nil {

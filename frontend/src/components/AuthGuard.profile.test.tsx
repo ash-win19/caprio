@@ -37,7 +37,7 @@ vi.mock('@/lib/api', async (load) => {
       state: 'planning' as const,
       version: 1,
       messages: [],
-      proposal: null,
+      plan: null,
       availableMinutes: null,
       tasks: [],
       backlog: [],

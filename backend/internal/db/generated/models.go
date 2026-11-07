@@ -247,7 +247,12 @@ type DailyPlan struct {
 	UpdatedAt           pgtype.Timestamptz `json:"updatedAt"`
 	AvailableMinutes    *int32             `json:"availableMinutes"`
 	// Human-readable title generated from conversation context
-	ConversationTitle *string `json:"conversationTitle"`
+	ConversationTitle *string            `json:"conversationTitle"`
+	Draft             []byte             `json:"draft"`
+	DraftStaged       []byte             `json:"draftStaged"`
+	TurnRequestID     *uuid.UUID         `json:"turnRequestId"`
+	TurnStartedAt     pgtype.Timestamptz `json:"turnStartedAt"`
+	TurnAttemptID     *uuid.UUID         `json:"turnAttemptId"`
 }
 
 type DayReview struct {
