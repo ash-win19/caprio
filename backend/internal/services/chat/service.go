@@ -347,6 +347,11 @@ func (s *Service) ProcessStream(ctx context.Context, req ProcessRequest, onDelta
 			return err
 		}
 		result.Text = reply.Message
+		if response.Title != "" {
+			if _, err := tx.Exec(ctx, `UPDATE daily_plans SET conversation_title=$3,updated_at=clock_timestamp() WHERE user_id=$1 AND plan_date=$2`, req.UserID, req.SessionDate, response.Title); err != nil {
+				return err
+			}
+		}
 		result.Workflow, err = load(ctx, tx, req.UserID, req.SessionDate)
 		return err
 	})
