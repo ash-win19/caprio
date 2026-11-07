@@ -18,6 +18,7 @@ type Querier interface {
 	CloseTaskTomorrow(ctx context.Context, arg CloseTaskTomorrowParams) error
 	CountChatMessagesByUserAndDate(ctx context.Context, arg CountChatMessagesByUserAndDateParams) (int64, error)
 	CreateCategory(ctx context.Context, arg CreateCategoryParams) (Category, error)
+	CreateChatEvent(ctx context.Context, arg CreateChatEventParams) (ChatMessage, error)
 	CreateChatMessage(ctx context.Context, arg CreateChatMessageParams) (ChatMessage, error)
 	CreateStandupSession(ctx context.Context, arg CreateStandupSessionParams) (StandupSession, error)
 	CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error)

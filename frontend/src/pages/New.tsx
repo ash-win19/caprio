@@ -21,7 +21,6 @@ export default function New() {
   const sessions = useChatSessions();
   const workflow = useWorkflow(date);
   const remaining = workflow.data?.tasks.filter(task => !task.completed && task.status !== 'dropped') ?? [];
-  const carriedCount = remaining.filter(task => task.deferCount > 0).length;
   const [historyOpen, setHistoryOpen] = useState(false);
   useEffect(() => {
     if (!seed) return;
@@ -34,7 +33,6 @@ export default function New() {
     <AppTopBar title={date < today ? 'Conversation history' : intent !== 'plan' && workflow.data?.state === 'active' && workflow.data.tasks.length > 0 ? 'Adjust plan' : 'Plan'} date={date} actions={<div className="conversation-task-context">
       {workflow.isSuccess && workflow.data.tasks.length > 0 && <span role="status" aria-label="Task summary" aria-atomic="true" className="conversation-task-summary text-xs text-muted-foreground">
         <span>{remaining.length} remaining</span>
-        {carriedCount > 0 && <><span aria-hidden="true" className="conversation-task-separator">·</span><span className="text-cap-blue">{carriedCount} carried forward</span></>}
       </span>}
       <Button asChild size="sm" variant="outline" className="shrink-0 text-xs max-md:min-h-11"><Link to={`/today?date=${date}`}>View tasks</Link></Button>
     </div>} />

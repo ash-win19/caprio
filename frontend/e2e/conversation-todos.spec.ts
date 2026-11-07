@@ -71,3 +71,42 @@ test('an operation suggestion names the existing task without claiming unrelated
   await expect(proposal.getByRole('button', { name: 'Confirm plan' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Saved task changes' })).toHaveCount(0);
 });
+
+for (const width of [390, 1440]) {
+  test(`the thread stays whole beside a pending draft and discard leaves a marker at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const draft: NonNullable<Workflow['proposal']> = { id: 'draft-2', summary: 'Draft: added a task. Confirm to save it.', availableMinutes: null, tasks: [],
+      operations: [{ kind: 'create', date, fields: { title: 'Sleep early' } }] };
+    let workflow: Workflow = { date, state: 'planning', version: 3, tasks: [], backlog: [], availableMinutes: null, review: null, proposal: draft, messages: [
+      { id: 'opener', role: 'event', eventType: 'opener', content: 'Morning. What’s on today?' },
+      { id: 'u1', role: 'user', content: 'my tasks are: ship slides' },
+      { id: 'a1', role: 'assistant', content: 'Slides are on for today.' },
+      { id: 'u2', role: 'user', content: 'add one task for sleep early' },
+      { id: 'a2', role: 'assistant', content: 'Sleep early is on too.' },
+    ] };
+    await mockDay(page, { state: 'planning', tasks: [] });
+    await page.route('**/api/**', async route => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === '/api/workflow') return route.fulfill({ json: workflow });
+      if (path === '/api/day/plan/discard') {
+        workflow = { ...workflow, version: 4, proposal: null, messages: [...workflow.messages, { id: 'e1', role: 'event', eventType: 'discarded', content: 'Proposal discarded' }] };
+        return route.fulfill({ json: workflow });
+      }
+      return route.fallback();
+    });
+    await page.goto(`/new?date=${date}`);
+    const thread = page.getByRole('region', { name: 'Planning conversation' });
+    for (const text of ['Morning. What’s on today?', 'my tasks are: ship slides', 'Slides are on for today.', 'add one task for sleep early', 'Sleep early is on too.']) {
+      await expect(thread.getByText(text, { exact: true })).toBeVisible();
+    }
+    await expect(page.getByText(/Conversation ·/)).toHaveCount(0);
+    const card = page.getByRole('region', { name: 'Proposed plan' });
+    await expect(card).not.toContainText('Confirm to save');
+    await expect(card.getByRole('button', { name: /Revise/ })).toHaveCount(0);
+    await card.getByRole('button', { name: 'Discard', exact: true }).click();
+    await expect(page.getByRole('status', { name: 'Proposal discarded' })).toBeVisible();
+    await expect(card).toHaveCount(0);
+    await expect(thread.getByText('Sleep early is on too.', { exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+}

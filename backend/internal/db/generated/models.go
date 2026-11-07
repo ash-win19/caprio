@@ -6,6 +6,7 @@ package db
 
 import (
 	"database/sql/driver"
+	"encoding/json"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -221,6 +222,8 @@ type ChatMessage struct {
 	Role        string             `json:"role"`
 	Content     string             `json:"content"`
 	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
+	EventType   *string            `json:"eventType"`
+	Metadata    json.RawMessage    `json:"metadata"`
 }
 
 type ChatRequest struct {

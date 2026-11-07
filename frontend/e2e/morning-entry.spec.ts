@@ -3,38 +3,22 @@ import { mockDay, date, tasksForDay } from './fixtures/day';
 import type { Workflow } from '../src/lib/api';
 
 for (const width of [320, 390, 1440]) {
-  test(`unfinished carry context appears once beside View tasks at ${width}px`, async ({ page }, info) => {
+  test(`carry context opens the conversation and the top bar shows only what remains at ${width}px`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 900 });
     const tasks = tasksForDay().map((task, index) => ({ ...task, deferCount: index < 2 ? 2 : 0 }));
     tasks.push({ ...tasks[0], id: 'finished-carry', completed: true, status: 'completed' });
-    await mockDay(page, { state: 'planning', tasks, firstVisit: true });
+    const opener = 'Morning. 2 tasks carried over. What’s on today?';
+    await mockDay(page, { state: 'planning', tasks, firstVisit: true, opener });
     await page.goto('/');
     const summary = page.getByRole('status', { name: 'Task summary' });
     await expect(summary).toContainText('3 remaining');
-    await expect(summary).toContainText('2 carried forward');
-    await expect(page.getByText(/carried forward/)).toHaveCount(1);
-    await expect(page.locator('.app-topbar')).toContainText('2 carried forward');
+    await expect(page.locator('.app-topbar')).not.toContainText(/carried/i);
+    await expect(page.getByRole('region', { name: 'Planning conversation' }).getByText(opener, { exact: true })).toBeVisible();
+    await expect(page.getByText(/carried over/)).toHaveCount(1);
     await expect(page.getByText(/already waiting|Estimates are optional|They stay in your plan/)).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'GPT-OSS 120B', exact: true })).toBeVisible();
     const input = page.getByRole('textbox', { name: 'Message about your day' });
     await expect(input).not.toHaveAttribute('placeholder', /carried/i);
-    const contrast = await summary.evaluate(element => {
-      const normal = getComputedStyle(element.querySelector('span')!).color;
-      const carry = getComputedStyle(element.querySelector('.text-cap-blue')!).color;
-      const background = getComputedStyle(element.closest('header')!).backgroundColor;
-      const luminance = (color: string) => {
-        const channels = color.match(/[\d.]+/g)!.slice(0, 3).map(Number).map(channel => {
-          const value = channel / 255;
-          return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-        });
-        return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
-      };
-      const foregroundLuminance = luminance(carry);
-      const backgroundLuminance = luminance(background);
-      return { distinct: normal !== carry, ratio: (Math.max(foregroundLuminance, backgroundLuminance) + 0.05) / (Math.min(foregroundLuminance, backgroundLuminance) + 0.05) };
-    });
-    expect(contrast.distinct).toBe(true);
-    expect(contrast.ratio).toBeGreaterThanOrEqual(4.5);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     const title = await page.getByRole('heading', { name: 'Plan', exact: true }).evaluate(element => {
       const styles = getComputedStyle(element);
@@ -43,7 +27,7 @@ for (const width of [320, 390, 1440]) {
     expect(title.height).toBeLessThanOrEqual(title.lineHeight + 1);
     await page.screenshot({ path: info.outputPath(`carry-context-${width}.png`), animations: 'disabled' });
     await input.fill('Help me decide what to do first.');
-    await expect(summary).toContainText('2 carried forward');
+    await expect(summary).toContainText('3 remaining');
     await page.addStyleTag({ content: 'html { font-size: 200%; }' });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await expect(page.getByRole('link', { name: 'View tasks', exact: true })).toBeVisible();
@@ -56,7 +40,7 @@ for (const width of [390, 1440]) {
       await page.setViewportSize({ width, height: 900 });
       const tasks = tasksForDay().map(task => ({ ...task, deferCount: 1, duration: 120 }));
       const writes = await mockDay(page, {
-        state: 'planning', tasks, firstVisit: true,
+        state: 'planning', tasks, firstVisit: true, opener: 'Morning. 3 tasks carried over from yesterday. What’s on today?',
         carryoverOrigins: Object.fromEntries(tasks.map(task => [task.id, '2026-09-13'])),
       });
       await page.goto(entry);
@@ -68,7 +52,7 @@ for (const width of [390, 1440]) {
       await expect(page.getByRole('heading', { name: 'Your tasks' })).toHaveCount(0);
       await expect(page.locator('.daily-conversation-workspace')).not.toHaveClass(/with-task-list/);
       await expect(page.getByText('3 remaining', { exact: true })).toBeVisible();
-      await expect(page.getByRole('status')).toContainText('3 carried forward');
+      await expect(page.getByText('Morning. 3 tasks carried over from yesterday. What’s on today?', { exact: true })).toBeVisible();
       await page.screenshot({ path: info.outputPath(`morning-conversation-${width}.png`), animations: 'disabled' });
 
       // The explicit checklist remains reachable before a plan is started,
