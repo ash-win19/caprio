@@ -14,6 +14,13 @@ import (
 func sseServer(t *testing.T, chunks ...string) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Handle storage API requests (title retrieval)
+		if strings.Contains(r.URL.Path, "/api/memory/threads/") {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"title": ""})
+			return
+		}
+
 		if r.URL.Path != "/api/agents/general-conversation-agent/stream" {
 			t.Errorf("unexpected path %s", r.URL.Path)
 		}

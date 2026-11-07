@@ -268,7 +268,9 @@ func (h *TaskHandler) Update(c *gin.Context) {
 			}
 		}
 		completed := status == "completed"
-		task, err = q.UpdateTask(ctx, generated.UpdateTaskParams{ID: id, UserID: userID, Title: req.Title, Description: req.Description, CategoryID: req.CategoryID, Urgency: generated.NullUrgencyLevel{UrgencyLevel: generated.UrgencyLevel(urgency), Valid: true}, Duration: req.Duration, Completed: &completed, SortOrder: req.SortOrder, DueDate: due, PlannedForDate: date, Status: generated.NullTaskStatus{TaskStatus: generated.TaskStatus(status), Valid: true}, PriorityReason: req.PriorityReason})
+		urgencyPtr := generated.UrgencyLevel(urgency)
+		statusPtr := generated.TaskStatus(status)
+		task, err = q.UpdateTask(ctx, generated.UpdateTaskParams{ID: id, UserID: userID, Title: req.Title, Description: req.Description, CategoryID: req.CategoryID, Urgency: &urgencyPtr, Duration: req.Duration, Completed: &completed, SortOrder: req.SortOrder, DueDate: due, PlannedForDate: date, Status: &statusPtr, PriorityReason: req.PriorityReason})
 		if err != nil {
 			return err
 		}

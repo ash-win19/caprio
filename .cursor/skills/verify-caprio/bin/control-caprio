@@ -1,0 +1,342 @@
+#!/usr/bin/env bash
+# control-caprio: launch, check, drive, and tear down a disposable Caprio instance
+# for verification. Every process it kills is one it started (pids live in the
+# run's state file); nothing is killed by name.
+set -euo pipefail
+
+SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO="$(cd "$SKILL_DIR/../../.." && pwd)"
+VHOME="${CAPRIO_VERIFY_HOME:-$HOME/.cache/caprio-verify}"
+GOOSE_PKG="github.com/pressly/goose/v3/cmd/goose@v3.28.0"
+# Same placeholder Auth0 values as frontend/playwright.config.ts. They only
+# satisfy Auth0Provider; the verification session is the dev-mode demo session.
+FAKE_AUTH0_DOMAIN="caprio-test.auth0.com"
+FAKE_AUTH0_CLIENT="verify-caprio"
+
+die() { echo "control-caprio: $*" >&2; exit 1; }
+log() { echo "[control-caprio] $*" >&2; }
+
+usage() {
+  cat <<USAGE
+Usage: control-caprio <command> [options]
+
+  up [--mode stack|mock] [--mastra-url URL]
+      Start a disposable instance and print its run id.
+      stack (default): Vite + Go API (dev-bypass auth) + throwaway Postgres 16.
+      mock: Vite only; drive specs must route /api/** in the browser.
+  doctor [--run ID]        Read-only health check. Prints DOCTOR OK or fails.
+  drive SPEC.ts [--name N] [--run ID] [-- playwright args]
+      Run a Playwright spec against the instance. Evidence lands in
+      \$CAPRIO_VERIFY_HOME/evidence/<run>/<name>/.
+  sql "SELECT ..." [--save FILE] [--run ID]
+      Read-only query against the run's Postgres (stack mode). --save writes
+      the output to the run's evidence directory as well.
+  env [--run ID]           Print the run's state (URLs, ports, pids, paths).
+  down [--run ID]          Stop what this run started, delete its scratch
+                           state, keep evidence. Safe to repeat.
+  list                     List runs with state and evidence directories.
+
+Default run: \$CAPRIO_VERIFY_RUN, else the most recent 'up'.
+Home: $VHOME (override with CAPRIO_VERIFY_HOME).
+USAGE
+}
+
+current_run() {
+  if [[ -n "${OPT_RUN:-}" ]]; then echo "$OPT_RUN"; return; fi
+  if [[ -n "${CAPRIO_VERIFY_RUN:-}" ]]; then echo "$CAPRIO_VERIFY_RUN"; return; fi
+  cat "$VHOME/current" 2>/dev/null || true
+}
+
+load_state() {
+  RUN="$(current_run)"
+  [[ -n "$RUN" ]] || die "no run selected and no current run; start one with 'control-caprio up'"
+  STATE="$VHOME/runs/$RUN/state.env"
+  [[ -f "$STATE" ]] || die "run $RUN has no state file at $STATE (already cleaned up?)"
+  # shellcheck disable=SC1090
+  source "$STATE"
+}
+
+port_free() { ! lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1; }
+pick_port() { local p="$1"; while ! port_free "$p"; do p=$((p + 1)); done; echo "$p"; }
+port_owner() { lsof -nP -iTCP:"$1" -sTCP:LISTEN -t 2>/dev/null | head -1; }
+# Run a command in its own session so it outlives the calling shell (agent
+# shells kill their process group on exit). macOS has no setsid(1); perl does.
+# An array, not a function, so `"${DETACH[@]}" cmd &` forks once and $! is cmd's pid.
+DETACH=(nohup perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV or die "exec $ARGV[0]: $!"')
+alive() { [[ -n "${1:-}" ]] && kill -0 "$1" 2>/dev/null; }
+
+wait_http() { # url pid seconds
+  local url="$1" pid="$2" secs="$3" i
+  for ((i = 0; i < secs * 2; i++)); do
+    curl -fsS -o /dev/null --max-time 2 "$url" 2>/dev/null && return 0
+    alive "$pid" || return 1
+    sleep 0.5
+  done
+  return 1
+}
+
+kill_tree() { # pid: SIGTERM the process and its descendants (by parent pid, never by name)
+  local pid="$1" child
+  alive "$pid" || return 0
+  for child in $(pgrep -P "$pid" 2>/dev/null || true); do kill_tree "$child"; done
+  kill "$pid" 2>/dev/null || true
+}
+
+stop_pid() { # pid label
+  local pid="$1" label="$2" i
+  alive "$pid" || return 0
+  kill_tree "$pid"
+  for ((i = 0; i < 20; i++)); do alive "$pid" || { log "stopped $label (pid $pid)"; return 0; }; sleep 0.25; done
+  kill -9 "$pid" 2>/dev/null || true
+  log "force-stopped $label (pid $pid)"
+}
+
+write_state() { # key=value pairs appended to the state file
+  local kv
+  for kv in "$@"; do printf '%s=%q\n' "${kv%%=*}" "${kv#*=}" >> "$STATE"; done
+}
+
+cmd_up() {
+  local mode="stack" mastra_url=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --mode) mode="$2"; shift 2 ;;
+      --mastra-url) mastra_url="$2"; shift 2 ;;
+      *) die "unknown option for up: $1" ;;
+    esac
+  done
+  [[ "$mode" == stack || "$mode" == mock ]] || die "--mode must be stack or mock"
+  [[ -x "$REPO/frontend/node_modules/.bin/vite" ]] || die "frontend deps missing: run 'cd frontend && npm install' first"
+  if [[ "$mode" == stack ]]; then
+    for tool in go initdb pg_ctl createdb psql; do command -v "$tool" >/dev/null || die "$tool not on PATH (stack mode needs Go and PostgreSQL 16 client/server binaries, e.g. brew install go postgresql@16)"; done
+  fi
+
+  RUN="$(date +%Y%m%d-%H%M%S)-$$"
+  RUN_DIR="$VHOME/runs/$RUN"; EVIDENCE="$VHOME/evidence/$RUN"; STATE="$RUN_DIR/state.env"
+  mkdir -p "$RUN_DIR" "$EVIDENCE"
+  echo "$RUN" > "$VHOME/current"
+  : > "$STATE"
+  local rev; rev="$(git -C "$REPO" rev-parse --short HEAD)"
+  local dirty; dirty="$(git -C "$REPO" status --porcelain --untracked-files=no | wc -l | tr -d ' ')"
+  WEB_PORT="$(pick_port 4180)"
+  write_state RUN="$RUN" MODE="$mode" REPO="$REPO" RUN_DIR="$RUN_DIR" EVIDENCE="$EVIDENCE" REV="$rev" \
+    DIRTY_TRACKED_FILES="$dirty" WEB_PORT="$WEB_PORT" WEB_URL="http://127.0.0.1:$WEB_PORT" STARTED_AT="$(date '+%Y-%m-%dT%H:%M:%S%z')"
+  log "run $RUN ($mode) at $rev; scratch $RUN_DIR; evidence $EVIDENCE"
+
+  local api_base
+  if [[ "$mode" == stack ]]; then
+    PG_PORT="$(pick_port 55432)"; API_PORT="$(pick_port 18080)"
+    local db_url="postgres://caprio@127.0.0.1:$PG_PORT/caprio?sslmode=disable"
+    write_state PG_PORT="$PG_PORT" PG_DATA="$RUN_DIR/pg" DATABASE_URL="$db_url" API_PORT="$API_PORT" \
+      API_URL="http://127.0.0.1:$API_PORT" MASTRA_URL="$mastra_url"
+
+    log "initdb + start throwaway Postgres on 127.0.0.1:$PG_PORT"
+    initdb -D "$RUN_DIR/pg" -U caprio --auth=trust -E UTF8 --no-locale > "$RUN_DIR/initdb.log" 2>&1 || die "initdb failed; see $RUN_DIR/initdb.log"
+    pg_ctl -D "$RUN_DIR/pg" -o "-p $PG_PORT -k $RUN_DIR -c listen_addresses=127.0.0.1" -l "$RUN_DIR/pg.log" -w start > /dev/null \
+      || die "postgres failed to start; see $RUN_DIR/pg.log"
+    write_state PG_PID="$(head -1 "$RUN_DIR/pg/postmaster.pid")"
+    createdb -h 127.0.0.1 -p "$PG_PORT" -U caprio caprio
+
+    log "apply backend migrations with goose ($GOOSE_PKG)"
+    (cd "$REPO/backend" && go run "$GOOSE_PKG" -dir internal/db/migrations postgres "$db_url" up) > "$RUN_DIR/migrate.log" 2>&1 \
+      || die "migrations failed; see $RUN_DIR/migrate.log"
+
+    log "build Go API into the scratch dir"
+    (cd "$REPO/backend" && go build -o "$RUN_DIR/caprio-api" ./cmd/api) > "$RUN_DIR/build.log" 2>&1 || die "go build failed; see $RUN_DIR/build.log"
+
+    # The API runs from the scratch dir so godotenv never reads backend/.env
+    # (which points at the hosted Neon database). Empty AUTH0_* selects the
+    # router's DevBypass; every request acts as dev@caprio.app in this DB only.
+    log "start Go API on 127.0.0.1:$API_PORT (dev-bypass auth, MASTRA_URL='${mastra_url}')"
+    (cd "$RUN_DIR" || exit 1
+      "${DETACH[@]}" env PORT="$API_PORT" DATABASE_URL="$db_url" AUTH0_DOMAIN= AUTH0_AUDIENCE= \
+      GROQ_API_KEY= OPENAI_API_KEY= MASTRA_URL="$mastra_url" CORS_ALLOWED_ORIGINS="http://127.0.0.1:$WEB_PORT" GIN_MODE=debug \
+      ./caprio-api > "$RUN_DIR/api.log" 2>&1 &
+      echo $! > "$RUN_DIR/api.pid")
+    write_state API_PID="$(cat "$RUN_DIR/api.pid")"
+    wait_http "http://127.0.0.1:$API_PORT/healthz" "$(cat "$RUN_DIR/api.pid")" 30 || die "API did not answer /healthz; see $RUN_DIR/api.log"
+    api_base="http://127.0.0.1:$API_PORT"
+  else
+    # Same as the e2e config: API calls go to the Vite origin, which has no
+    # /api, so anything a spec forgets to route fails loudly instead of
+    # reaching a real backend.
+    api_base="http://127.0.0.1:$WEB_PORT"
+  fi
+  write_state VITE_API_BASE_URL="$api_base"
+
+  # Exported VITE_* values win over frontend/.env.local (which points at a
+  # different API and the real Auth0 tenant). Vite is started directly (the
+  # same binary 'npm run dev' runs) so the recorded pid is Vite itself.
+  log "start Vite on 127.0.0.1:$WEB_PORT (VITE_API_BASE_URL=$api_base)"
+  (cd "$REPO/frontend" || exit 1
+    "${DETACH[@]}" env VITE_API_BASE_URL="$api_base" VITE_API_URL="$api_base" VITE_AUTH0_DOMAIN="$FAKE_AUTH0_DOMAIN" \
+    VITE_AUTH0_CLIENT_ID="$FAKE_AUTH0_CLIENT" VITE_AUTH0_AUDIENCE= VITE_ENABLE_DEMO=true \
+    ./node_modules/.bin/vite --host 127.0.0.1 --port "$WEB_PORT" --strictPort > "$RUN_DIR/vite.log" 2>&1 &
+    echo $! > "$RUN_DIR/vite.pid")
+  write_state VITE_PID="$(cat "$RUN_DIR/vite.pid")"
+  wait_http "http://127.0.0.1:$WEB_PORT/" "$(cat "$RUN_DIR/vite.pid")" 60 || die "Vite did not answer; see $RUN_DIR/vite.log"
+
+  log "ready: http://127.0.0.1:$WEB_PORT  (next: control-caprio doctor)"
+  echo "$RUN"
+}
+
+cmd_doctor() {
+  load_state
+  local fail=0
+  ok() { echo "  ok    $*"; }
+  bad() { echo "  FAIL  $*"; fail=1; }
+  echo "run $RUN  mode=$MODE  rev=$REV (HEAD now $(git -C "$REPO" rev-parse --short HEAD))  started=$STARTED_AT"
+  [[ "$DIRTY_TRACKED_FILES" == 0 ]] && ok "tracked files were clean at launch" || echo "  note  $DIRTY_TRACKED_FILES tracked file(s) were modified at launch (you are verifying uncommitted work)"
+
+  if alive "$VITE_PID"; then ok "vite pid $VITE_PID alive"; else bad "vite pid $VITE_PID not running"; fi
+  [[ "$(port_owner "$WEB_PORT")" == "$VITE_PID" ]] && ok "port $WEB_PORT owned by our vite" || bad "port $WEB_PORT not owned by pid $VITE_PID (owner: $(port_owner "$WEB_PORT"))"
+  curl -fsS -o /dev/null --max-time 5 "$WEB_URL/" && ok "$WEB_URL/ answers" || bad "$WEB_URL/ does not answer"
+  local served; served="$(curl -fsS --max-time 10 "$WEB_URL/src/lib/api.ts" 2>/dev/null || true)"
+  if grep -q "\"VITE_API_BASE_URL\": \"$VITE_API_BASE_URL\"" <<<"$served" || grep -q "$VITE_API_BASE_URL" <<<"$served"; then
+    ok "served bundle uses VITE_API_BASE_URL=$VITE_API_BASE_URL"
+  else
+    bad "served bundle does not reference $VITE_API_BASE_URL (frontend/.env.local may be leaking in)"
+  fi
+  if grep -q "$FAKE_AUTH0_DOMAIN" <<<"$(curl -fsS --max-time 10 "$WEB_URL/src/main.tsx" 2>/dev/null || true)"; then
+    ok "served bundle uses placeholder Auth0 domain $FAKE_AUTH0_DOMAIN"
+  else
+    bad "served main.tsx does not use placeholder Auth0 domain"
+  fi
+
+  if [[ "$MODE" == stack ]]; then
+    if alive "$API_PID"; then ok "api pid $API_PID alive"; else bad "api pid $API_PID not running"; fi
+    [[ "$(port_owner "$API_PORT")" == "$API_PID" ]] && ok "port $API_PORT owned by our api" || bad "port $API_PORT not owned by pid $API_PID"
+    [[ "$(curl -fsS --max-time 5 "$API_URL/healthz" 2>/dev/null)" == *'"ok"'* ]] && ok "$API_URL/healthz ok" || bad "$API_URL/healthz failed"
+    local api_env; api_env="$(ps -E -ww -o command= -p "$API_PID" 2>/dev/null || true)"
+    if [[ "$api_env" == *"DATABASE_URL=$DATABASE_URL"* && "$api_env" != *neon.tech* ]]; then ok "api DATABASE_URL is the throwaway db ($DATABASE_URL)"; else bad "cannot confirm api DATABASE_URL is local"; fi
+    [[ "$api_env" == *"AUTH0_DOMAIN= "* ]] && ok "api AUTH0_DOMAIN empty (dev-bypass auth)" || bad "api AUTH0_DOMAIN not confirmed empty"
+    [[ ! -e "$RUN_DIR/.env" ]] && ok "api cwd has no .env (backend/.env is never loaded)" || bad "$RUN_DIR/.env exists"
+    if alive "$PG_PID"; then ok "postgres pid $PG_PID alive"; else bad "postgres pid $PG_PID not running"; fi
+    local ver; ver="$(PGOPTIONS='-c default_transaction_read_only=on' psql "$DATABASE_URL" -Atc 'select max(version_id) from goose_db_version' 2>/dev/null || true)"
+    local want; want="$(ls "$REPO/backend/internal/db/migrations" | sed -n 's/^0*\([0-9][0-9]*\)_.*/\1/p' | sort -n | tail -1)"
+    [[ -n "$ver" && "$ver" == "$want" ]] && ok "db migrated to version $ver" || bad "db at version '${ver}', repo expects $want"
+    if [[ -n "$MASTRA_URL" ]]; then
+      curl -fsS -o /dev/null --max-time 5 "$MASTRA_URL/api/agents" && ok "mastra answers at $MASTRA_URL" || bad "mastra at $MASTRA_URL not answering"
+    else
+      echo "  note  MASTRA_URL empty: POST /api/chat/stream returns 503 (UI: 'Planning isn’t available right now'); no draft plans in this run"
+    fi
+  fi
+  echo "evidence: $EVIDENCE"
+  if [[ "$fail" == 0 ]]; then echo "DOCTOR OK"; else echo "DOCTOR FAILED"; return 1; fi
+}
+
+cmd_drive() {
+  local spec="" name="" extra=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --name) name="$2"; shift 2 ;;
+      --run) OPT_RUN="$2"; shift 2 ;;
+      --) shift; extra=("$@"); break ;;
+      *) [[ -z "$spec" ]] || die "only one spec per drive"; spec="$1"; shift ;;
+    esac
+  done
+  [[ -n "$spec" && -f "$spec" ]] || die "drive needs an existing spec file (got '${spec}')"
+  load_state
+  spec="$(cd "$(dirname "$spec")" && pwd)/$(basename "$spec")"
+  [[ -n "$name" ]] || name="$(basename "$spec" .ts)-$(date +%H%M%S)"
+  local out="$EVIDENCE/$name" work="$RUN_DIR/drive"
+  mkdir -p "$out"
+  # Specs run from a scratch copy whose node_modules links to frontend's, so
+  # '@playwright/test' resolves to the repo's pinned Playwright.
+  rm -rf "$work"; mkdir -p "$work/specs"
+  cp -R "$SKILL_DIR/drives/." "$work/"
+  cp "$spec" "$work/specs/$(basename "$spec")"
+  ln -s "$REPO/frontend/node_modules" "$work/node_modules"
+  ln -s "$REPO/frontend/src" "$work/src"
+  ln -s "$REPO/frontend/e2e" "$work/e2e"
+  log "drive $(basename "$spec") -> $out"
+  local rc=0
+  (cd "$work" && env CAPRIO_VERIFY_RUN="$RUN" CAPRIO_VERIFY_MODE="$MODE" CAPRIO_VERIFY_URL="$WEB_URL" \
+    CAPRIO_VERIFY_API="$VITE_API_BASE_URL" CAPRIO_VERIFY_DATABASE_URL="${DATABASE_URL:-}" CAPRIO_VERIFY_OUT="$out" \
+    CAPRIO_VERIFY_CONTROL="$SKILL_DIR/bin/control-caprio" \
+    "$REPO/frontend/node_modules/.bin/playwright" test --config "$work/playwright.verify.config.ts" "specs/$(basename "$spec")" ${extra[@]+"${extra[@]}"}) \
+    2>&1 | tee "$out/drive.log" || rc=$?
+  echo "drive exit=$rc spec=$(basename "$spec") run=$RUN rev=$REV" >> "$out/drive.log"
+  log "evidence: $out"
+  return "$rc"
+}
+
+cmd_sql() {
+  local query="" save=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --save) save="$2"; shift 2 ;;
+      --run) OPT_RUN="$2"; shift 2 ;;
+      *) query="$1"; shift ;;
+    esac
+  done
+  load_state
+  [[ "$MODE" == stack ]] || die "sql needs a stack-mode run"
+  [[ -n "$query" ]] || die "sql needs a query"
+  local result
+  result="$(PGOPTIONS='-c default_transaction_read_only=on' psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -P pager=off -c "$query")"
+  echo "$result"
+  if [[ -n "$save" ]]; then mkdir -p "$(dirname "$EVIDENCE/$save")"; printf -- '-- %s\n%s\n' "$query" "$result" > "$EVIDENCE/$save"; log "saved $EVIDENCE/$save"; fi
+}
+
+cmd_env() { load_state; cat "$STATE"; }
+
+cmd_down() {
+  RUN="$(current_run)"
+  [[ -n "$RUN" ]] || { log "no current run; nothing to stop"; return 0; }
+  RUN_DIR="$VHOME/runs/$RUN"; STATE="$RUN_DIR/state.env"; EVIDENCE="$VHOME/evidence/$RUN"
+  if [[ ! -f "$STATE" ]]; then
+    log "run $RUN has no scratch state (already down). evidence: $EVIDENCE"
+    [[ "$(cat "$VHOME/current" 2>/dev/null)" == "$RUN" ]] && rm -f "$VHOME/current"
+    return 0
+  fi
+  # shellcheck disable=SC1090
+  source "$STATE"
+  stop_pid "${VITE_PID:-}" vite
+  stop_pid "${API_PID:-}" api
+  if [[ -n "${PG_DATA:-}" && -f "$PG_DATA/postmaster.pid" ]]; then
+    pg_ctl -D "$PG_DATA" -m fast -w stop > /dev/null 2>&1 && log "stopped postgres" || stop_pid "${PG_PID:-}" postgres
+  fi
+  # Logs are evidence: copy them out before the scratch dir goes.
+  mkdir -p "$EVIDENCE/logs"
+  for f in state.env vite.log api.log pg.log migrate.log build.log initdb.log; do
+    [[ -f "$RUN_DIR/$f" ]] && cp "$RUN_DIR/$f" "$EVIDENCE/logs/$f"
+  done
+  local p leaked=0
+  for p in "${WEB_PORT:-}" "${API_PORT:-}" "${PG_PORT:-}"; do
+    [[ -n "$p" ]] || continue
+    if port_free "$p"; then :; else log "WARNING: port $p still listening (owner $(port_owner "$p"))"; leaked=1; fi
+  done
+  rm -rf "$RUN_DIR"
+  [[ "$(cat "$VHOME/current" 2>/dev/null)" == "$RUN" ]] && rm -f "$VHOME/current"
+  log "run $RUN down; scratch removed; evidence kept at $EVIDENCE"
+  return "$leaked"
+}
+
+cmd_list() {
+  local d r
+  echo "current: $(cat "$VHOME/current" 2>/dev/null || echo none)"
+  for d in "$VHOME"/evidence/*/; do
+    [[ -d "$d" ]] || continue
+    r="$(basename "$d")"
+    printf '%s  %s  evidence=%s\n' "$r" "$([[ -f "$VHOME/runs/$r/state.env" ]] && echo up || echo down)" "$d"
+  done
+}
+
+main() {
+  [[ $# -gt 0 ]] || { usage; exit 1; }
+  local cmd="$1"; shift
+  OPT_RUN=""
+  case "$cmd" in
+    up) cmd_up "$@" ;;
+    doctor|down|env)
+      while [[ $# -gt 0 ]]; do case "$1" in --run) OPT_RUN="$2"; shift 2 ;; *) die "unknown option: $1" ;; esac; done
+      "cmd_$cmd" ;;
+    drive) cmd_drive "$@" ;;
+    sql) cmd_sql "$@" ;;
+    list) cmd_list ;;
+    -h|--help|help) usage ;;
+    *) usage; exit 1 ;;
+  esac
+}
+main "$@"
