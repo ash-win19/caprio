@@ -43,10 +43,10 @@ describe('AppSidebar', () => {
     expect(expand).toHaveFocus();
     expect(expand).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByRole('button', { name: 'Collapse sidebar' })).not.toBeInTheDocument();
-    for (const name of ['Today', 'Plan', 'Inbox', 'Review', 'History', 'Settings']) {
+    for (const name of ['Today', 'Plan', 'Inbox', 'Review', 'History']) {
       expect(screen.getByRole('link', { name })).toHaveAttribute('title', name);
     }
-    expect(screen.getByRole('link', { name: "Open Ashwin Shanmugam's profile" })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: "Ashwin Shanmugam's account menu" })).toBeInTheDocument();
     expect(useSidebarStore.getState().collapsed).toBe(true);
     expect(stored()).toBe(true);
 
