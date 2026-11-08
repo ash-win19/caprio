@@ -37,7 +37,7 @@ export default function Today({ embedded = false }: { embedded?: boolean }) {
   const isToday = date === today;
   const readOnly = date < today || workflow?.state === 'closed';
   const dayInProgress = isToday && workflow?.state === 'active';
-  const interruptHref = `/new?date=${date}&intent=interrupt`;
+  const interruptHref = `/conversation?date=${date}&intent=interrupt`;
   const remainingMinutes = active.reduce((sum, task) => sum + (task.duration || 0), 0);
   const unestimatedCount = active.filter(task => task.duration == null).length;
   const availableMinutes = workflow?.availableMinutes ?? null;
@@ -84,7 +84,7 @@ export default function Today({ embedded = false }: { embedded?: boolean }) {
   return <Page className="today-page">
     {!embedded && <PageHeader title={isToday ? 'Today' : 'Daily plan'} date={date} status={workflow ? { planning: 'Planning', active: 'Active', closed: 'Closed' }[workflow.state] : undefined} actions={workflow && (workflow.state === 'closed'
       ? <div className="flex gap-2"><Button asChild variant="outline"><Link to={`/review?date=${date}`}>View review</Link></Button>{isToday && <Button asChild><Link to={interruptHref}>Add tasks</Link></Button>}</div>
-      : !readOnly ? <Button asChild variant="outline"><Link to={dayInProgress ? interruptHref : `/new?date=${date}`}>{dayInProgress ? 'Adjust plan' : 'Plan day'}</Link></Button> : null)} />}
+      : !readOnly ? <Button asChild variant="outline"><Link to={dayInProgress ? interruptHref : `/conversation?date=${date}`}>{dayInProgress ? 'Adjust plan' : 'Plan day'}</Link></Button> : null)} />}
     {tasksQuery.isLoading || workflowQuery.isLoading ? <p role="status" className="py-16 text-center text-sm text-muted-foreground">Loading your plan…</p> : tasksQuery.error || workflowQuery.error ? <WorkflowError error={tasksQuery.error || workflowQuery.error} retry={() => { void tasksQuery.refetch(); void workflowQuery.refetch(); }} /> : workflow?.state === 'closed' ? <DaySummary workflow={workflow} /> : <>
       <section className="today-work" aria-labelledby="today-tasks-heading">
         <div className="today-list-heading">
@@ -102,14 +102,14 @@ export default function Today({ embedded = false }: { embedded?: boolean }) {
         {tasks.length > 0 && <p className="today-capacity text-muted-foreground">
           {remainingMinutes} min estimated remaining{unestimatedCount > 0 ? ` · ${unestimatedCount} ${unestimatedCount === 1 ? 'task' : 'tasks'} without an estimate` : ''}{availableMinutes !== null ? ` · ${availableMinutes} min available` : ''}
         </p>}
-        {workflow?.plan && <div className="today-plan-notice"><p>Plan changes are waiting for your confirmation.</p><Link to={`/new?date=${date}`}>Review proposal<ArrowRight size={14} aria-hidden /></Link></div>}
+        {workflow?.plan && <div className="today-plan-notice"><p>Plan changes are waiting for your confirmation.</p><Link to={`/conversation?date=${date}`}>Review proposal<ArrowRight size={14} aria-hidden /></Link></div>}
         {workflow?.state === 'planning' && tasks.length > 0 && <p className="today-plan-notice">These tasks are saved. You can check them off or use Plan day to add more.</p>}
         {(reorder.error || toggle.error) && <WorkflowError error={reorder.error || toggle.error} />}
         {!tasks.length ? <section className="today-empty">
           <ListChecks className="mb-4 h-7 w-7 text-muted-foreground" />
           <h3 className="text-xl font-medium">{readOnly ? 'No saved plan for this day' : workflow?.state === 'active' ? 'Nothing planned for this day' : 'Make room for what matters today'}</h3>
           <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">{readOnly ? 'Choose another day from your history.' : workflow?.state === 'active' ? 'Your plan is saved with no tasks. Enjoy the space, or adjust it if something comes up.' : 'Start with the tasks on your mind. They will appear here as you add them.'}</p>
-          <Button asChild className="mt-5"><Link to={readOnly ? '/momentum' : dayInProgress ? interruptHref : `/new?date=${date}`}>{readOnly ? 'View history' : dayInProgress ? 'Adjust plan' : 'Plan day'}<ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
+          <Button asChild className="mt-5"><Link to={readOnly ? '/momentum' : dayInProgress ? interruptHref : `/conversation?date=${date}`}>{readOnly ? 'View history' : dayInProgress ? 'Adjust plan' : 'Plan day'}<ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
         </section> : <>
           {fresh.length > 0 && <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={fresh.map(task => task.id)} strategy={verticalListSortingStrategy}>

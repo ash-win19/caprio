@@ -7,7 +7,7 @@ import { useAppStore } from '@/lib/store';
 import { bootstrap, rolloverDay, setAccessTokenProvider } from '@/lib/api';
 import { useLocalDay } from '@/lib/useLocalDay';
 import { isValidDate } from '@/lib/date';
-import { hasOpenedDay, markDayOpened } from '@/lib/dayEntry';
+import { hasSkippedDay, markDaySkipped, opensToday } from '@/lib/dayEntry';
 import { clearDateDrafts } from '@/lib/dateDrafts';
 import { QUERY_KEYS, useWorkflow } from '@/lib/queries';
 
@@ -89,14 +89,6 @@ export function AuthGuard({ children }: { children: ReactNode }) {
     else localStorage.removeItem('onboarding_complete');
   }, [account, preparedAccount, session.data]);
 
-  useEffect(() => {
-    const explicitDate = new URLSearchParams(location.search).get('date');
-    if (account && preparedAccount === account && session.data?.onboardingComplete
-      && location.pathname === '/new' && (!explicitDate || !isValidDate(explicitDate) || explicitDate === date)) {
-      markDayOpened(account, date);
-    }
-  }, [account, preparedAccount, session.data, location.pathname, location.search, date]);
-
   if (isLoading && !isDemo) return <SessionStatus>Loading your account...</SessionStatus>;
   if (!account) return PUBLIC_ROUTES.includes(location.pathname) ? <>{children}</> : <Navigate to="/login" replace />;
   if (preparedAccount !== account || session.isPending) return <SessionStatus>Loading your day...</SessionStatus>;
@@ -113,35 +105,34 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   }
   if (!session.data.onboardingComplete && !location.pathname.startsWith('/onboarding')) return <Navigate to="/onboarding" replace />;
 
-  if (session.data.onboardingComplete && location.pathname.startsWith('/onboarding')) return <Navigate to="/new" replace />;
+  if (session.data.onboardingComplete && location.pathname.startsWith('/onboarding')) return <Navigate to="/conversation" replace />;
   const fromPublicRoute = PUBLIC_ROUTES.includes(location.pathname);
   // Missing or invalid dates open the current day, matching Today's fallback.
   // Valid explicit dates, including View tasks links, keep their destination.
   const explicitDate = new URLSearchParams(location.search).get('date');
   const opensCurrentDay = location.pathname === '/today' && (!explicitDate || !isValidDate(explicitDate));
-  if (fromPublicRoute || opensCurrentDay) return <DayEntry key={`${account}:${date}`} account={account} date={date} fromPublicRoute={fromPublicRoute} savedPlanDate={location.state?.savedPlanDate}>{children}</DayEntry>;
+  if (fromPublicRoute || opensCurrentDay) return <DayEntry key={`${account}:${date}`} account={account} date={date} fromPublicRoute={fromPublicRoute} openedToday={opensToday(location.state, date)}>{children}</DayEntry>;
 
   return <>{children}</>;
 }
 
-function DayEntry({ account, date, fromPublicRoute, savedPlanDate, children }: { account: string; date: string; fromPublicRoute: boolean; savedPlanDate?: string; children: ReactNode }) {
+function DayEntry({ account, date, fromPublicRoute, openedToday, children }: { account: string; date: string; fromPublicRoute: boolean; openedToday: boolean; children: ReactNode }) {
   // AuthGuard mounts this only after rollover and account bootstrap finish.
-  // Carried tasks do not mean the user has started today's plan.
+  // A Day that isn't confirmed opens in the Conversation until the person
+  // skips it on this device; choosing Today counts as skipping.
   const workflow = useWorkflow(date);
-  const [firstOpen] = useState(() => !hasOpenedDay(account, date));
+  const [skipped] = useState(() => openedToday || hasSkippedDay(account, date));
+  const confirmed = workflow.data && workflow.data.state !== 'planning';
+  const showsToday = skipped || confirmed;
   useEffect(() => {
-    if (workflow.isSuccess) markDayOpened(account, date);
-  }, [account, date, workflow.isSuccess]);
+    if (openedToday) markDaySkipped(account, date);
+  }, [account, date, openedToday]);
   if (workflow.isPending) return <SessionStatus>Loading your day...</SessionStatus>;
   if (workflow.error) return <SessionStatus>
     <p role="alert">{workflow.error.message || 'Unable to load your day.'}</p>
     <button className="mt-4 underline" onClick={() => void workflow.refetch()}>Try again</button>
   </SessionStatus>;
-  const hasNewTasks = workflow.data.tasks.some(task => task.deferCount === 0);
-  // A just-saved plan can contain only carried tasks. Keep its task page open
-  // without pinning the route to a date, so an overnight tab starts tomorrow.
-  const showsSavedPlan = savedPlanDate === date && workflow.data.state === 'active' && workflow.data.tasks.length > 0;
-  if (!showsSavedPlan && workflow.data.state !== 'closed' && (firstOpen || workflow.data.state === 'planning' || !hasNewTasks)) return <Navigate to="/new" state={{ planningDay: date }} replace />;
+  if (!showsToday) return <Navigate to="/conversation" state={{ planningDay: date }} replace />;
   if (fromPublicRoute) return <Navigate to="/today" replace />;
   return <>{children}</>;
 }

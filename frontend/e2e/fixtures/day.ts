@@ -18,7 +18,6 @@ export function tasksForDay(): BackendTask[] {
 }
 
 export async function mockDay(page: Page, options: {
-  collapsed?: boolean;
   tasks?: BackendTask[];
   state?: Workflow['state'];
   plan?: Workflow['plan'];
@@ -31,11 +30,12 @@ export async function mockDay(page: Page, options: {
   const tasks = options.tasks ?? tasksForDay();
   const writes: Array<{ path: string; body: unknown }> = [];
   await page.clock.setFixedTime(new Date(`${date}T12:00:00`));
-  await page.addInitScript(({ collapsed, firstVisit, date }) => {
+  // Unless a test asks for the first open of the day, the morning
+  // Conversation was already skipped on this device.
+  await page.addInitScript(({ firstVisit, date }) => {
     localStorage.setItem('caprio_session', 'demo');
-    localStorage.setItem('caprio-sidebar', JSON.stringify({ state: { collapsed }, version: 0 }));
     if (!firstVisit && !localStorage.getItem('caprio_day_entry:demo')) localStorage.setItem('caprio_day_entry:demo', date);
-  }, { collapsed: options.collapsed ?? true, firstVisit: options.firstVisit ?? false, date });
+  }, { firstVisit: options.firstVisit ?? false, date });
   // All API calls stay in the browser fixture; no backend or account is required.
   await page.route('**/api/**', async (route) => {
     const request = route.request();

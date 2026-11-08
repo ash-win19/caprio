@@ -87,7 +87,7 @@ export function DaySummary({ workflow }: { workflow: Workflow }) {
   const destination = review?.carriedToDate || followingDate(workflow.date);
   const carriedCount = review?.carriedToTomorrowCount ?? 0;
   const recovering = destination < localDate() && carriedCount > 0;
-  const nextPath = recovering ? `/review?date=${destination}&reopen=1` : destination < localDate() ? '/new' : `/new?date=${destination}`;
+  const nextPath = recovering ? `/review?date=${destination}&reopen=1` : destination < localDate() ? '/conversation' : `/conversation?date=${destination}`;
   const nextLabel = recovering ? `Review ${dateLabel(destination)}` : destination < localDate() ? 'Return to today' : 'Plan the next day';
   const done = workflow.tasks.filter(task => task.completed || task.status === 'completed');
   const dropped = workflow.tasks.filter(task => !task.completed && task.status === 'dropped');

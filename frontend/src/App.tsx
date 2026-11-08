@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -11,7 +11,7 @@ import Signup from "./pages/Signup";
 import Onboarding from "./pages/Onboarding";
 import OnboardingPrefs from "./pages/OnboardingPrefs";
 import Today from "./pages/Today";
-import New from "./pages/New";
+import Conversation from "./pages/Conversation";
 import Capture from "./pages/Capture";
 import Review from "./pages/Review";
 import Momentum from "./pages/Momentum";
@@ -22,6 +22,12 @@ import SettingsVoice from "./pages/SettingsVoice";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
+
+// The old Plan route keeps working for bookmarks and in-flight links.
+function ToConversation() {
+  const { search } = useLocation();
+  return <Navigate to={{ pathname: "/conversation", search }} replace />;
+}
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -37,7 +43,8 @@ const App = () => (
             <Route path="/signup" element={<Signup />} />
             <Route path="/onboarding" element={<Onboarding />} />
             <Route path="/onboarding/prefs" element={<OnboardingPrefs />} />
-            <Route path="/new" element={<New />} />
+            <Route path="/conversation" element={<Conversation />} />
+            <Route path="/new" element={<ToConversation />} />
             <Route element={<AppLayout />}>
               <Route path="/today" element={<Today />} />
               <Route path="/capture" element={<Capture />} />

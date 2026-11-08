@@ -16,13 +16,13 @@ export default function Index() {
           navigate('/today', { replace: true });
         } else {
           // First open of the day, go to conversational capture
-          navigate('/new', { replace: true });
+          navigate('/conversation', { replace: true });
         }
       })
       .catch((error) => {
         console.error('Failed to check day status:', error);
-        // Default to /new on error
-        navigate('/new', { replace: true });
+        // Default to /conversation on error
+        navigate('/conversation', { replace: true });
       })
       .finally(() => {
         setIsChecking(false);

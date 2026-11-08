@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactElement } from 'react';
 import * as api from '@/lib/api';
 import { localDate, nextDate, previousDate } from '@/lib/date';
-import New from './New';
+import Conversation from './Conversation';
 import Review from './Review';
 import Capture from './Capture';
 import Today from './Today';
@@ -98,7 +98,7 @@ describe('Daily planning workflow', () => {
       ],
       plan: plan({ today: [{ ref: 'new:2', title: 'Sleep early', badge: 'new', date: today }] }),
     };
-    mount(<New />, '/new');
+    mount(<Conversation />, '/conversation');
     const reply = await screen.findByText('Added sleep early.');
     expect(reply.closest('details')).toBeNull();
     for (const text of ['Morning. What’s on today?', 'my tasks are: ship slides', 'Got it, slides are on for today.', 'add sleep early too']) expect(screen.getByText(text)).toBeVisible();
@@ -114,7 +114,7 @@ describe('Daily planning workflow', () => {
 
   it('opens a new day with the app-written opener and no model call', async () => {
     workflow = { ...workflow, opener: 'Morning. 2 tasks carried over from yesterday. What’s on today?' };
-    mount(<New />, '/new');
+    mount(<Conversation />, '/conversation');
     expect(await screen.findByText('Morning. 2 tasks carried over from yesterday. What’s on today?')).toBeInTheDocument();
     expect(api.streamChatMessage).not.toHaveBeenCalled();
   });
@@ -126,7 +126,7 @@ describe('Daily planning workflow', () => {
       { id: 'e1', role: 'event', eventType: 'discarded', content: 'Proposal discarded' },
       { id: 'e2', role: 'event', eventType: 'plan_saved', content: 'Plan saved · 1 task' },
     ] };
-    mount(<New />, '/new');
+    mount(<Conversation />, '/conversation');
     expect(await screen.findByRole('status', { name: 'Proposal discarded' })).toBeInTheDocument();
     expect(screen.getByRole('status', { name: 'Plan saved · 1 task' })).toBeInTheDocument();
   });
@@ -141,7 +141,7 @@ describe('Daily planning workflow', () => {
       };
       return { text: 'Review this draft.', workflow };
     });
-    mount(<New />, '/new');
+    mount(<Conversation />, '/conversation');
     const input = await screen.findByRole('textbox', { name: 'Message about your day' });
     await waitFor(() => expect(input).toBeEnabled());
     fireEvent.change(input, { target: { value: 'Add Finish report' } });
@@ -163,7 +163,7 @@ describe('Daily planning workflow', () => {
       workflow = { ...workflow, plan: null, state: 'active', tasks: [task('report')], version: 4 };
       return workflow;
     });
-    mount(<New />, '/new');
+    mount(<Conversation />, '/conversation');
     expect(await screen.findByRole('region', { name: 'Proposed plan' })).toBeInTheDocument();
     expect(api.confirmDayPlan).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Confirm plan' }));
@@ -174,7 +174,7 @@ describe('Daily planning workflow', () => {
   it('restores messages and requires a separate confirmation to save a proposal', async () => {
     workflow = { ...workflow, messages: [{ id: 'message-1', role: 'user', content: 'I have an hour for the report.' }], plan: plan() };
     vi.mocked(api.confirmDayPlan).mockImplementation(async () => ({ ...workflow, plan: null, state: 'active' }));
-    mount(<New />, '/new');
+    mount(<Conversation />, '/conversation');
     expect(await screen.findByText('I have an hour for the report.')).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Proposed plan' })).toHaveTextContent('Finish report');
     expect(screen.getByRole('region', { name: 'Proposed plan' })).toHaveTextContent('30 min');
@@ -193,7 +193,7 @@ describe('Daily planning workflow', () => {
         workflow = { ...workflow, messages: [{ id: 'sent', role: 'user', content: 'Finish my report' }, { id: 'reply', role: 'assistant', content: 'How much time do you have?' }] };
         return { text: 'How much time do you have?', workflow };
       });
-    mount(<New />, '/new');
+    mount(<Conversation />, '/conversation');
     const input = await screen.findByRole('textbox', { name: 'Message about your day' });
     await waitFor(() => expect(input).toBeEnabled());
     fireEvent.change(input, { target: { value: 'Finish my report' } });
@@ -219,7 +219,7 @@ describe('Daily planning workflow', () => {
       deliver = (text) => onDelta?.(text);
       finish = resolve;
     }));
-    mount(<New />, '/new');
+    mount(<Conversation />, '/conversation');
     const input = await screen.findByRole('textbox', { name: 'Message about your day' });
     await waitFor(() => expect(input).toBeEnabled());
     fireEvent.change(input, { target: { value: 'Plan my day' } });
@@ -244,7 +244,7 @@ describe('Daily planning workflow', () => {
     vi.mocked(api.streamChatMessage).mockImplementationOnce(({ signal }) => new Promise((_, reject) => {
       signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
     }));
-    mount(<New />, '/new');
+    mount(<Conversation />, '/conversation');
     const input = await screen.findByRole('textbox', { name: 'Message about your day' });
     await waitFor(() => expect(input).toBeEnabled());
     fireEvent.change(input, { target: { value: 'Plan my day' } });
@@ -257,21 +257,21 @@ describe('Daily planning workflow', () => {
     expect(screen.getByRole('button', { name: 'Send prompt' })).toBeInTheDocument();
   });
 
-  it('requires stopping a reply before switching dates or pages', async () => {
+  it('requires stopping a reply before leaving the Conversation', async () => {
     vi.mocked(api.streamChatMessage).mockImplementationOnce(({ signal }) => new Promise((_, reject) => {
       signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
     }));
-    mount(<New />, '/new');
+    mount(<Conversation />, '/conversation');
     const input = await screen.findByRole('textbox', { name: 'Message about your day' });
     await waitFor(() => expect(input).toBeEnabled());
     fireEvent.change(input, { target: { value: 'Keep this request' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send prompt' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Next day' })).toBeDisabled());
-    fireEvent.click(screen.getByRole('link', { name: 'View tasks' }));
+    await screen.findByRole('button', { name: 'Stop generating' });
+    fireEvent.click(screen.getByRole('link', { name: 'Skip to my list' }));
     expect(screen.queryByText('Saved plan destination')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Stop generating' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Next day' })).toBeEnabled());
-    fireEvent.click(screen.getByRole('link', { name: 'View tasks' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Stop generating' })).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole('link', { name: 'Skip to my list' }));
     expect(await screen.findByText('Saved plan destination')).toBeInTheDocument();
   });
 
@@ -284,7 +284,7 @@ describe('Daily planning workflow', () => {
       deliver = text => request.onDelta?.(text);
       finish = resolve;
     }));
-    const client = mount(<New />, '/new');
+    const client = mount(<Conversation />, '/conversation');
     const input = await screen.findByRole('textbox', { name: 'Message about your day' });
     await waitFor(() => expect(input).toBeEnabled());
     fireEvent.change(input, { target: { value: 'Keep the interrupted request' } });
@@ -297,7 +297,7 @@ describe('Daily planning workflow', () => {
       finish({ text: 'Late response', workflow: { ...workflow, messages: [{ id: 'late', role: 'assistant', content: 'Late response' }] } });
     });
     expect(client.getQueryData<api.Workflow>(['workflow', today])?.messages).toEqual([]);
-    mount(<New />, '/new');
+    mount(<Conversation />, '/conversation');
     expect(await screen.findByText('Keep the interrupted request')).toBeInTheDocument();
     expect(screen.getByText('Reply stopped. Nothing was saved.')).toBeInTheDocument();
     expect(screen.queryByText('Late response')).not.toBeInTheDocument();
@@ -306,7 +306,7 @@ describe('Daily planning workflow', () => {
   it('discards a proposal through the server without confirming tasks', async () => {
     workflow = { ...workflow, plan: plan() };
     vi.mocked(api.discardDayPlan).mockImplementation(async () => { workflow = { ...workflow, plan: null }; return workflow; });
-    mount(<New />, '/new');
+    mount(<Conversation />, '/conversation');
     fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
     await waitFor(() => expect(screen.queryByRole('region', { name: 'Proposed plan' })).not.toBeInTheDocument());
     expect(api.discardDayPlan).toHaveBeenCalledWith({ date: today, draftId: 'draft-1', version: 2 });
@@ -315,7 +315,7 @@ describe('Daily planning workflow', () => {
 
   it('keeps a historical conversation read-only', async () => {
     workflow = { ...workflow, date: '2020-01-01', plan: plan(), messages: [{ id: 'past', role: 'assistant', content: 'Your old plan.' }] };
-    mount(<New />, '/new?date=2020-01-01');
+    mount(<Conversation />, '/conversation?date=2020-01-01');
     expect(await screen.findByText('Your old plan.')).toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: 'Message about your day' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Confirm plan' })).not.toBeInTheDocument();
@@ -341,7 +341,7 @@ describe('Daily planning workflow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close day' }));
     expect(await screen.findByRole('heading', { name: 'Day closed' })).toBeInTheDocument();
     expect(api.closeDay).toHaveBeenCalledWith({ date: today, taskActions: [{ taskId: 'report', action: 'done' }, { taskId: 'meeting', action: 'tomorrow' }], notes: 'Leave room for the client call.', energyLevel: 3 });
-    expect(screen.getByRole('link', { name: 'Plan the next day' })).toHaveAttribute('href', `/new?date=${nextDate(today)}`);
+    expect(screen.getByRole('link', { name: 'Plan the next day' })).toHaveAttribute('href', `/conversation?date=${nextDate(today)}`);
   });
 
   it('does not allow closing a future day', async () => {
@@ -397,7 +397,7 @@ describe('Daily planning workflow', () => {
     expect(await screen.findByRole('heading', { name: 'Nothing planned for this day' })).toBeInTheDocument();
     const interruptLinks = screen.getAllByRole('link', { name: /^Adjust plan$/i });
     expect(interruptLinks.length).toBeGreaterThan(0);
-    expect(interruptLinks.every((link) => link.getAttribute('href') === `/new?date=${today}&intent=interrupt`)).toBe(true);
+    expect(interruptLinks.every((link) => link.getAttribute('href') === `/conversation?date=${today}&intent=interrupt`)).toBe(true);
     expect(screen.queryByRole('link', { name: 'Review day →' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Review day/i })).not.toBeInTheDocument();
   });
@@ -445,38 +445,29 @@ describe('Daily planning workflow', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/Choose Done or Drop/i);
     expect(screen.getByRole('alert')).not.toHaveTextContent(/reopen tomorrow/i);
   });
-  it.each([false, true])('shows the remaining count in the header and leaves carry context to the opener, with existing conversation: %s', async (hasMessages) => {
+  it.each([false, true])('leaves carry context to the opener, with existing conversation: %s', async (hasMessages) => {
     workflow = { ...workflow, tasks: [task('report', false, 3), task('meeting'), task('done', true, 2)],
       messages: hasMessages ? [{ id: 'earlier', role: 'user', content: 'Help me plan around these tasks.' }] : [] };
-    mount(<New />, '/new');
+    mount(<Conversation />, '/conversation');
     const input = await screen.findByRole('textbox', { name: 'Message about your day' });
-    const summary = await screen.findByRole('status', { name: 'Task summary' });
-    expect(summary).toHaveTextContent('2 remaining');
-    expect(summary).not.toHaveTextContent(/carried/i);
-    expect(summary.closest('header')).not.toBeNull();
     expect(screen.queryByText(/already waiting|Estimates are optional|They stay in your plan/i)).not.toBeInTheDocument();
     expect(input.getAttribute('placeholder')).not.toMatch(/carried/i);
-    expect(screen.getByRole('link', { name: 'View tasks' })).toHaveAttribute('href', `/today?date=${today}`);
   });
 
-  it('shows zero remaining when saved work is completed or dropped', async () => {
-    workflow = { ...workflow, tasks: [task('done', true, 1), { ...task('removed', false, 1), status: 'dropped' }] };
-    mount(<New />, '/new');
-    const summary = await screen.findByRole('status', { name: 'Task summary' });
-    expect(summary).toHaveTextContent('0 remaining');
-    expect(summary).not.toHaveTextContent('carried');
+  it.each([['planning', 'Skip to my list'], ['active', 'Back to Today'], ['closed', 'Back to Today']] as const)('offers one way to Today for a %s day', async (state, label) => {
+    workflow = { ...workflow, state };
+    mount(<Conversation />, '/conversation');
+    const link = await screen.findByRole('link', { name: label });
+    expect(link).toHaveAttribute('href', '/today');
+    expect(screen.getAllByRole('link', { name: /Skip to my list|Back to Today/ })).toHaveLength(1);
   });
 
-  it.each(['empty', 'loading', 'error'])('does not invent task counts for an %s workflow', async (state) => {
-    if (state === 'loading') vi.mocked(api.getWorkflow).mockReturnValue(new Promise(() => {}));
-    if (state === 'error') vi.mocked(api.getWorkflow).mockRejectedValue(new Error('Unable to load your day'));
-    mount(<New />, '/new');
-    await screen.findByRole('link', { name: 'View tasks' });
-    if (state === 'empty') await waitFor(() => expect(screen.getByRole('textbox', { name: 'Message about your day' })).toBeEnabled());
-    if (state === 'error') await screen.findByRole('alert');
-    expect(screen.queryByRole('status', { name: 'Task summary' })).not.toBeInTheDocument();
-    expect(screen.queryByText(/0 remaining|0 saved tasks/)).not.toBeInTheDocument();
+  it('offers the way back to today from a past day', async () => {
+    workflow = { ...workflow, date: previousDate(today) };
+    mount(<Conversation />, `/conversation?date=${previousDate(today)}`);
+    expect(await screen.findByRole('link', { name: 'Back to Today' })).toHaveAttribute('href', '/today');
   });
+
 
   it('keeps repeatedly carried tasks without pressuring the user to drop them', async () => {
     workflow = { ...workflow, state: 'active', tasks: [task('report', false, 1)] };
@@ -506,7 +497,7 @@ describe('Daily planning workflow', () => {
         { ref: 'new:2', title: 'Clean inbox', duration: 30, badge: 'new', date: today },
       ] }),
     };
-    mount(<New />, '/new');
+    mount(<Conversation />, '/conversation');
     const confirm = await screen.findByRole('button', { name: 'Confirm plan' });
     expect(screen.getByText('Finish report')).toBeInTheDocument();
     expect(screen.getByText('Clean inbox')).toBeInTheDocument();
@@ -533,7 +524,7 @@ describe('Daily planning workflow', () => {
     vi.mocked(api.getTodayTasks).mockResolvedValue([{ id: 'report', title: 'Finish report', urgency: 'medium', category: 'Uncategorized', completed: false, addedToday: true, carriedOver: false, order: 0 }]);
     mount(<Today />, '/today');
     const cta = await screen.findByRole('link', { name: /^Adjust plan$/i });
-    expect(cta).toHaveAttribute('href', `/new?date=${today}&intent=interrupt`);
+    expect(cta).toHaveAttribute('href', `/conversation?date=${today}&intent=interrupt`);
     expect(screen.queryByRole('link', { name: 'Something changed →' })).not.toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: /^Adjust plan$/i })).toHaveLength(1);
     expect(screen.getByRole('link', { name: 'Review day' })).toHaveAttribute('href', `/review?date=${today}`);
@@ -557,7 +548,7 @@ describe('Daily planning workflow', () => {
         counts: { new: 1, edited: 0, moved: 1, removed: 0, carried: 1 },
       }),
     };
-    mount(<New />, '/new');
+    mount(<Conversation />, '/conversation');
     const card = await screen.findByRole('region', { name: 'Proposed plan' });
     expect(card).toHaveTextContent('1 new · 1 moved · 1 carried');
     expect(screen.getByRole('region', { name: 'Today' })).toHaveTextContent(/Finish report.*Ship hotfixNew/);
@@ -575,13 +566,13 @@ describe('Daily planning workflow', () => {
     expect(screen.getByRole('button', { name: /Add to today/i })).toBeInTheDocument();
     fireEvent.keyDown(options, { key: 'ArrowDown' });
     const discuss = await screen.findByRole('menuitem', { name: 'Discuss in Plan' });
-    expect(discuss.getAttribute('href')).toContain(`/new?date=${today}&intent=interrupt&taskId=inbox-1&seed=`);
+    expect(discuss.getAttribute('href')).toContain(`/conversation?date=${today}&intent=interrupt&taskId=inbox-1&seed=`);
     expect(decodeURIComponent(discuss.getAttribute('href') || '')).toContain('Consider adding to today: Write brief');
   });
 
   it('seeds interrupt chips on the planner when intent=interrupt', async () => {
     workflow = { ...workflow, state: 'active', tasks: [task('report')] };
-    mount(<New />, `/new?date=${today}&intent=interrupt`);
+    mount(<Conversation />, `/conversation?date=${today}&intent=interrupt`);
     expect(await screen.findByLabelText('Quick interruption prompts')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Meeting ran over' }));
     expect(screen.getByRole('textbox', { name: 'Message about your day' })).toHaveValue('A meeting ran over and I have less time today. ');
@@ -590,7 +581,7 @@ describe('Daily planning workflow', () => {
   it('retries a failed plan update once on the fallback model, then says the plan was not updated', async () => {
     const failure = () => Object.assign(new Error('I couldn\'t update the plan. Try again.'), { status: 400, code: 'plan_update_failed' });
     vi.mocked(api.streamChatMessage).mockRejectedValueOnce(failure()).mockRejectedValueOnce(failure());
-    mount(<New />, '/new');
+    mount(<Conversation />, '/conversation');
     const input = await screen.findByRole('textbox', { name: 'Message about your day' });
     await waitFor(() => expect(input).toBeEnabled());
     fireEvent.change(input, { target: { value: 'Plan my day' } });
@@ -620,7 +611,7 @@ describe('Plan side panel', () => {
 
   it('slides in with the first change, stays through a clarifying turn, closes to a pill, and leaves on Discard', async () => {
     wide(true);
-    mount(<New />, '/new');
+    mount(<Conversation />, '/conversation');
     await screen.findByRole('textbox', { name: 'Message about your day' });
     expect(screen.queryByRole('complementary', { name: 'Today’s plan' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Plan ·/ })).not.toBeInTheDocument();
@@ -654,7 +645,7 @@ describe('Plan side panel', () => {
     wide(true);
     workflow = { ...workflow, plan: plan({ today: [{ ref: 'report', taskId: 'report', title: 'Finish report', date: today }, { ref: 'new:1', title: 'Ship slides', badge: 'new', date: today }] }),
       messages: [{ id: 'e1', role: 'event', eventType: 'plan_update', content: 'Plan updated · Added Ship slides', metadata: { changes: [{ ref: 'new:1', title: 'Ship slides', action: 'Added' }] } }] };
-    mount(<New />, '/new');
+    mount(<Conversation />, '/conversation');
     const panel = await screen.findByRole('complementary', { name: 'Today’s plan' });
     fireEvent.click(screen.getByRole('button', { name: 'Plan updated · Added Ship slides' }));
     await waitFor(() => expect(panel.querySelector('[data-ref="new:1"]')).toHaveAttribute('data-highlighted', 'true'));
@@ -664,7 +655,7 @@ describe('Plan side panel', () => {
   it('keeps the plan behind a pill and a bottom sheet on narrow screens', async () => {
     wide(false);
     workflow = { ...workflow, plan: plan() };
-    mount(<New />, '/new');
+    mount(<Conversation />, '/conversation');
     const pill = await screen.findByRole('button', { name: 'Plan · 1 change' });
     expect(screen.queryByRole('complementary', { name: 'Today’s plan' })).not.toBeInTheDocument();
     fireEvent.click(pill);
@@ -686,7 +677,7 @@ describe('Model resilience', () => {
         workflow = { ...workflow, messages: [{ id: 'sent', role: 'user', content: 'Plan with less load' }, { id: 'reply', role: 'assistant', content: 'Fallback reply' }] };
         return { text: 'Fallback reply', workflow };
       });
-    mount(<New />, '/new');
+    mount(<Conversation />, '/conversation');
     const input = await screen.findByRole('textbox', { name: 'Message about your day' });
     await waitFor(() => expect(input).toBeEnabled());
     expect(screen.getByRole('button', { name: 'GPT-OSS 120B' })).toBeEnabled();
@@ -704,7 +695,7 @@ describe('Model resilience', () => {
 
 describe('Plan composer voice', () => {
   it('hides the mic when speech recognition is unsupported', async () => {
-    mount(<New />, '/new');
+    mount(<Conversation />, '/conversation');
     await screen.findByRole('textbox', { name: 'Message about your day' });
     expect(screen.queryByRole('button', { name: 'Start voice input' })).not.toBeInTheDocument();
   });
@@ -715,7 +706,7 @@ describe('Plan composer voice', () => {
       this.stop = vi.fn();
     });
     (window as unknown as { webkitSpeechRecognition: unknown }).webkitSpeechRecognition = FakeRecognition;
-    mount(<New />, '/new');
+    mount(<Conversation />, '/conversation');
     expect(await screen.findByRole('button', { name: 'Start voice input' })).toBeInTheDocument();
     delete (window as unknown as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition;
   });

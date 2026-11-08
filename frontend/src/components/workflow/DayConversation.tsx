@@ -18,6 +18,7 @@ import { shouldFallbackToGroq } from '@/lib/chat-resilience';
 import { useWorkflow } from '@/lib/queries';
 import { useRevealedText } from '@/lib/hooks/use-revealed-text';
 import { localDate } from '@/lib/date';
+import { openTodayState } from '@/lib/dayEntry';
 import * as api from '@/lib/api';
 
 // A turn that has been sent but not yet committed by the server. The user's
@@ -45,7 +46,7 @@ const INTERRUPT_CHIPS = [
 export function DayConversation({ date, intent, seed, taskId }: { date: string; intent: string | null; seed: string; taskId?: string }) {
   const navigate = useNavigate();
   const openSavedPlan = useCallback(() => {
-    navigate(date === localDate() ? '/today' : `/today?date=${date}`, { state: { savedPlanDate: date } });
+    navigate(date === localDate() ? '/today' : `/today?date=${date}`, { state: openTodayState(date) });
   }, [date, navigate]);
   const queryClient = useQueryClient();
   const workflowQuery = useWorkflow(date);
@@ -266,7 +267,7 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
       </>}
     </div></div>
     <div className="conversation-composer bg-background px-4 pb-4 pt-2 md:px-8"><div className="mx-auto max-w-2xl">
-      {readOnly ? <div className="flex items-center justify-between gap-3 rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground"><span>{past ? 'Past conversations are read-only.' : 'This day is closed.'}</span><Link to="/new" className="shrink-0 text-primary hover:underline">Go to today</Link></div> : <>
+      {readOnly ? <div className="flex items-center justify-between gap-3 rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground"><span>{past ? 'Past conversations are read-only.' : 'This day is closed.'}</span><Link to="/conversation" className="shrink-0 text-primary hover:underline">Go to today</Link></div> : <>
         {showInterruptChips && !pending && !input && !plan && <div className="mb-3 flex flex-wrap gap-2" aria-label="Quick interruption prompts">
           {INTERRUPT_CHIPS.map((chip) => (
             <button

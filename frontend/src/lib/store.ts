@@ -85,7 +85,7 @@ export const useAppStore = create<AppState>()(
       removeVoiceEntry: (id) => set((s) => ({ voiceEntries: s.voiceEntries.filter((e) => e.id !== id) })),
       clearVoiceEntries: () => set({ voiceEntries: [] }),
       initializeMockData: () => {
-        // No-op: GrillMe pages (/new and /today) use React Query, not mock data
+        // No-op: GrillMe pages (/conversation and /today) use React Query, not mock data
         // Old pages (Capture, Review, etc.) can still use store but won't auto-seed
       },
       resetAccountState: () => set({

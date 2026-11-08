@@ -46,7 +46,7 @@ export default function Capture() {
       onSuccess: () => { setDraft(previous => ({ ...previous, title: '' })); setNotice('Task saved to your inbox.'); inputRef.current?.focus(); },
     });
   };
-  const discussHref = (task: Task) => `/new?date=${targetDate}&intent=interrupt&taskId=${encodeURIComponent(task.id)}&seed=${encodeURIComponent(`Consider adding to ${targetLabel}: ${task.title}`)}`;
+  const discussHref = (task: Task) => `/conversation?date=${targetDate}&intent=interrupt&taskId=${encodeURIComponent(task.id)}&seed=${encodeURIComponent(`Consider adding to ${targetLabel}: ${task.title}`)}`;
 
   return <Page className="[overflow-wrap:anywhere]">
     <PageHeader title="Inbox"><p className="text-sm text-muted-foreground">Save a task now. Decide when to do it later.</p></PageHeader>
@@ -75,7 +75,7 @@ export default function Capture() {
           <DropdownMenu><DropdownMenuTrigger asChild><Button id={`inbox-actions-${task.id}`} size="icon" variant="ghost" className="h-11 w-11" disabled={busy} aria-label={`More options for ${task.title}`}><MoreHorizontal size={18} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem asChild><Link to={discussHref(task)}>Discuss in Plan</Link></DropdownMenuItem><DropdownMenuItem onSelect={() => { remove.reset(); lastDeleteId.current = task.id; setDeleteTarget(task); }}><Trash2 size={14} className="mr-2" />Delete task</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
         </div>
       </li>)}</ul>}
-      {!!tasks.length && <div className="mt-5 flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-muted-foreground">Add to {targetLabel} saves immediately.</p><Link to={`/new?date=${targetDate}`} className="inline-flex min-h-11 items-center gap-2 text-sm underline underline-offset-4">Plan with my inbox<ArrowRight size={14} /></Link></div>}
+      {!!tasks.length && <div className="mt-5 flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-muted-foreground">Add to {targetLabel} saves immediately.</p><Link to={`/conversation?date=${targetDate}`} className="inline-flex min-h-11 items-center gap-2 text-sm underline underline-offset-4">Plan with my inbox<ArrowRight size={14} /></Link></div>}
       {workflow.error && <div className="mt-3"><WorkflowError error={workflow.error} retry={() => void workflow.refetch()} /></div>}
       <AlertDialog open={Boolean(deleteTarget)} onOpenChange={open => { if (!open && !remove.isPending) setDeleteTarget(null); }}>
         <AlertDialogContent onCloseAutoFocus={event => { event.preventDefault(); (document.getElementById(`inbox-actions-${lastDeleteId.current}`) || inputRef.current)?.focus(); }}>
