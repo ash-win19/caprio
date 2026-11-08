@@ -6,7 +6,7 @@ import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { dateLabel, selectedDate } from '@/components/workflow/dates';
 import { useWorkflow } from '@/lib/queries';
-import { openTodayState } from '@/lib/dayEntry';
+import { isConfirmed, openTodayState } from '@/lib/dayEntry';
 import { DayConversation } from '@/components/workflow/DayConversation';
 
 export default function Conversation() {
@@ -18,9 +18,9 @@ export default function Conversation() {
   const seed = params.get('seed') || '';
   const taskId = params.get('taskId') || undefined;
   const workflow = useWorkflow(date);
-  // Before Confirm the way out is a skip; afterwards, or from a past day,
-  // it's just the way back to today's list.
-  const backToToday = date < today || (workflow.data && workflow.data.state !== 'planning');
+  // Before today's Confirm the way out is a skip; afterwards, or from any
+  // other day, it's just the way back to today's list.
+  const backToToday = date !== today || isConfirmed(workflow.data);
   useEffect(() => {
     if (!seed) return;
     const next = new URLSearchParams(params); next.delete('seed'); setParams(next, { replace: true });

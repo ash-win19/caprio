@@ -462,9 +462,9 @@ describe('Daily planning workflow', () => {
     expect(screen.getAllByRole('link', { name: /Skip to my list|Back to Today/ })).toHaveLength(1);
   });
 
-  it('offers the way back to today from a past day', async () => {
-    workflow = { ...workflow, date: previousDate(today) };
-    mount(<Conversation />, `/conversation?date=${previousDate(today)}`);
+  it.each([['past', previousDate(today)], ['future', nextDate(today)]])('offers the way back to today from a %s day', async (_, date) => {
+    workflow = { ...workflow, date };
+    mount(<Conversation />, `/conversation?date=${date}`);
     expect(await screen.findByRole('link', { name: 'Back to Today' })).toHaveAttribute('href', '/today');
   });
 

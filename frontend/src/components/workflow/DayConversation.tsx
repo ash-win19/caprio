@@ -267,7 +267,7 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
       </>}
     </div></div>
     <div className="conversation-composer bg-background px-4 pb-4 pt-2 md:px-8"><div className="mx-auto max-w-2xl">
-      {readOnly ? <div className="flex items-center justify-between gap-3 rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground"><span>{past ? 'Past conversations are read-only.' : 'This day is closed.'}</span><Link to="/conversation" className="shrink-0 text-primary hover:underline">Go to today</Link></div> : <>
+      {readOnly ? <div className="flex items-center justify-between gap-3 rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground"><span>{past ? 'Past conversations are read-only.' : 'This day is closed.'}</span><Link to="/conversation" className="shrink-0 text-primary hover:underline">Open today’s Conversation</Link></div> : <>
         {showInterruptChips && !pending && !input && !plan && <div className="mb-3 flex flex-wrap gap-2" aria-label="Quick interruption prompts">
           {INTERRUPT_CHIPS.map((chip) => (
             <button

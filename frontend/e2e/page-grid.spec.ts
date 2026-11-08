@@ -22,7 +22,8 @@ test('the task list dominates Today', async ({ page }, info) => {
   await expect(list).toBeVisible();
   expect((await box(list)).width).toBeCloseTo((await box(page.locator('.today-page'))).width, 0);
   expect((await box(list)).width).toBeGreaterThan(900);
-  expect((await box(list)).y).toBeLessThan(250);
+  // Below the app bar and the page header.
+  expect((await box(list)).y).toBeLessThan(280);
   await expect(page.locator('main').getByRole('complementary')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Plan my day', exact: true })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Adjust plan', exact: true })).toHaveCount(1);
@@ -198,7 +199,7 @@ test('failed completion restores the task and keeps the failure visible', async 
 test('proposal and older recovery remain distinct from the daily review footer', async ({ page }) => {
   const writes = await mockDay(page, { oldestUnclosedDate: '2026-09-06', plan: planView([{ ref: 'new:1', title: 'Adjusted work', badge: 'new', date }]) });
   await page.goto('/today');
-  await expect(page.getByRole('link', { name: 'Review proposal' })).toHaveAttribute('href', `/conversation?date=${date}`);
+  await expect(page.getByRole('link', { name: 'Review the Draft' })).toHaveAttribute('href', `/conversation?date=${date}`);
   await expect(page.getByRole('link', { name: 'Review day', exact: true })).toHaveAttribute('href', `/review?date=${date}`);
   const recovery = page.getByRole('link', { name: 'Review unfinished day' });
   await expect(recovery).toHaveAttribute('href', '/review?date=2026-09-06&reopen=1');

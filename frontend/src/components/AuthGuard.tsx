@@ -7,7 +7,7 @@ import { useAppStore } from '@/lib/store';
 import { bootstrap, rolloverDay, setAccessTokenProvider } from '@/lib/api';
 import { useLocalDay } from '@/lib/useLocalDay';
 import { isValidDate } from '@/lib/date';
-import { hasSkippedDay, markDaySkipped, opensToday } from '@/lib/dayEntry';
+import { hasSkippedDay, isConfirmed, markDaySkipped, opensToday } from '@/lib/dayEntry';
 import { clearDateDrafts } from '@/lib/dateDrafts';
 import { QUERY_KEYS, useWorkflow } from '@/lib/queries';
 
@@ -122,8 +122,7 @@ function DayEntry({ account, date, fromPublicRoute, openedToday, children }: { a
   // skips it on this device; choosing Today counts as skipping.
   const workflow = useWorkflow(date);
   const [skipped] = useState(() => openedToday || hasSkippedDay(account, date));
-  const confirmed = workflow.data && workflow.data.state !== 'planning';
-  const showsToday = skipped || confirmed;
+  const showsToday = skipped || isConfirmed(workflow.data);
   useEffect(() => {
     if (openedToday) markDaySkipped(account, date);
   }, [account, date, openedToday]);

@@ -102,7 +102,7 @@ export default function Today({ embedded = false }: { embedded?: boolean }) {
         {tasks.length > 0 && <p className="today-capacity text-muted-foreground">
           {remainingMinutes} min estimated remaining{unestimatedCount > 0 ? ` · ${unestimatedCount} ${unestimatedCount === 1 ? 'task' : 'tasks'} without an estimate` : ''}{availableMinutes !== null ? ` · ${availableMinutes} min available` : ''}
         </p>}
-        {workflow?.plan && <div className="today-plan-notice"><p>Plan changes are waiting for your confirmation.</p><Link to={`/conversation?date=${date}`}>Review proposal<ArrowRight size={14} aria-hidden /></Link></div>}
+        {workflow?.plan && <div className="today-plan-notice"><p>Plan changes are waiting for your confirmation.</p><Link to={`/conversation?date=${date}`}>Review the Draft<ArrowRight size={14} aria-hidden /></Link></div>}
         {workflow?.state === 'planning' && tasks.length > 0 && <p className="today-plan-notice">These tasks are saved. You can check them off or use Plan day to add more.</p>}
         {(reorder.error || toggle.error) && <WorkflowError error={reorder.error || toggle.error} />}
         {!tasks.length ? <section className="today-empty">
