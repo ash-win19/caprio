@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { mockDay, date, tasksForDay, planView } from './fixtures/day';
+import { mockDay, date, tasksForDay, planView, openPlan } from './fixtures/day';
 import type { Workflow } from '../src/lib/api';
 
 for (const width of [320, 390, 1440]) {
@@ -137,9 +137,11 @@ for (const width of [390, 1440]) {
     await expect(page.getByRole('region', { name: 'Saved checklist' })).toHaveCount(0);
     await input.fill('Add Finish report to today');
     await page.getByRole('button', { name: 'Send prompt', exact: true }).click();
-    await expect(page.getByRole('region', { name: 'Proposed plan' })).toBeVisible();
+    await expect(page.getByText('Review this draft with Finish report.', { exact: true })).toBeVisible();
+    const plan = await openPlan(page);
+    await expect(plan).toBeVisible();
     await expect(page).toHaveURL('/new');
-    await page.getByRole('button', { name: 'Confirm plan', exact: true }).click();
+    await plan.getByRole('button', { name: 'Confirm plan', exact: true }).click();
     await expect(page).toHaveURL('/today');
     await expect(page.getByRole('list', { name: 'Remaining tasks' })).toContainText('Finish report');
     await expect(page.getByRole('region', { name: 'Planning conversation' })).toHaveCount(0);

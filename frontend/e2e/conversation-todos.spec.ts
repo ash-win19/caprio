@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { mockDay, date, tasksForDay, planView } from './fixtures/day';
+import { mockDay, date, tasksForDay, planView, openPlan } from './fixtures/day';
 import type { Workflow } from '../src/lib/api';
 
 for (const width of [390, 1440]) {
@@ -38,7 +38,8 @@ for (const width of [390, 1440]) {
     await expect(page.getByText('1 remaining', { exact: true })).toBeVisible();
     await page.getByRole('textbox', { name: 'Message about your day' }).fill('I have to fix Headlines publishing and prepare tomorrow’s demo. Two hours each.');
     await page.getByRole('button', { name: 'Send prompt', exact: true }).click();
-    const proposal = page.getByRole('region', { name: 'Proposed plan' });
+    await expect(page.getByText('Review this draft.', { exact: true })).toBeVisible();
+    const proposal = await openPlan(page);
     await expect(proposal).toBeVisible();
     await expect(proposal.getByRole('button', { name: 'Confirm plan' })).toBeVisible();
     await expect(proposal.getByRole('region', { name: 'Today' }).locator('li')).toHaveCount(3);
@@ -104,7 +105,7 @@ for (const width of [390, 1440]) {
       await expect(thread.getByText(text, { exact: true })).toBeVisible();
     }
     await expect(page.getByText(/Conversation ·/)).toHaveCount(0);
-    const card = page.getByRole('region', { name: 'Proposed plan' });
+    const card = await openPlan(page);
     await expect(card).not.toContainText('Confirm to save');
     await expect(card.getByRole('button', { name: /Revise/ })).toHaveCount(0);
     await card.getByRole('button', { name: 'Discard', exact: true }).click();
@@ -140,7 +141,7 @@ for (const width of [390, 1440]) {
         workflow = { ...workflow, version: workflow.version + 1, plan: planView(items), messages: [...workflow.messages,
           { id: `u${turn}`, role: 'user', content: body.content },
           { id: `a${turn}`, role: 'assistant', content: step.text },
-          { id: `e${turn}`, role: 'event', eventType: 'plan_update', content: step.update },
+          { id: `e${turn}`, role: 'event', eventType: 'plan_update', content: step.update, metadata: { changes: (step.items.length ? step.items : [{ ref: 'new:1', title: 'Demo deck' }]).map(item => ({ ref: item.ref, title: item.title, action: 'Added' })) } },
         ] };
         return route.fulfill({ contentType: 'text/event-stream', body: `event: done\ndata: ${JSON.stringify({ text: step.text, workflow })}\n\n` });
       }
@@ -159,11 +160,11 @@ for (const width of [390, 1440]) {
       await page.getByRole('button', { name: 'Send prompt', exact: true }).click();
       await expect(page.getByText(message, { exact: true })).toBeVisible();
     }
-    const plan = page.getByRole('region', { name: 'Proposed plan' });
+    for (const step of turns) await expect(page.getByRole('button', { name: step.update })).toBeVisible();
+    const plan = await openPlan(page);
     await expect(plan.getByRole('region', { name: 'Today' }).locator('li')).toHaveCount(2);
     await expect(plan).toContainText('Demo deck');
     await expect(plan).toContainText('Sleep early');
-    for (const step of turns) await expect(page.getByRole('status', { name: step.update })).toBeVisible();
     await plan.getByRole('button', { name: 'Confirm plan' }).click();
     await expect(page).toHaveURL('/today');
     await expect(page.getByRole('list', { name: 'Remaining tasks' }).locator(':scope > li')).toHaveCount(2);
