@@ -291,22 +291,3 @@ func (h *ChatHandler) Discard(c *gin.Context) {
 	}
 	c.JSON(200, result)
 }
-
-func (h *ChatHandler) Undo(c *gin.Context) {
-	user, ok := middleware.GetUserID(c)
-	if !ok {
-		c.JSON(401, gin.H{"error": "unauthorized"})
-		return
-	}
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		workflowError(c, chat.ErrConflict)
-		return
-	}
-	w, err := h.chatService.Undo(c.Request.Context(), user, id)
-	if err != nil {
-		workflowError(c, err)
-		return
-	}
-	c.JSON(200, w)
-}

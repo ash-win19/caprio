@@ -85,7 +85,6 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 		api.POST("/day/plan/confirm", chatH.Confirm)
 		api.POST("/day/plan/discard", chatH.Discard)
 		api.POST("/day/rollover", chatH.Rollover)
-		api.POST("/task-changes/:id/undo", chatH.Undo)
 
 		api.GET("/tasks", tasks.List)
 		api.POST("/tasks", tasks.Create)
