@@ -252,6 +252,15 @@ describe('AuthGuard morning reopen routing', () => {
     expect(await screen.findByTestId('today-page')).toBeInTheDocument();
   });
 
+  it('waits for a fresh day before sending a cached unconfirmed day to the Conversation', async () => {
+    // Rollover caches the day as planning, but it was confirmed elsewhere since.
+    vi.mocked(api.rolloverDay).mockResolvedValue(workflow(today, 'planning'));
+    vi.mocked(api.getWorkflow).mockResolvedValue(workflow(today, 'active'));
+    mount('/today');
+    expect(await screen.findByTestId('today-page')).toBeInTheDocument();
+    expect(screen.queryByTestId('conversation-page')).not.toBeInTheDocument();
+  });
+
   it('counts opening Today on purpose as skipping the day', async () => {
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>

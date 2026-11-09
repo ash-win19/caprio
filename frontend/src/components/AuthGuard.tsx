@@ -126,7 +126,9 @@ function DayEntry({ account, date, fromPublicRoute, openedToday, children }: { a
   useEffect(() => {
     if (openedToday) markDaySkipped(account, date);
   }, [account, date, openedToday]);
-  if (workflow.isPending) return <SessionStatus>Loading your day...</SessionStatus>;
+  // A cached day may have been confirmed since; only a fresh one can send
+  // the person to the Conversation. A confirmed day never goes back to planning.
+  if (workflow.isPending || (!showsToday && workflow.isFetching)) return <SessionStatus>Loading your day...</SessionStatus>;
   if (workflow.error) return <SessionStatus>
     <p role="alert">{workflow.error.message || 'Unable to load your day.'}</p>
     <button className="mt-4 underline" onClick={() => void workflow.refetch()}>Try again</button>
