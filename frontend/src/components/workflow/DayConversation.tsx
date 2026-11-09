@@ -84,15 +84,15 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
   const refresh = () => {
     for (const key of ['workflow', 'tasks', 'inbox', 'bootstrap', 'chat-sessions']) void queryClient.invalidateQueries({ queryKey: [key] });
   };
-  // The variable says whether this Confirm is the Day's first plan.
+  // Confirm's variable says whether this is the Day's first plan, for the toast.
   const confirm = useMutation({
-    mutationFn: (_morning: boolean) => api.confirmDayPlan({ date, draftId: workflow!.plan!.draftId, version: workflow!.version }),
-    onSuccess: (saved, morning) => {
+    mutationFn: (_firstPlanOfDay: boolean) => api.confirmDayPlan({ date, draftId: workflow!.plan!.draftId, version: workflow!.version }),
+    onSuccess: (saved, firstPlanOfDay) => {
       if (!mounted.current) return;
       queryClient.setQueryData(['workflow', date], saved);
       refresh();
       openSavedPlan();
-      toast({ title: morning ? 'Plan confirmed' : 'Changes saved' });
+      toast({ title: firstPlanOfDay ? 'Plan confirmed' : 'Changes saved' });
     },
     onError: () => { void workflowQuery.refetch(); },
   });

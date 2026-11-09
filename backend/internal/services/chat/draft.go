@@ -32,6 +32,7 @@ type DraftEntry struct {
 	Inbox         bool                       `json:"inbox,omitempty"`
 	Completed     *bool                      `json:"completed,omitempty"`
 	Remove        bool                       `json:"remove,omitempty"`
+	WasCompleted  *bool                      `json:"wasCompleted,omitempty"` // the saved task's completion when the Draft first touched it
 	Turns         []uuid.UUID                `json:"turns"`
 	Prev          *DraftEntry                `json:"prev,omitempty"` // the entry before its latest change, for undo
 }
@@ -131,8 +132,8 @@ func (d *Draft) touch(ref string, saved *generated.Task, turn uuid.UUID) *DraftE
 	if entry == nil {
 		entry = &DraftEntry{Ref: ref, Turns: []uuid.UUID{}}
 		if saved != nil {
-			id := saved.ID
-			entry.TaskID = &id
+			id, done := saved.ID, saved.Completed
+			entry.TaskID, entry.WasCompleted = &id, &done
 		}
 		d.Entries[ref] = entry
 		d.Order = append(d.Order, ref)
@@ -504,23 +505,34 @@ func (d *Draft) ToOperations() []TaskOperation {
 	return ops
 }
 
-// rebase fits the Draft to the tasks as they are at Confirm. Direct edits made
-// while it waited win: a dropped task takes no change, and a task ticked off
-// stays done where it is, so only edits that leave completion alone apply.
-func rebase(ops []TaskOperation, owned []generated.Task) []TaskOperation {
+// rebase fits the Draft to the tasks as they are now; Confirm applies it and
+// the panel shows it. Direct edits made while it waited win: a dropped task
+// takes no change, and when a task's completion changed directly, only edits
+// that leave completion alone still apply. Entries from before completion was
+// recorded count as drafted while the task was open.
+func (d *Draft) rebase(owned []generated.Task) *Draft {
+	if d == nil {
+		return nil
+	}
 	current := map[uuid.UUID]generated.Task{}
 	for _, t := range owned {
 		current[t.ID] = t
 	}
-	kept := make([]TaskOperation, 0, len(ops))
-	for _, op := range ops {
-		if op.TaskID != nil {
-			t, ok := current[*op.TaskID]
-			if !ok || t.Status == generated.TaskStatusDropped || (t.Completed && op.Kind != "update") {
+	kept := &Draft{ID: d.ID, Entries: map[string]*DraftEntry{}, Order: []string{}}
+	for _, ref := range d.Order {
+		e := d.Entries[ref]
+		if e.TaskID != nil {
+			t, ok := current[*e.TaskID]
+			if !ok || t.Status == generated.TaskStatusDropped {
+				continue
+			}
+			wasDone := e.WasCompleted != nil && *e.WasCompleted
+			fieldsOnly := !e.Remove && e.Date == "" && !e.Inbox && e.Completed == nil
+			if t.Completed != wasDone && !fieldsOnly {
 				continue
 			}
 		}
-		kept = append(kept, op)
+		kept.Entries[ref], kept.Order = e, append(kept.Order, ref)
 	}
 	return kept
 }

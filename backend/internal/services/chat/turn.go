@@ -257,7 +257,7 @@ func (s *Service) commitTurn(ctx context.Context, req ProcessRequest, t *turn, t
 		if !after.empty() {
 			draft = staged
 		}
-		if _, err := tx.Exec(ctx, `UPDATE daily_plans SET draft=$3,draft_staged=NULL,turn_request_id=NULL,turn_started_at=NULL,proposal_snapshot=CASE WHEN $3::jsonb IS NULL THEN NULL ELSE $4 END,version=version+1,updated_at=clock_timestamp() WHERE user_id=$1 AND plan_date=$2`, req.UserID, req.SessionDate, draft, snapshot(owned, nil)); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE daily_plans SET draft=$3,draft_staged=NULL,turn_request_id=NULL,turn_started_at=NULL,version=version+1,updated_at=clock_timestamp() WHERE user_id=$1 AND plan_date=$2`, req.UserID, req.SessionDate, draft); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, `INSERT INTO chat_requests (user_id,request_id,session_date,content,assistant_text) VALUES ($1,$2,$3,$4,$5)`, req.UserID, req.RequestID, req.SessionDate, req.Content, text); err != nil {
@@ -442,7 +442,7 @@ func (s *Service) ApplyTool(ctx context.Context, token, name string, input json.
 				return err
 			}
 		}
-		result.Plan = buildPlanView(env, d, origins)
+		result.Plan = buildPlanView(env, d.rebase(env.Owned), origins)
 		return nil
 	})
 	return result, err

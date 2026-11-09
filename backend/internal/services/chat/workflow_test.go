@@ -416,6 +416,37 @@ func TestConfirmAppliesTheDraftOverDirectEdits(t *testing.T) {
 	require.EqualValues(t, 90, *saved.Duration)
 }
 
+func TestConfirmStillChangesTasksThatWereDoneWhenDrafted(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	task := createTask(t, s, user, date, "Report")
+	_, err := s.store.Pool.Exec(ctx, `UPDATE tasks SET completed=true,status='completed',completed_at=clock_timestamp() WHERE id=$1`, task.ID)
+	require.NoError(t, err)
+	a.ops = []TaskOperation{{Kind: "complete", TaskID: &task.ID, Completed: ptr(false)}}
+	r, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "I didn't actually finish the report", RequestID: uuid.New()})
+	require.NoError(t, err)
+	_, err = s.Confirm(ctx, user, date, r.Workflow.Plan.DraftID, r.Workflow.Version)
+	require.NoError(t, err)
+	saved, err := s.store.Queries.GetTaskByID(ctx, generated.GetTaskByIDParams{ID: task.ID, UserID: user})
+	require.NoError(t, err)
+	require.False(t, saved.Completed, "the Draft's reopen applies: the task was already done when it was drafted")
+}
+
+func TestTheDraftPanelMatchesWhatConfirmWillDo(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	task := createTask(t, s, user, date, "Report")
+	a.ops = []TaskOperation{{Kind: "remove", TaskID: &task.ID}, add("Slides")}
+	_, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "drop the report, add slides", RequestID: uuid.New()})
+	require.NoError(t, err)
+	_, err = s.store.Pool.Exec(ctx, `UPDATE tasks SET completed=true,status='completed',completed_at=clock_timestamp() WHERE id=$1`, task.ID)
+	require.NoError(t, err)
+	w, err := s.Get(ctx, user, date)
+	require.NoError(t, err)
+	require.Zero(t, w.Plan.Counts.Removed, "a task ticked off while the Draft waited is no longer removed by it")
+	require.Equal(t, 1, w.Plan.Counts.New)
+}
+
 func TestClarifyingTurnKeepsTheDraftAndDiscardKeepsTheThread(t *testing.T) {
 	s, a, user, date := testService(t)
 	ctx := context.Background()

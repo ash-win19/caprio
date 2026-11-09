@@ -123,3 +123,12 @@ for (const [available, footer] of [[240, 'Planned ~3h 55m for your 4h'], [null, 
     if (!available) await expect(panel.getByText(/for your/)).toHaveCount(0);
   });
 }
+
+test('the Draft footer stays hidden when nothing has an Estimate', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await conversationDay(page, { tasks: [], plan: planView([{ ref: 'new:1', title: 'Call the bank', badge: 'new', date }]), availableMinutes: 240 }, []);
+  await page.goto(`/conversation?date=${date}`);
+  const panel = page.getByRole('complementary', { name: 'Today’s plan' });
+  await expect(panel.getByRole('button', { name: 'Confirm plan' })).toBeVisible();
+  await expect(panel.getByText(/^Planned/)).toHaveCount(0);
+});

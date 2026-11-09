@@ -53,7 +53,7 @@ function plannedTotal(plan: PlanView, availableMinutes: number | null) {
   const minutes = [...plan.today, ...plan.carried]
     .filter(item => item.badge !== 'removed' && !item.completed)
     .reduce((sum, item) => sum + (item.duration ?? 0), 0);
-  if (!minutes && availableMinutes == null) return null;
+  if (!minutes) return null;
   return `Planned ~${hoursAndMinutes(minutes)}${availableMinutes != null ? ` for your ${hoursAndMinutes(availableMinutes)}` : ''}`;
 }
 
