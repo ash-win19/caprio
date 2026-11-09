@@ -390,16 +390,175 @@ func TestToolCallsOnlyWorkDuringTheirTurn(t *testing.T) {
 func TestStaleConfirmAndDiscardAreRejected(t *testing.T) {
 	s, a, user, date := testService(t)
 	ctx := context.Background()
-	task := createTask(t, s, user, date, "Report")
 	w := propose(t, s, a, user, date, "Slides")
-	_, err := s.store.Pool.Exec(ctx, `UPDATE tasks SET title='Changed independently',updated_at=clock_timestamp() WHERE id=$1`, task.ID)
-	require.NoError(t, err)
-	_, err = s.Confirm(ctx, user, date, w.Plan.DraftID, w.Version)
+	_, err := s.Confirm(ctx, user, date, uuid.New(), w.Version)
 	require.ErrorIs(t, err, ErrConflict)
-	_, err = s.Confirm(ctx, user, date, uuid.New(), w.Version)
+	_, err = s.Confirm(ctx, user, date, w.Plan.DraftID, w.Version-1)
 	require.ErrorIs(t, err, ErrConflict)
 	_, err = s.Discard(ctx, user, date, w.Plan.DraftID, w.Version-1)
 	require.ErrorIs(t, err, ErrConflict)
+}
+
+func TestConfirmAppliesTheDraftOverDirectEdits(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	task := createTask(t, s, user, date, "Report")
+	a.ops = []TaskOperation{{Kind: "update", TaskID: &task.ID, Fields: map[string]json.RawMessage{"duration": json.RawMessage("90")}}, add("Slides")}
+	r, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "the report takes 90 minutes", RequestID: uuid.New()})
+	require.NoError(t, err)
+	_, err = s.store.Pool.Exec(ctx, `UPDATE tasks SET title='Renamed directly',updated_at=clock_timestamp() WHERE id=$1`, task.ID)
+	require.NoError(t, err)
+	_, err = s.Confirm(ctx, user, date, r.Workflow.Plan.DraftID, r.Workflow.Version)
+	require.NoError(t, err)
+	saved, err := s.store.Queries.GetTaskByID(ctx, generated.GetTaskByIDParams{ID: task.ID, UserID: user})
+	require.NoError(t, err)
+	require.Equal(t, "Renamed directly", saved.Title)
+	require.EqualValues(t, 90, *saved.Duration)
+}
+
+func TestConfirmStillChangesTasksThatWereDoneWhenDrafted(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	task := createTask(t, s, user, date, "Report")
+	_, err := s.store.Pool.Exec(ctx, `UPDATE tasks SET completed=true,status='completed',completed_at=clock_timestamp() WHERE id=$1`, task.ID)
+	require.NoError(t, err)
+	a.ops = []TaskOperation{{Kind: "complete", TaskID: &task.ID, Completed: ptr(false)}}
+	r, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "I didn't actually finish the report", RequestID: uuid.New()})
+	require.NoError(t, err)
+	_, err = s.Confirm(ctx, user, date, r.Workflow.Plan.DraftID, r.Workflow.Version)
+	require.NoError(t, err)
+	saved, err := s.store.Queries.GetTaskByID(ctx, generated.GetTaskByIDParams{ID: task.ID, UserID: user})
+	require.NoError(t, err)
+	require.False(t, saved.Completed, "the Draft's reopen applies: the task was already done when it was drafted")
+}
+
+func TestTheDraftPanelMatchesWhatConfirmWillDo(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	task := createTask(t, s, user, date, "Report")
+	a.ops = []TaskOperation{{Kind: "remove", TaskID: &task.ID}, add("Slides")}
+	_, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "drop the report, add slides", RequestID: uuid.New()})
+	require.NoError(t, err)
+	_, err = s.store.Pool.Exec(ctx, `UPDATE tasks SET completed=true,status='completed',completed_at=clock_timestamp() WHERE id=$1`, task.ID)
+	require.NoError(t, err)
+	w, err := s.Get(ctx, user, date)
+	require.NoError(t, err)
+	require.Zero(t, w.Plan.Counts.Removed, "a task ticked off while the Draft waited is no longer removed by it")
+	require.Equal(t, 1, w.Plan.Counts.New)
+}
+
+// tickOff marks a task done directly, as Today does.
+func tickOff(t *testing.T, s *Service, task generated.Task) {
+	t.Helper()
+	_, err := s.store.Pool.Exec(context.Background(), `UPDATE tasks SET completed=true,status='completed',completed_at=clock_timestamp() WHERE id=$1`, task.ID)
+	require.NoError(t, err)
+}
+
+func TestAStaleMoveKeepsItsEditInTheDraft(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	task := createTask(t, s, user, date, "Report")
+	a.ops = []TaskOperation{{Kind: "move", TaskID: &task.ID, Date: "2026-09-07", Fields: fields(map[string]any{"duration": 90})}}
+	_, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "report tomorrow, 90 minutes", RequestID: uuid.New()})
+	require.NoError(t, err)
+	tickOff(t, s, task)
+	w, err := s.Get(ctx, user, date)
+	require.NoError(t, err)
+	require.Zero(t, w.Plan.Counts.Moved)
+	require.Equal(t, 1, w.Plan.Counts.Edited, "the estimate edit stays in the Draft")
+	_, err = s.Confirm(ctx, user, date, w.Plan.DraftID, w.Version)
+	require.NoError(t, err)
+	saved, err := s.store.Queries.GetTaskByID(ctx, generated.GetTaskByIDParams{ID: task.ID, UserID: user})
+	require.NoError(t, err)
+	require.True(t, saved.Completed)
+	require.Equal(t, date.Time, saved.PlannedForDate.Time)
+	require.EqualValues(t, 90, *saved.Duration)
+}
+
+func TestADraftLeftWithNoChangesCanStillBeConfirmedOrDiscarded(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	task := createTask(t, s, user, date, "Report")
+	a.ops = []TaskOperation{{Kind: "remove", TaskID: &task.ID}}
+	_, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "drop the report", RequestID: uuid.New()})
+	require.NoError(t, err)
+	tickOff(t, s, task)
+	w, err := s.Get(ctx, user, date)
+	require.NoError(t, err)
+	require.NotNil(t, w.Plan, "the waiting Draft keeps its Confirm and Discard")
+	require.Zero(t, w.Plan.Counts.Removed)
+	_, err = s.Discard(ctx, user, date, w.Plan.DraftID, w.Version)
+	require.NoError(t, err)
+}
+
+func TestANewChangeIsNotBlockedByAStaleOne(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	task := createTask(t, s, user, date, "Report")
+	a.ops = []TaskOperation{{Kind: "move", TaskID: &task.ID, Date: "2026-09-07"}}
+	_, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "report tomorrow", RequestID: uuid.New()})
+	require.NoError(t, err)
+	tickOff(t, s, task)
+	a.ops, a.results = []TaskOperation{{Kind: "complete", TaskID: &task.ID, Completed: ptr(false)}}, nil
+	r, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "actually the report isn't done", RequestID: uuid.New()})
+	require.NoError(t, err)
+	require.Len(t, a.results, 1)
+	require.True(t, a.results[0].OK, "%+v", a.results[0].Error)
+	updates := events(r.Workflow, eventPlanUpdate)
+	require.NotContains(t, updates[len(updates)-1].Content, "Moved", "the dropped stale move isn't reported as this turn's change")
+	_, err = s.Confirm(ctx, user, date, r.Workflow.Plan.DraftID, r.Workflow.Version)
+	require.NoError(t, err)
+	saved, err := s.store.Queries.GetTaskByID(ctx, generated.GetTaskByIDParams{ID: task.ID, UserID: user})
+	require.NoError(t, err)
+	require.False(t, saved.Completed)
+	require.Equal(t, date.Time, saved.PlannedForDate.Time)
+}
+
+func TestRevertingAStaleMoveKeepsTheEarlierEdit(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	task := createTask(t, s, user, date, "Report")
+	a.ops = []TaskOperation{{Kind: "update", TaskID: &task.ID, Fields: fields(map[string]any{"duration": 90})}}
+	_, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "the report takes 90 minutes", RequestID: uuid.New()})
+	require.NoError(t, err)
+	a.ops = []TaskOperation{{Kind: "move", TaskID: &task.ID, Date: "2026-09-07"}}
+	_, err = s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "and do it tomorrow", RequestID: uuid.New()})
+	require.NoError(t, err)
+	tickOff(t, s, task)
+	a.ops, a.results = nil, nil
+	a.script = func(_ context.Context, _ mastra.Call, tool toolFunc) (string, error) {
+		tool("revert_change", map[string]any{"ref": task.ID.String()})
+		return "Undid the move.", nil
+	}
+	r, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "undo moving it", RequestID: uuid.New()})
+	require.NoError(t, err)
+	require.True(t, a.results[0].OK)
+	_, err = s.Confirm(ctx, user, date, r.Workflow.Plan.DraftID, r.Workflow.Version)
+	require.NoError(t, err)
+	saved, err := s.store.Queries.GetTaskByID(ctx, generated.GetTaskByIDParams{ID: task.ID, UserID: user})
+	require.NoError(t, err)
+	require.EqualValues(t, 90, *saved.Duration, "undoing the move doesn't undo the edit before it")
+}
+
+func TestReadingThePlanKeepsAWaitingDraft(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	task := createTask(t, s, user, date, "Report")
+	a.ops = []TaskOperation{{Kind: "remove", TaskID: &task.ID}}
+	_, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "drop the report", RequestID: uuid.New()})
+	require.NoError(t, err)
+	tickOff(t, s, task)
+	a.ops, a.results = nil, nil
+	a.script = func(_ context.Context, _ mastra.Call, tool toolFunc) (string, error) {
+		tool("read_plan", map[string]any{})
+		return "Your Draft is still waiting.", nil
+	}
+	_, err = s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "what's in my plan?", RequestID: uuid.New()})
+	require.NoError(t, err)
+	require.NotNil(t, a.results[0].Plan, "the tool sees the waiting Draft")
+	w, err := s.Get(ctx, user, date)
+	require.NoError(t, err)
+	require.NotNil(t, w.Plan, "reading the plan doesn't clear the waiting Draft")
 }
 
 func TestClarifyingTurnKeepsTheDraftAndDiscardKeepsTheThread(t *testing.T) {

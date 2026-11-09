@@ -11,7 +11,6 @@ import { MessageBubble, StoppedNotice, StreamingReply, ThinkingIndicator, Thread
 import { WorkflowError } from './WorkflowUI';
 import { PlanPanel, PlanPill } from './PlanPanel';
 import { useMediaQuery } from '@/lib/useMediaQuery';
-import { dateLabel } from './dates';
 import { toast } from '@/hooks/use-toast';
 import { CHAT_MODELS, DEFAULT_CHAT_MODEL, FALLBACK_CHAT_MODEL } from '@/lib/chat-models';
 import { shouldFallbackToGroq } from '@/lib/chat-resilience';
@@ -85,13 +84,15 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
   const refresh = () => {
     for (const key of ['workflow', 'tasks', 'inbox', 'bootstrap', 'chat-sessions']) void queryClient.invalidateQueries({ queryKey: [key] });
   };
+  // Confirm's variable says whether this is the Day's first plan, for the toast.
   const confirm = useMutation({
-    mutationFn: () => api.confirmDayPlan({ date, draftId: workflow!.plan!.draftId, version: workflow!.version }),
-    onSuccess: (saved) => {
+    mutationFn: (_firstPlanOfDay: boolean) => api.confirmDayPlan({ date, draftId: workflow!.plan!.draftId, version: workflow!.version }),
+    onSuccess: (saved, firstPlanOfDay) => {
       if (!mounted.current) return;
       queryClient.setQueryData(['workflow', date], saved);
       refresh();
       openSavedPlan();
+      toast({ title: firstPlanOfDay ? 'Plan confirmed' : 'Changes saved' });
     },
     onError: () => { void workflowQuery.refetch(); },
   });
@@ -192,7 +193,7 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
 
   const handleSend = (value: string, selectedModel?: string) => {
     const content = value.trim();
-    if (!content || replying || confirm.isPending || discard.isPending || undo.isPending || readOnly) return;
+    if (!content || replying || confirm.isPending || discard.isPending || readOnly) return;
     // Resending the same text after a failure reuses the request ID, so the
     // server never runs the model twice for one message.
     const requestId = pending && pending.content === content ? pending.requestId : crypto.randomUUID();
@@ -204,11 +205,6 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
   const retry = () => {
     if (pending) void send({ content: pending.content, requestId: pending.requestId, model: pending.model });
   };
-  const undo = useMutation({
-    mutationFn: api.undoTaskChange,
-    onSuccess: (saved) => { queryClient.setQueryData(['workflow', date], saved); refresh(); },
-    onError: () => { void workflowQuery.refetch(); },
-  });
   const plan = workflow?.plan;
   const panelOpen = Boolean(plan) && (wide ? closedDraft !== plan?.draftId : sheetOpen);
   const setPanelOpen = (open: boolean) => {
@@ -225,7 +221,7 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
     const timer = window.setTimeout(() => setHighlight(null), 2000);
     return () => window.clearTimeout(timer);
   }, [highlight]);
-  const busy = replying || confirm.isPending || discard.isPending || undo.isPending;
+  const busy = replying || confirm.isPending || discard.isPending;
   useNavigationLock(busy, Boolean(input.trim()) || Boolean(pending && !settling));
   // While a reply is still being revealed, the thread shows the messages that
   // existed before it was sent; the pending turn stands in for the rest.
@@ -255,14 +251,6 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
         </>}
         {/* The latest message, not the draft card below it, is what a new turn scrolls to. */}
         <div ref={messagesEndRef} />
-        {(workflow?.changeReceipts?.length ?? 0) > 0 && <section aria-label="Saved task changes" className="space-y-3">
-          {workflow!.changeReceipts!.map(receipt => <div key={receipt.id} className="rounded-xl border border-border bg-card p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm font-medium">{receipt.undone ? 'Undone' : receipt.summary}</p><Button size="sm" variant="outline" disabled={busy || !receipt.canUndo || past} onClick={() => undo.mutate(receipt.id)} aria-label={`Undo ${receipt.summary.toLowerCase()}`}>{undo.isPending && undo.variables === receipt.id ? 'Undoing…' : 'Undo'}</Button></div>
-            <ul className="mt-2 space-y-1 text-sm text-muted-foreground">{receipt.changes.map(change => <li key={change.taskId}>{change.title}<span className="ml-2 text-xs">{change.action} · {dateLabel(change.date)}</span></li>)}</ul>
-            {!receipt.undone && receipt.undoReason && <p className="mt-2 text-xs text-muted-foreground">{receipt.undoReason}</p>}
-          </div>)}
-          {undo.error && <WorkflowError error={undo.error} />}
-        </section>}
         {workflow?.state === 'closed' && !past && <p className="text-sm text-muted-foreground">Your review is saved. Add new work to continue this day; completed tasks and earlier reviews stay recorded.</p>}
       </>}
     </div></div>
@@ -281,14 +269,14 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
           ))}
         </div>}
         {showPill && plan && <PlanPill plan={plan} expanded={panelOpen} onClick={() => setPanelOpen(true)} />}
-        <PromptInput id="day-message" value={input} onValueChange={setInput} models={CHAT_MODELS} model={model} defaultModel={DEFAULT_CHAT_MODEL} onModelChange={setModel} onSubmit={handleSend} loading={replying} onStop={stop} disabled={workflowQuery.isLoading || !!workflowQuery.error || confirm.isPending || discard.isPending || undo.isPending} leadingAction={<SpeechMicButton value={input} onTranscript={setInput} disabled={workflowQuery.isLoading || !!workflowQuery.error || confirm.isPending || discard.isPending || undo.isPending || replying} />} aria-label="Message about your day" maxLength={8000} placeholder={showInterruptChips ? 'Add a task or tell me what changed…' : 'Tell me what you want to work on…'} />
+        <PromptInput id="day-message" value={input} onValueChange={setInput} models={CHAT_MODELS} model={model} defaultModel={DEFAULT_CHAT_MODEL} onModelChange={setModel} onSubmit={handleSend} loading={replying} onStop={stop} disabled={workflowQuery.isLoading || !!workflowQuery.error || confirm.isPending || discard.isPending} leadingAction={<SpeechMicButton value={input} onTranscript={setInput} disabled={workflowQuery.isLoading || !!workflowQuery.error || confirm.isPending || discard.isPending || replying} />} aria-label="Message about your day" maxLength={8000} placeholder={showInterruptChips ? 'Add a task or tell me what changed…' : 'Tell me what you want to work on…'} />
       </>}
     </div></div>
   </section>
-  {plan && !readOnly && <PlanPanel wide={wide} open={panelOpen} onOpenChange={setPanelOpen} plan={plan} date={date} busy={busy} highlight={highlight}
+  {plan && !readOnly && <PlanPanel wide={wide} open={panelOpen} onOpenChange={setPanelOpen} plan={plan} date={date} availableMinutes={workflow?.availableMinutes ?? null} busy={busy} highlight={highlight}
     confirming={confirm.isPending} discarding={discard.isPending}
     error={(confirm.error || discard.error) && <WorkflowError error={confirm.error || discard.error} />}
-    onConfirm={() => confirm.mutate()} onDiscard={() => discard.mutate()} />}
+    onConfirm={() => confirm.mutate(workflow!.state === 'planning')} onDiscard={() => discard.mutate()} />}
   </>;
 }
 

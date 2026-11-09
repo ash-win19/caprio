@@ -404,14 +404,8 @@ func (h *TaskHandler) Defer(c *gin.Context) {
 	c.JSON(200, task)
 }
 
-// Any direct task edit invalidates pending AI proposals, including proposals on
-// another day that may reference an inbox task. Saved tasks remain authoritative.
+// A direct task edit saves right away and leaves any Draft waiting: Confirm
+// applies the Draft to the tasks as they are then.
 func (h *TaskHandler) mutate(ctx context.Context, userID uuid.UUID, fn func(pgx.Tx, *generated.Queries) error) error {
-	return h.store.WithUserTx(ctx, userID, func(tx pgx.Tx, q *generated.Queries) error {
-		if err := fn(tx, q); err != nil {
-			return err
-		}
-		_, err := tx.Exec(ctx, `UPDATE daily_plans SET proposal=NULL,proposal_snapshot=NULL,draft=NULL,version=version+1,updated_at=clock_timestamp() WHERE user_id=$1 AND state <> 'closed'`, userID)
-		return err
-	})
+	return h.store.WithUserTx(ctx, userID, fn)
 }

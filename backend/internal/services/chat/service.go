@@ -122,7 +122,7 @@ func load(ctx context.Context, conn generated.DBTX, userID uuid.UUID, date pgtyp
 		if err != nil {
 			return nil, err
 		}
-		w.Plan = buildPlanView(draftEnv{Date: date, Owned: owned}, w.draft, w.CarryoverOrigins)
+		w.Plan = buildPlanView(draftEnv{Date: date, Owned: owned}, w.draft.rebase(owned), w.CarryoverOrigins)
 	}
 	w.ChangeReceipts = []ChangeReceipt{}
 	batches, err := readBatches(ctx, conn, userID, date)
@@ -234,8 +234,7 @@ func (s *Service) Confirm(ctx context.Context, userID uuid.UUID, date pgtype.Dat
 			return err
 		}
 		var confirmed *uuid.UUID
-		var before *string
-		err = tx.QueryRow(ctx, `SELECT confirmed_proposal_id,proposal_snapshot FROM daily_plans WHERE user_id=$1 AND plan_date=$2`, userID, date).Scan(&confirmed, &before)
+		err = tx.QueryRow(ctx, `SELECT confirmed_proposal_id FROM daily_plans WHERE user_id=$1 AND plan_date=$2`, userID, date).Scan(&confirmed)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrConflict
 		}
@@ -259,13 +258,13 @@ func (s *Service) Confirm(ctx context.Context, userID uuid.UUID, date pgtype.Dat
 		if err != nil {
 			return err
 		}
-		if w.draft.ID != draftID || w.Version != version || before == nil || *before != snapshot(owned, nil) {
+		if w.draft.ID != draftID || w.Version != version {
 			return ErrConflict
 		}
 		if err := WritableDate(ctx, date); err != nil {
 			return err
 		}
-		batch, err := applyOperations(ctx, tx, userID, date, draftID, w.draft.ToOperations())
+		batch, err := applyOperations(ctx, tx, userID, date, draftID, w.draft.rebase(owned).ToOperations())
 		if err != nil {
 			return err
 		}

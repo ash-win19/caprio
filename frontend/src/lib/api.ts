@@ -346,11 +346,6 @@ export interface PlanView {
 export interface PlanUpdateMetadata {
   changes: Array<{ ref: string; title: string; action: string }>;
 }
-export interface ChangeReceipt {
-  id: string; requestId: string; summary: string;
-  changes: Array<{ taskId: string; title: string; action: string; date: string }>;
-  affectedDates: string[]; undone: boolean; canUndo: boolean; undoReason?: string;
-}
 export interface ReviewRecord {
   id: string; createdAt: string; review: DayReview; tasks: BackendTask[]; taskDetailsAvailable: boolean;
 }
@@ -376,7 +371,6 @@ export interface ChatThreadMessage {
 }
 
 export interface Workflow {
-  changeReceipts?: ChangeReceipt[];
   reviewHistory?: ReviewRecord[];
   carryoverOrigins?: Record<string, string>;
   oldestUnclosedDate?: string | null;
@@ -411,7 +405,6 @@ export async function getChatSessions(): Promise<ChatSession[]> {
 }
 
 export interface ChatReply {
-  appliedChange?: ChangeReceipt;
   text: string;
   workflow: Workflow;
 }
@@ -551,6 +544,3 @@ export async function getInboxTasks(): Promise<Task[]> {
   return (data.tasks || []).map((task: BackendTask) => mapBackendTaskToTask(task));
 }
 
-export async function undoTaskChange(id: string): Promise<Workflow> {
-  return (await fetchWithAuth(`/api/task-changes/${id}/undo`, { method: 'POST' })).json();
-}

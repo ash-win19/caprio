@@ -32,6 +32,7 @@ type DraftEntry struct {
 	Inbox         bool                       `json:"inbox,omitempty"`
 	Completed     *bool                      `json:"completed,omitempty"`
 	Remove        bool                       `json:"remove,omitempty"`
+	WasCompleted  *bool                      `json:"wasCompleted,omitempty"` // the saved task's completion when the Draft first touched it
 	Turns         []uuid.UUID                `json:"turns"`
 	Prev          *DraftEntry                `json:"prev,omitempty"` // the entry before its latest change, for undo
 }
@@ -131,8 +132,8 @@ func (d *Draft) touch(ref string, saved *generated.Task, turn uuid.UUID) *DraftE
 	if entry == nil {
 		entry = &DraftEntry{Ref: ref, Turns: []uuid.UUID{}}
 		if saved != nil {
-			id := saved.ID
-			entry.TaskID = &id
+			id, done := saved.ID, saved.Completed
+			entry.TaskID, entry.WasCompleted = &id, &done
 		}
 		d.Entries[ref] = entry
 		d.Order = append(d.Order, ref)
@@ -504,6 +505,57 @@ func (d *Draft) ToOperations() []TaskOperation {
 	return ops
 }
 
+// rebase fits the Draft to the tasks as they are now; Confirm applies it, the
+// panel shows it and the next turn builds on it. Direct edits made while it
+// waited win: a dropped task takes no change, and when a task's completion
+// changed directly, only its field edits (title, Estimate, notes) still apply.
+// Entries from before completion was recorded count as drafted while open.
+func (d *Draft) rebase(owned []generated.Task) *Draft {
+	if d == nil {
+		return nil
+	}
+	current := map[uuid.UUID]generated.Task{}
+	for _, t := range owned {
+		current[t.ID] = t
+	}
+	kept := &Draft{ID: d.ID, Entries: map[string]*DraftEntry{}, Order: []string{}}
+	for _, ref := range d.Order {
+		e := d.Entries[ref]
+		if e.TaskID != nil {
+			t, ok := current[*e.TaskID]
+			if !ok || t.Status == generated.TaskStatusDropped {
+				continue
+			}
+			if wasDone := e.WasCompleted != nil && *e.WasCompleted; t.Completed != wasDone {
+				if e.Remove || len(e.Fields) == 0 {
+					continue
+				}
+				e = fieldEdits(e, t.Completed)
+			}
+		}
+		kept.Entries[ref], kept.Order = e, append(kept.Order, ref)
+	}
+	return kept
+}
+
+// fieldEdits keeps only an entry's field edits, through its undo history too,
+// against the task's current completion. A step that changed only what was
+// stripped stays as a no-op, so reverting a dropped move keeps the edit before
+// it; a step back to no edits at all ends the history, so reverting drops it.
+func fieldEdits(e *DraftEntry, done bool) *DraftEntry {
+	if e == nil {
+		return nil
+	}
+	c := e.clone()
+	c.Date, c.Inbox, c.Completed, c.Remove, c.WasCompleted = "", false, nil, false, &done
+	if prev := fieldEdits(e.Prev, done); prev != nil && len(prev.Fields) > 0 {
+		c.Prev = prev
+	} else {
+		c.Prev = nil
+	}
+	return &c
+}
+
 func mustJSON(v any) json.RawMessage {
 	b, _ := json.Marshal(v)
 	return b
@@ -543,8 +595,10 @@ type PlanView struct {
 	Counts    PlanCounts `json:"counts"`
 }
 
+// buildPlanView takes the rebased Draft. A waiting Draft that rebasing
+// emptied still gets a view, so it can be confirmed or discarded.
 func buildPlanView(env draftEnv, d *Draft, origins map[string]string) *PlanView {
-	if d.empty() {
+	if d == nil {
 		return nil
 	}
 	day := env.Date.Time.Format("2006-01-02")
