@@ -514,6 +514,53 @@ func TestANewChangeIsNotBlockedByAStaleOne(t *testing.T) {
 	require.Equal(t, date.Time, saved.PlannedForDate.Time)
 }
 
+func TestRevertingAStaleMoveKeepsTheEarlierEdit(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	task := createTask(t, s, user, date, "Report")
+	a.ops = []TaskOperation{{Kind: "update", TaskID: &task.ID, Fields: fields(map[string]any{"duration": 90})}}
+	_, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "the report takes 90 minutes", RequestID: uuid.New()})
+	require.NoError(t, err)
+	a.ops = []TaskOperation{{Kind: "move", TaskID: &task.ID, Date: "2026-09-07"}}
+	_, err = s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "and do it tomorrow", RequestID: uuid.New()})
+	require.NoError(t, err)
+	tickOff(t, s, task)
+	a.ops, a.results = nil, nil
+	a.script = func(_ context.Context, _ mastra.Call, tool toolFunc) (string, error) {
+		tool("revert_change", map[string]any{"ref": task.ID.String()})
+		return "Undid the move.", nil
+	}
+	r, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "undo moving it", RequestID: uuid.New()})
+	require.NoError(t, err)
+	require.True(t, a.results[0].OK)
+	_, err = s.Confirm(ctx, user, date, r.Workflow.Plan.DraftID, r.Workflow.Version)
+	require.NoError(t, err)
+	saved, err := s.store.Queries.GetTaskByID(ctx, generated.GetTaskByIDParams{ID: task.ID, UserID: user})
+	require.NoError(t, err)
+	require.EqualValues(t, 90, *saved.Duration, "undoing the move doesn't undo the edit before it")
+}
+
+func TestReadingThePlanKeepsAWaitingDraft(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	task := createTask(t, s, user, date, "Report")
+	a.ops = []TaskOperation{{Kind: "remove", TaskID: &task.ID}}
+	_, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "drop the report", RequestID: uuid.New()})
+	require.NoError(t, err)
+	tickOff(t, s, task)
+	a.ops, a.results = nil, nil
+	a.script = func(_ context.Context, _ mastra.Call, tool toolFunc) (string, error) {
+		tool("read_plan", map[string]any{})
+		return "Your Draft is still waiting.", nil
+	}
+	_, err = s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "what's in my plan?", RequestID: uuid.New()})
+	require.NoError(t, err)
+	require.NotNil(t, a.results[0].Plan, "the tool sees the waiting Draft")
+	w, err := s.Get(ctx, user, date)
+	require.NoError(t, err)
+	require.NotNil(t, w.Plan, "reading the plan doesn't clear the waiting Draft")
+}
+
 func TestClarifyingTurnKeepsTheDraftAndDiscardKeepsTheThread(t *testing.T) {
 	s, a, user, date := testService(t)
 	ctx := context.Background()

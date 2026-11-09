@@ -530,15 +530,30 @@ func (d *Draft) rebase(owned []generated.Task) *Draft {
 				if e.Remove || len(e.Fields) == 0 {
 					continue
 				}
-				edit := e.clone()
-				done := t.Completed
-				edit.Date, edit.Inbox, edit.Completed, edit.Prev, edit.WasCompleted = "", false, nil, nil, &done
-				e = &edit
+				e = fieldEdits(e, t.Completed)
 			}
 		}
 		kept.Entries[ref], kept.Order = e, append(kept.Order, ref)
 	}
 	return kept
+}
+
+// fieldEdits keeps only an entry's field edits, through its undo history too,
+// against the task's current completion. A step that changed only what was
+// stripped stays as a no-op, so reverting a dropped move keeps the edit before
+// it; a step back to no edits at all ends the history, so reverting drops it.
+func fieldEdits(e *DraftEntry, done bool) *DraftEntry {
+	if e == nil {
+		return nil
+	}
+	c := e.clone()
+	c.Date, c.Inbox, c.Completed, c.Remove, c.WasCompleted = "", false, nil, false, &done
+	if prev := fieldEdits(e.Prev, done); prev != nil && len(prev.Fields) > 0 {
+		c.Prev = prev
+	} else {
+		c.Prev = nil
+	}
+	return &c
 }
 
 func mustJSON(v any) json.RawMessage {

@@ -409,6 +409,8 @@ func (s *Service) ApplyTool(ctx context.Context, token, name string, input json.
 		if err != nil {
 			return err
 		}
+		// A Draft that rebasing empties is still waiting for Confirm or Discard.
+		waiting := !d.empty()
 		if d == nil {
 			d = newDraft()
 		}
@@ -439,12 +441,15 @@ func (s *Service) ApplyTool(ctx context.Context, token, name string, input json.
 			return err
 		} else {
 			result = &ToolResult{OK: true, Status: outcome.Status, Ref: outcome.Ref, Existing: outcome.Existing}
-			raw, _ := json.Marshal(d)
-			if _, err := tx.Exec(ctx, `UPDATE daily_plans SET draft_staged=$3 WHERE user_id=$1 AND plan_date=$2`, claim.User, date, raw); err != nil {
-				return err
+			// Reading the plan changes nothing, so it leaves the staged Draft as it was.
+			if name != "read_plan" {
+				raw, _ := json.Marshal(d)
+				if _, err := tx.Exec(ctx, `UPDATE daily_plans SET draft_staged=$3 WHERE user_id=$1 AND plan_date=$2`, claim.User, date, raw); err != nil {
+					return err
+				}
 			}
 		}
-		if !d.empty() {
+		if waiting || !d.empty() {
 			result.Plan = buildPlanView(env, d, origins)
 		}
 		return nil
