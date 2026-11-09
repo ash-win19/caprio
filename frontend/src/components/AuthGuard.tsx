@@ -121,8 +121,8 @@ function DayEntry({ account, date, fromPublicRoute, openedToday, children }: { a
   // A Day that isn't confirmed opens in the Conversation until the person
   // skips it on this device; choosing Today counts as skipping.
   const workflow = useWorkflow(date);
-  const [skipped] = useState(() => openedToday || hasSkippedDay(account, date));
-  const showsToday = skipped || isConfirmed(workflow.data);
+  // Read at render, so a skip saved while the day loads (say, in another tab) counts.
+  const showsToday = openedToday || hasSkippedDay(account, date) || isConfirmed(workflow.data);
   useEffect(() => {
     if (openedToday) markDaySkipped(account, date);
   }, [account, date, openedToday]);

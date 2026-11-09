@@ -130,6 +130,14 @@
   .conversation-workspace { flex: 1; min-height: 0; display: flex; flex-direction: column; padding-bottom: env(safe-area-inset-bottom); }
   .conversation-main { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; }
   .conversation-composer { flex-shrink: 0; }
+  /* On a short phone screen, or with enlarged text, pinned bars and a pinned
+     composer leave almost no room for messages, so the page scrolls as one. */
+  @media (max-width: 1023px) and (max-height: 600px) {
+    .conversation-frame { height: auto; min-height: 100dvh; }
+    .conversation-frame .app-bar { position: static; }
+    .conversation-frame :is(.conversation-workspace, .daily-conversation-workspace) { flex: none; }
+    .conversation-frame .conversation-thread { flex: none; overflow: visible; }
+  }
   @container workspace (max-width: 46rem) {
     .app-topbar { grid-template-columns: minmax(0, 1fr) auto; }
     .topbar-actions { grid-column: 2; grid-row: 1; }

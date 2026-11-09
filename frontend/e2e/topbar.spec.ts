@@ -107,3 +107,27 @@ test('large text and a reduced mobile viewport keep date controls and the compos
   expect(box!.y).toBeGreaterThanOrEqual(0);
   expect(box!.y + box!.height).toBeLessThanOrEqual(480);
 });
+
+test('enlarged text on a short phone screen leaves the conversation readable', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 480 });
+  const opener = 'Morning. Two tasks carried over. What is on today?';
+  await mockDay(page, { opener });
+  await page.goto('/conversation');
+  const composer = page.getByRole('textbox', { name: 'Message about your day' });
+  await expect(composer).toBeEnabled();
+  await page.addStyleTag({ content: 'html { font-size: 200%; }' });
+  // The opener can be scrolled fully into view without a bar or the composer covering it.
+  const message = page.getByText(opener, { exact: true });
+  await message.scrollIntoViewIfNeeded();
+  const box = (await message.boundingBox())!;
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.y + box.height).toBeLessThanOrEqual(480);
+  const uncovered = await message.evaluate(element => {
+    const rect = element.getBoundingClientRect();
+    return [0.2, 0.5, 0.8].every(at => element.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height * at)));
+  });
+  expect(uncovered).toBe(true);
+  await composer.scrollIntoViewIfNeeded();
+  await composer.fill('Still reachable');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});

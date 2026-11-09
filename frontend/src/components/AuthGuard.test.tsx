@@ -241,6 +241,17 @@ describe('AuthGuard morning reopen routing', () => {
     expect(await screen.findByTestId('conversation-page')).toBeInTheDocument();
   });
 
+  it('honours a skip saved while the day was still loading', async () => {
+    let finish!: (day: api.Workflow) => void;
+    vi.mocked(api.getWorkflow).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    mount('/today');
+    await waitFor(() => expect(api.getWorkflow).toHaveBeenCalled());
+    // Another tab skips the Conversation before this one finishes loading.
+    markDaySkipped('auth0|user', today);
+    await act(async () => finish(workflow(today)));
+    expect(await screen.findByTestId('today-page')).toBeInTheDocument();
+  });
+
   it('counts opening Today on purpose as skipping the day', async () => {
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>

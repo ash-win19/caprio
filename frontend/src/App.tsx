@@ -25,8 +25,8 @@ const queryClient = new QueryClient();
 
 // The old Plan route keeps working for bookmarks and in-flight links.
 function ToConversation() {
-  const { search } = useLocation();
-  return <Navigate to={{ pathname: "/conversation", search }} replace />;
+  const { search, state } = useLocation();
+  return <Navigate to={{ pathname: "/conversation", search }} state={state} replace />;
 }
 
 const App = () => (
