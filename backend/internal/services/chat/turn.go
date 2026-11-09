@@ -224,7 +224,7 @@ func (s *Service) commitTurn(ctx context.Context, req ProcessRequest, t *turn, t
 		if err != nil {
 			return err
 		}
-		changes := turnChanges(before, after, owned)
+		changes := turnChanges(before.rebase(owned), after.rebase(owned), owned)
 		if text == "" {
 			// The model spent its last step on a tool call; keep its changes.
 			if len(changes) == 0 {
@@ -416,6 +416,8 @@ func (s *Service) ApplyTool(ctx context.Context, token, name string, input json.
 		if err != nil {
 			return err
 		}
+		// New changes build on the Draft as it applies now, not on stale entries.
+		d = d.rebase(owned)
 		categories, err := q.ListCategoriesByUser(ctx, claim.User)
 		if err != nil {
 			return err
@@ -442,7 +444,9 @@ func (s *Service) ApplyTool(ctx context.Context, token, name string, input json.
 				return err
 			}
 		}
-		result.Plan = buildPlanView(env, d.rebase(env.Owned), origins)
+		if !d.empty() {
+			result.Plan = buildPlanView(env, d, origins)
+		}
 		return nil
 	})
 	return result, err

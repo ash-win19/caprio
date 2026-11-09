@@ -505,11 +505,11 @@ func (d *Draft) ToOperations() []TaskOperation {
 	return ops
 }
 
-// rebase fits the Draft to the tasks as they are now; Confirm applies it and
-// the panel shows it. Direct edits made while it waited win: a dropped task
-// takes no change, and when a task's completion changed directly, only edits
-// that leave completion alone still apply. Entries from before completion was
-// recorded count as drafted while the task was open.
+// rebase fits the Draft to the tasks as they are now; Confirm applies it, the
+// panel shows it and the next turn builds on it. Direct edits made while it
+// waited win: a dropped task takes no change, and when a task's completion
+// changed directly, only its field edits (title, Estimate, notes) still apply.
+// Entries from before completion was recorded count as drafted while open.
 func (d *Draft) rebase(owned []generated.Task) *Draft {
 	if d == nil {
 		return nil
@@ -526,10 +526,14 @@ func (d *Draft) rebase(owned []generated.Task) *Draft {
 			if !ok || t.Status == generated.TaskStatusDropped {
 				continue
 			}
-			wasDone := e.WasCompleted != nil && *e.WasCompleted
-			fieldsOnly := !e.Remove && e.Date == "" && !e.Inbox && e.Completed == nil
-			if t.Completed != wasDone && !fieldsOnly {
-				continue
+			if wasDone := e.WasCompleted != nil && *e.WasCompleted; t.Completed != wasDone {
+				if e.Remove || len(e.Fields) == 0 {
+					continue
+				}
+				edit := e.clone()
+				done := t.Completed
+				edit.Date, edit.Inbox, edit.Completed, edit.Prev, edit.WasCompleted = "", false, nil, nil, &done
+				e = &edit
 			}
 		}
 		kept.Entries[ref], kept.Order = e, append(kept.Order, ref)
@@ -576,8 +580,10 @@ type PlanView struct {
 	Counts    PlanCounts `json:"counts"`
 }
 
+// buildPlanView takes the rebased Draft. A waiting Draft that rebasing
+// emptied still gets a view, so it can be confirmed or discarded.
 func buildPlanView(env draftEnv, d *Draft, origins map[string]string) *PlanView {
-	if d.empty() {
+	if d == nil {
 		return nil
 	}
 	day := env.Date.Time.Format("2006-01-02")
