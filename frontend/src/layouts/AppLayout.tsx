@@ -7,7 +7,7 @@ export default function AppLayout() {
   const reduceMotion = useReducedMotion();
   return (
     <AppShell>
-      <main id="main-content" tabIndex={-1} className="workspace-main pb-28 md:pb-16">
+      <main id="main-content" tabIndex={-1} className="workspace-main pb-16 sm:pb-28 md:pb-16">
         <motion.div
           initial={reduceMotion ? false : { opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}

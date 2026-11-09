@@ -12,7 +12,7 @@ test('at desktop width the plan sits beside the chat with its actions in reach',
     { id: 'u1', role: 'user', content: 'Here is everything for today' },
     { id: 'a1', role: 'assistant', content: 'All fourteen are on the plan.' },
   ] });
-  await page.goto(`/new?date=${date}`);
+  await page.goto(`/conversation?date=${date}`);
   const panel = page.getByRole('complementary', { name: 'Today’s plan' });
   await expect(panel).toBeVisible();
   const chat = page.getByRole('region', { name: 'Planning conversation' });
@@ -31,7 +31,7 @@ test('at desktop width the plan sits beside the chat with its actions in reach',
 test('at phone width the plan opens from a pill as a bottom sheet and confirms from there', async ({ page }, info) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const writes = await mockDay(page, { state: 'planning', tasks: [], plan: planView([{ ref: 'new:1', title: 'Ship slides', badge: 'new', date }]) });
-  await page.goto(`/new?date=${date}`);
+  await page.goto(`/conversation?date=${date}`);
   await expect(page.getByRole('complementary', { name: 'Today’s plan' })).toHaveCount(0);
   const pill = page.getByRole('button', { name: 'Plan · 1 change' });
   await expect(pill).toBeVisible();
@@ -49,7 +49,7 @@ test('with reduced motion the panel appears without sliding', async ({ page }) =
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.setViewportSize({ width: 1440, height: 900 });
   await mockDay(page, { state: 'planning', tasks: [], plan: planView([{ ref: 'new:1', title: 'Ship slides', badge: 'new', date }]) });
-  await page.goto(`/new?date=${date}`);
+  await page.goto(`/conversation?date=${date}`);
   const panel = page.getByRole('complementary', { name: 'Today’s plan' });
   await expect(panel).toBeVisible();
   expect(await panel.evaluate(element => getComputedStyle(element).animationName)).toBe('none');

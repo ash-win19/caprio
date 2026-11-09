@@ -10,7 +10,7 @@ export function VoiceWidget({ showLauncher = true }: { showLauncher?: boolean })
     const handler = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.code === 'Space') {
         event.preventDefault();
-        if (!useNavigationState.getState().locked) navigate('/new');
+        if (!useNavigationState.getState().locked) navigate('/conversation');
       }
     };
     window.addEventListener('keydown', handler);
@@ -19,5 +19,5 @@ export function VoiceWidget({ showLauncher = true }: { showLauncher?: boolean })
 
   if (!showLauncher) return null;
 
-  return <button type="button" disabled={locked} onClick={() => navigate('/new')} className="fixed bottom-24 right-4 z-30 flex items-center gap-2 rounded-full border border-border bg-card px-4 py-3 text-sm font-medium text-foreground shadow-lg transition-colors hover:bg-accent disabled:opacity-50 md:bottom-6 md:right-6" title="Plan my day (⌘/Ctrl + Shift + Space)"><MessageSquare size={17} className="text-primary" /><span>Plan my day</span></button>;
+  return <button type="button" disabled={locked} onClick={() => navigate('/conversation')} className="fixed bottom-24 right-4 z-30 flex items-center gap-2 rounded-full border border-border bg-card px-4 py-3 text-sm font-medium text-foreground shadow-lg transition-colors hover:bg-accent disabled:opacity-50 md:bottom-6 md:right-6" title="Plan my day (⌘/Ctrl + Shift + Space)"><MessageSquare size={17} className="text-primary" /><span>Plan my day</span></button>;
 }

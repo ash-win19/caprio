@@ -1,34 +1,14 @@
 import { Page, PageBody, PageHeader } from '@/components/PageLayout';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { ChevronDown, ChevronRight, LogOut } from 'lucide-react';
-import { useAuth0 } from '@auth0/auth0-react';
-import { clearActiveAccount } from '@/lib/accountSession';
+import { useSignOut } from '@/lib/hooks/use-sign-out';
 import { useAppStore } from '@/lib/store';
 import { UserAvatar } from '@/components/UserAvatar';
 
 export default function SettingsPage() {
-  const { user, setUser, resetAccountState } = useAppStore();
-  const navigate = useNavigate();
-  const { isAuthenticated, logout } = useAuth0();
+  const user = useAppStore(s => s.user);
 
-  const handleSignOut = () => {
-    const isDemo = localStorage.getItem('caprio_session') === 'demo';
-
-    localStorage.removeItem('caprio_session');
-    localStorage.removeItem('demo_user');
-    setUser(null);
-
-    if (isAuthenticated && !isDemo) {
-      void logout({ logoutParams: { returnTo: window.location.origin } });
-      return;
-    }
-
-    resetAccountState();
-    clearActiveAccount();
-    localStorage.removeItem('onboarding_complete');
-    localStorage.removeItem('caprio-store');
-    navigate('/login');
-  };
+  const handleSignOut = useSignOut();
 
   return <Page>
     <PageHeader title="Settings" />

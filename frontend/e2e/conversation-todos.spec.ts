@@ -34,8 +34,8 @@ for (const width of [390, 1440]) {
       }
       return route.fallback();
     });
-    await page.goto(`/new?date=${date}&taskId=referenced-inbox-task`);
-    await expect(page.getByText('1 remaining', { exact: true })).toBeVisible();
+    await page.goto(`/conversation?date=${date}&taskId=referenced-inbox-task`);
+    await expect(page.getByRole('link', { name: 'Back to Today', exact: true })).toBeVisible();
     await page.getByRole('textbox', { name: 'Message about your day' }).fill('I have to fix Headlines publishing and prepare tomorrow’s demo. Two hours each.');
     await page.getByRole('button', { name: 'Send prompt', exact: true }).click();
     await expect(page.getByText('Review this draft.', { exact: true })).toBeVisible();
@@ -43,7 +43,6 @@ for (const width of [390, 1440]) {
     await expect(proposal).toBeVisible();
     await expect(proposal.getByRole('button', { name: 'Confirm plan' })).toBeVisible();
     await expect(proposal.getByRole('region', { name: 'Today' }).locator('li')).toHaveCount(3);
-    await expect(page.getByText('1 remaining', { exact: true })).toBeVisible();
     await expect(page.getByRole('region', { name: 'Saved task changes' })).toHaveCount(0);
     expect(writes[0].body).toMatchObject({ date, taskId: 'referenced-inbox-task' });
     expect(writes[0].body).not.toHaveProperty('contractVersion');
@@ -68,7 +67,7 @@ test('a moved task shows under other days with its badge while the rest of the d
     [tasks[0], tasks[2]].map(task => ({ ref: task.id, taskId: task.id, title: task.title, date })),
     { otherDays: [{ ref: tasks[1].id, taskId: tasks[1].id, title: tasks[1].title, date: '2026-09-15', badge: 'moved' }] },
   ) });
-  await page.goto(`/new?date=${date}`);
+  await page.goto(`/conversation?date=${date}`);
   const proposal = page.getByRole('region', { name: 'Proposed plan' });
   await expect(proposal.getByRole('region', { name: 'Other days' })).toContainText(tasks[1].title);
   await expect(proposal.getByRole('region', { name: 'Other days' })).toContainText('Moved');
@@ -99,7 +98,7 @@ for (const width of [390, 1440]) {
       }
       return route.fallback();
     });
-    await page.goto(`/new?date=${date}`);
+    await page.goto(`/conversation?date=${date}`);
     const thread = page.getByRole('region', { name: 'Planning conversation' });
     for (const text of ['Morning. What’s on today?', 'my tasks are: ship slides', 'Slides are on for today.', 'add one task for sleep early', 'Sleep early is on too.']) {
       await expect(thread.getByText(text, { exact: true })).toBeVisible();
@@ -152,7 +151,7 @@ for (const width of [390, 1440]) {
       }
       return route.fallback();
     });
-    await page.goto(`/new?date=${date}`);
+    await page.goto(`/conversation?date=${date}`);
     const input = page.getByRole('textbox', { name: 'Message about your day' });
     for (const message of ['my tasks are: ship slides and prepare for demo, ship phenyx', 'add one task for sleep early', 'rename slides to demo deck']) {
       await expect(input).toBeEnabled();

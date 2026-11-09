@@ -14,39 +14,39 @@ async function noOverflow(page: Page) {
     .every(element => { const rect = element.getBoundingClientRect(); return rect.left >= -1 && rect.right <= innerWidth + 1; }))).toBe(true);
 }
 
-for (const collapsed of [false, true]) {
-  test(`the task list dominates Today with ${collapsed ? 'collapsed' : 'expanded'} navigation`, async ({ page }, info) => {
-    await page.setViewportSize({ width: 1440, height: 900 });
-    const writes = await mockDay(page, { collapsed });
-    await page.goto('/today');
-    const list = page.getByRole('list', { name: 'Remaining tasks' });
-    await expect(list).toBeVisible();
-    expect((await box(list)).width).toBeCloseTo((await box(page.locator('.today-page'))).width, 0);
-    expect((await box(list)).width).toBeGreaterThan(900);
-    expect((await box(list)).y).toBeLessThan(250);
-    await expect(page.locator('main').getByRole('complementary')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Plan my day', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('link', { name: 'Adjust plan', exact: true })).toHaveCount(1);
-    await expect(page.getByRole('link', { name: /Something changed/ })).toHaveCount(0);
-    await expect(page.getByRole('link', { name: /Open inbox/ })).toHaveCount(0);
-    const review = await box(page.locator('.today-review-entry'));
-    const tasks = await box(list);
-    expect(review.y).toBeGreaterThan(tasks.y + tasks.height);
-    await noOverflow(page);
-    expect(writes).toEqual([]);
-    await page.screenshot({ path: info.outputPath('today-desktop.png'), fullPage: true, animations: 'disabled' });
-  });
-}
+test('the task list dominates Today', async ({ page }, info) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const writes = await mockDay(page);
+  await page.goto('/today');
+  const list = page.getByRole('list', { name: 'Remaining tasks' });
+  await expect(list).toBeVisible();
+  expect((await box(list)).width).toBeCloseTo((await box(page.locator('.today-page'))).width, 0);
+  expect((await box(list)).width).toBeGreaterThan(900);
+  // Below the app bar and the page header.
+  expect((await box(list)).y).toBeLessThan(280);
+  await expect(page.locator('main').getByRole('complementary')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Plan my day', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Adjust plan', exact: true })).toHaveCount(1);
+  await expect(page.getByRole('link', { name: /Something changed/ })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: /Open inbox/ })).toHaveCount(0);
+  const review = await box(page.locator('.today-review-entry'));
+  const tasks = await box(list);
+  expect(review.y).toBeGreaterThan(tasks.y + tasks.height);
+  await noOverflow(page);
+  expect(writes).toEqual([]);
+  await page.screenshot({ path: info.outputPath('today-desktop.png'), fullPage: true, animations: 'disabled' });
+});
 
 for (const width of [320, 390, 768]) {
   test(`Today keeps tasks first and Review reachable at ${width}px`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 844 });
     const tasks = tasksForDay();
     tasks[1].title = `Research ${'a'.repeat(120)}`;
-    const writes = await mockDay(page, { tasks, collapsed: false });
+    const writes = await mockDay(page, { tasks });
     await page.goto('/today');
     await expect(page.getByRole('list', { name: 'Remaining tasks' })).toBeVisible();
-    expect((await box(page.getByText(titles[0], { exact: true }))).y).toBeLessThan(300);
+    // The app bar sits above the page header, where the bottom nav used to sit below the list.
+    expect((await box(page.getByText(titles[0], { exact: true }))).y).toBeLessThan(360);
     expect((await box(page.getByText(tasks[1].title, { exact: true }))).y).toBeLessThan(700);
     const target = await box(page.getByRole('checkbox').first().locator('..'));
     expect(target.width).toBeGreaterThanOrEqual(44);
@@ -57,11 +57,6 @@ for (const width of [320, 390, 768]) {
     await review.scrollIntoViewIfNeeded();
     await review.focus();
     await expect(review).toBeFocused();
-    if (width < 768) {
-      const nav = await box(page.getByRole('navigation', { name: 'Mobile primary' }));
-      const action = await box(review);
-      expect(action.y + action.height).toBeLessThanOrEqual(nav.y);
-    }
     await review.press('Enter');
     await expect(page).toHaveURL(`/review?date=${date}`);
     expect(writes).toEqual([]);
@@ -204,7 +199,7 @@ test('failed completion restores the task and keeps the failure visible', async 
 test('proposal and older recovery remain distinct from the daily review footer', async ({ page }) => {
   const writes = await mockDay(page, { oldestUnclosedDate: '2026-09-06', plan: planView([{ ref: 'new:1', title: 'Adjusted work', badge: 'new', date }]) });
   await page.goto('/today');
-  await expect(page.getByRole('link', { name: 'Review proposal' })).toHaveAttribute('href', `/new?date=${date}`);
+  await expect(page.getByRole('link', { name: 'Review the Draft' })).toHaveAttribute('href', `/conversation?date=${date}`);
   await expect(page.getByRole('link', { name: 'Review day', exact: true })).toHaveAttribute('href', `/review?date=${date}`);
   const recovery = page.getByRole('link', { name: 'Review unfinished day' });
   await expect(recovery).toHaveAttribute('href', '/review?date=2026-09-06&reopen=1');
@@ -222,7 +217,7 @@ test('historical and future dates retain read-only controls and the planning sho
   }
   await page.goto('/today');
   await page.keyboard.press('Control+Shift+Space');
-  await expect(page).toHaveURL('/new');
+  await expect(page).toHaveURL('/conversation');
   expect(writes).toEqual([]);
 });
 

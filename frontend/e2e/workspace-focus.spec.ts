@@ -56,7 +56,7 @@ for (const width of [320, 390, 1440]) {
   test(`workspace pages prioritize their content at ${width}px`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 900 });
     const { writes } = await workspace(page);
-    for (const route of ['/capture', '/review', '/momentum', '/settings', '/settings/categories', '/settings/notifications', '/settings/voice', '/new']) {
+    for (const route of ['/capture', '/review', '/momentum', '/settings', '/settings/categories', '/settings/notifications', '/settings/voice', '/conversation']) {
       await page.goto(route);
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Plan my day', exact: true })).toHaveCount(0);
@@ -93,7 +93,7 @@ test('inbox keeps failed capture details and the draft across navigation', async
   await page.getByRole('spinbutton', { name: 'Estimated minutes' }).fill('45');
   await page.getByRole('button', { name: 'Add task', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Could not save task');
-  await page.getByRole('navigation', { name: 'Primary', exact: true }).getByRole('link', { name: 'History', exact: true }).click();
+  await page.getByRole('navigation', { name: 'App', exact: true }).getByRole('link', { name: 'History', exact: true }).click();
   await page.goBack();
   await expect(page.getByRole('textbox', { name: 'What do you need to do?' })).toHaveValue('Keep this draft');
   await page.locator('summary').filter({ hasText: 'Task details' }).click();
@@ -136,7 +136,7 @@ test('proposal keeps the conversation visible beside its decisions and the model
     { ref: 'task-1', taskId: 'task-1', title: titles[1], inbox: true, badge: 'moved' },
     { ref: 'task-2', taskId: 'task-2', title: titles[2], inbox: true, badge: 'moved' },
   ] }) });
-  await page.goto('/new');
+  await page.goto('/conversation');
   await expect(page.getByRole('region', { name: 'Proposed plan' })).toBeVisible();
   await expect(page.getByText('Previous planning conversation')).toBeVisible();
   await expect(page.getByRole('region', { name: 'Today' })).toContainText('Prepare a handoff');
@@ -189,7 +189,7 @@ test('categories preserve edits across navigation and save only on confirmation'
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Projects');
   await page.getByRole('button', { name: 'Move Projects down' }).click();
   await expect(page.locator('#category-work')).toBeFocused();
-  await page.getByRole('navigation', { name: 'Primary', exact: true }).getByRole('link', { name: 'History', exact: true }).click();
+  await page.getByRole('navigation', { name: 'App', exact: true }).getByRole('link', { name: 'History', exact: true }).click();
   await page.goBack();
   await expect(page.locator('.page-body summary').last()).toContainText('Projects');
   expect(writes).toEqual([]);
@@ -221,7 +221,7 @@ test('setup confirms categories without asking for an inactive reminder preferen
   await expect(page.getByRole('heading', { name: 'Your categories' })).toBeVisible();
   await expect(page.locator('input[type=time]')).toHaveCount(0);
   await page.getByRole('button', { name: 'Plan my day', exact: true }).click();
-  await expect(page).toHaveURL('/new');
+  await expect(page).toHaveURL('/conversation');
   expect(writes[0].path).toBe('/api/onboarding');
   expect(writes[0].body.preferences).toEqual({ proactiveReprioritization: false });
   expect(writes[0].body.categories).toHaveLength(2);
@@ -252,10 +252,10 @@ test('a category save locks navigation until the request finishes', async ({ pag
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Projects');
   await page.getByRole('button', { name: 'Save changes', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Saving…', exact: true })).toBeDisabled();
-  await page.getByRole('navigation', { name: 'Primary', exact: true }).getByRole('link', { name: 'History', exact: true }).click();
+  await page.getByRole('navigation', { name: 'App', exact: true }).getByRole('link', { name: 'History', exact: true }).click();
   await expect(page).toHaveURL('/settings/categories');
   release();
   await expect(page.getByRole('status').filter({ hasText: 'Categories saved.' })).toBeVisible();
-  await page.getByRole('navigation', { name: 'Primary', exact: true }).getByRole('link', { name: 'History', exact: true }).click();
+  await page.getByRole('navigation', { name: 'App', exact: true }).getByRole('link', { name: 'History', exact: true }).click();
   await expect(page).toHaveURL('/momentum');
 });

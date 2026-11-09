@@ -22,7 +22,7 @@ export default function OnboardingPrefs() {
       const selectedCategories = (categories.length ? categories : DEFAULT_CATEGORIES).filter(category => user?.categories.includes(category.name));
       await completeOnboarding({ proactiveReprioritization: false }, selectedCategories);
       await invalidatePlanningQueries(client);
-      navigate('/new');
+      navigate('/conversation');
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Unable to save. Please try again.');
     } finally {
