@@ -43,6 +43,20 @@ export function planChangeCount(plan: PlanView) {
   return counts.new + counts.edited + counts.moved + counts.removed;
 }
 
+function hoursAndMinutes(minutes: number) {
+  const h = Math.floor(minutes / 60), m = minutes % 60;
+  return h ? `${h}h${m ? ` ${m}m` : ''}` : `${m}m`;
+}
+
+/** The Day's estimated work after Confirm, against the time the person stated. */
+function plannedTotal(plan: PlanView, availableMinutes: number | null) {
+  const minutes = [...plan.today, ...plan.carried]
+    .filter(item => item.badge !== 'removed' && !item.completed)
+    .reduce((sum, item) => sum + (item.duration ?? 0), 0);
+  if (!minutes && availableMinutes == null) return null;
+  return `Planned ~${hoursAndMinutes(minutes)}${availableMinutes != null ? ` for your ${hoursAndMinutes(availableMinutes)}` : ''}`;
+}
+
 export function planSummary(plan: PlanView) {
   const { counts } = plan;
   return [
@@ -56,9 +70,10 @@ export function planSummary(plan: PlanView) {
 
 // The full resulting plan for the day: saved work with the draft applied. The
 // app writes every word here; the model's reply stays in the chat.
-export function PlanCard({ plan, date, busy, confirming, discarding, error, highlight, onConfirm, onDiscard, onClose }: {
+export function PlanCard({ plan, date, availableMinutes, busy, confirming, discarding, error, highlight, onConfirm, onDiscard, onClose }: {
   plan: PlanView;
   date: string;
+  availableMinutes: number | null;
   busy: boolean;
   confirming: boolean;
   discarding: boolean;
@@ -69,6 +84,7 @@ export function PlanCard({ plan, date, busy, confirming, discarding, error, high
   onClose?: () => void;
 }) {
   const summary = planSummary(plan);
+  const total = plannedTotal(plan, availableMinutes);
   const isToday = date === localDate();
   const highlighted = new Set(highlight?.refs ?? []);
   const root = useRef<HTMLElement>(null);
@@ -96,6 +112,7 @@ export function PlanCard({ plan, date, busy, confirming, discarding, error, high
       {error && <div className="mt-4">{error}</div>}
     </div>
     <div className="plan-card-actions flex flex-wrap gap-2 rounded-b-2xl bg-card px-5 pb-5 pt-4 sm:px-6 sm:pb-6">
+      {total && <p className="w-full text-sm tabular-nums text-muted-foreground">{total}</p>}
       <Button onClick={onConfirm} disabled={busy}>{confirming ? 'Saving plan…' : 'Confirm plan'}<ArrowRight className="ml-2 h-4 w-4" /></Button>
       <Button variant="ghost" onClick={onDiscard} disabled={busy}>{discarding ? 'Discarding…' : 'Discard'}</Button>
     </div>

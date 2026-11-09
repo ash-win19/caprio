@@ -504,6 +504,27 @@ func (d *Draft) ToOperations() []TaskOperation {
 	return ops
 }
 
+// rebase fits the Draft to the tasks as they are at Confirm. Direct edits made
+// while it waited win: a dropped task takes no change, and a task ticked off
+// stays done where it is, so only edits that leave completion alone apply.
+func rebase(ops []TaskOperation, owned []generated.Task) []TaskOperation {
+	current := map[uuid.UUID]generated.Task{}
+	for _, t := range owned {
+		current[t.ID] = t
+	}
+	kept := make([]TaskOperation, 0, len(ops))
+	for _, op := range ops {
+		if op.TaskID != nil {
+			t, ok := current[*op.TaskID]
+			if !ok || t.Status == generated.TaskStatusDropped || (t.Completed && op.Kind != "update") {
+				continue
+			}
+		}
+		kept = append(kept, op)
+	}
+	return kept
+}
+
 func mustJSON(v any) json.RawMessage {
 	b, _ := json.Marshal(v)
 	return b

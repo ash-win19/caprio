@@ -45,6 +45,7 @@ func setupWorkflowHTTP(t *testing.T) (*gin.Engine, *db.Store, uuid.UUID) {
 	r.PATCH("/api/settings", onboarding.UpdateSettings)
 	workflow := handlers.NewChatHandler(store, chat.NewService(store, nil))
 	r.GET("/api/workflow", workflow.GetWorkflow)
+	r.POST("/api/day/plan/confirm", workflow.Confirm)
 	bootstrap := handlers.NewBootstrapHandler(store)
 	r.GET("/api/bootstrap", bootstrap.Get)
 	close := handlers.NewDayCloseHandler(store)
@@ -69,7 +70,7 @@ func httpJSON(t *testing.T, r http.Handler, method, path string, body any, statu
 	return decoded
 }
 
-func TestTaskMutationKeepsCompletionConsistentAndInvalidatesProposals(t *testing.T) {
+func TestTaskMutationKeepsCompletionConsistentAndKeepsTheDraft(t *testing.T) {
 	r, store, user := setupWorkflowHTTP(t)
 	ctx := context.Background()
 	created := httpJSON(t, r, "POST", "/api/tasks", map[string]any{"title": "Finish report", "plannedForDate": "2090-09-06"}, 201)
@@ -83,9 +84,10 @@ func TestTaskMutationKeepsCompletionConsistentAndInvalidatesProposals(t *testing
 	require.NotNil(t, done["completedAt"])
 	tasks := httpJSON(t, r, "GET", "/api/tasks?date=2090-09-06", nil, 200)
 	require.Len(t, tasks["tasks"], 1)
+	// A direct edit saves right away and leaves the Draft waiting for Confirm.
 	workflow := httpJSON(t, r, "GET", "/api/workflow?date=2090-09-06", nil, 200)
-	require.Nil(t, workflow["plan"])
-	require.EqualValues(t, 2, workflow["version"])
+	require.NotNil(t, workflow["plan"])
+	require.EqualValues(t, 1, workflow["version"])
 	require.Equal(t, "active", workflow["state"])
 	reopened := httpJSON(t, r, "PATCH", "/api/tasks/"+id, map[string]any{"completed": false}, 200)
 	require.Equal(t, "planned", reopened["status"])
@@ -127,4 +129,45 @@ func TestOnboardingAndSettingsPreserveCategoryIdentity(t *testing.T) {
 	saved, err = store.Queries.GetTaskByID(context.Background(), generated.GetTaskByIDParams{ID: saved.ID, UserID: user})
 	require.NoError(t, err)
 	require.Nil(t, saved.CategoryID)
+}
+
+func TestConfirmNeverUndoesATaskTickedOffWhileTheDraftWaited(t *testing.T) {
+	r, store, user := setupWorkflowHTTP(t)
+	ctx := context.Background()
+	moved := httpJSON(t, r, "POST", "/api/tasks", map[string]any{"title": "Draft moves this", "plannedForDate": "2090-09-06", "duration": 30}, 201)["id"].(string)
+	edited := httpJSON(t, r, "POST", "/api/tasks", map[string]any{"title": "Draft edits this", "plannedForDate": "2090-09-06", "duration": 30}, 201)["id"].(string)
+	removed := httpJSON(t, r, "POST", "/api/tasks", map[string]any{"title": "Draft removes this", "plannedForDate": "2090-09-06", "duration": 30}, 201)["id"].(string)
+	reopened := httpJSON(t, r, "POST", "/api/tasks", map[string]any{"title": "Draft reopens this", "plannedForDate": "2090-09-06", "duration": 30}, 201)["id"].(string)
+	draftID := uuid.NewString()
+	draft := `{"id":"` + draftID + `","entries":{` +
+		`"` + moved + `":{"ref":"` + moved + `","taskId":"` + moved + `","date":"2090-09-07","turns":[]},` +
+		`"` + edited + `":{"ref":"` + edited + `","taskId":"` + edited + `","fields":{"duration":45},"turns":[]},` +
+		`"` + removed + `":{"ref":"` + removed + `","taskId":"` + removed + `","remove":true,"turns":[]},` +
+		`"` + reopened + `":{"ref":"` + reopened + `","taskId":"` + reopened + `","completed":false,"turns":[]},` +
+		`"new:1":{"ref":"new:1","create":true,"fields":{"title":"Call the bank"},"date":"2090-09-06","turns":[]}},` +
+		`"order":["` + moved + `","` + edited + `","` + removed + `","` + reopened + `","new:1"]}`
+	_, err := store.Pool.Exec(ctx, `INSERT INTO daily_plans (user_id,plan_date,state,version,draft,proposal_snapshot) VALUES ($1,'2090-09-06','planning',1,$2,'stale')`, user, draft)
+	require.NoError(t, err)
+	// Every task the Draft touches is ticked off directly while it waits.
+	for _, id := range []string{moved, edited, removed, reopened} {
+		httpJSON(t, r, "PATCH", "/api/tasks/"+id, map[string]any{"completed": true}, 200)
+	}
+	workflow := httpJSON(t, r, "GET", "/api/workflow?date=2090-09-06", nil, 200)
+	httpJSON(t, r, "POST", "/api/day/plan/confirm", map[string]any{"date": "2090-09-06", "draftId": draftID, "version": workflow["version"]}, 200)
+	for _, id := range []string{moved, edited, removed, reopened} {
+		task, err := store.Queries.GetTaskByID(ctx, generated.GetTaskByIDParams{ID: uuid.MustParse(id), UserID: user})
+		require.NoError(t, err)
+		require.True(t, task.Completed, task.Title)
+		require.Equal(t, generated.TaskStatusCompleted, task.Status, task.Title)
+		require.Equal(t, "2090-09-06", task.PlannedForDate.Time.Format("2006-01-02"), task.Title)
+	}
+	edit, err := store.Queries.GetTaskByID(ctx, generated.GetTaskByIDParams{ID: uuid.MustParse(edited), UserID: user})
+	require.NoError(t, err)
+	require.EqualValues(t, 45, *edit.Duration, "a change that leaves completion alone still applies")
+	tasks := httpJSON(t, r, "GET", "/api/tasks?date=2090-09-06", nil, 200)["tasks"].([]any)
+	titles := []string{}
+	for _, task := range tasks {
+		titles = append(titles, task.(map[string]any)["title"].(string))
+	}
+	require.Contains(t, titles, "Call the bank")
 }

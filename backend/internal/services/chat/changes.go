@@ -71,17 +71,22 @@ func patchTask(t *generated.Task, fields map[string]json.RawMessage) error {
 			return invalid("%s cannot be cleared", key)
 		}
 		var err error
+		// Pointer fields decode into fresh values: the task may share them with
+		// the saved copy it is compared against.
 		switch key {
 		case "title":
 			err = json.Unmarshal(raw, &t.Title)
 			t.Title = strings.TrimSpace(t.Title)
 		case "description":
+			t.Description = nil
 			err = json.Unmarshal(raw, &t.Description)
 		case "categoryId":
+			t.CategoryID = nil
 			err = json.Unmarshal(raw, &t.CategoryID)
 		case "urgency":
 			err = json.Unmarshal(raw, &t.Urgency)
 		case "duration":
+			t.Duration = nil
 			err = json.Unmarshal(raw, &t.Duration)
 		case "dueDate":
 			err = json.Unmarshal(raw, &t.DueDate)

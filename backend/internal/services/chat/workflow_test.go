@@ -390,16 +390,30 @@ func TestToolCallsOnlyWorkDuringTheirTurn(t *testing.T) {
 func TestStaleConfirmAndDiscardAreRejected(t *testing.T) {
 	s, a, user, date := testService(t)
 	ctx := context.Background()
-	task := createTask(t, s, user, date, "Report")
 	w := propose(t, s, a, user, date, "Slides")
-	_, err := s.store.Pool.Exec(ctx, `UPDATE tasks SET title='Changed independently',updated_at=clock_timestamp() WHERE id=$1`, task.ID)
-	require.NoError(t, err)
-	_, err = s.Confirm(ctx, user, date, w.Plan.DraftID, w.Version)
+	_, err := s.Confirm(ctx, user, date, uuid.New(), w.Version)
 	require.ErrorIs(t, err, ErrConflict)
-	_, err = s.Confirm(ctx, user, date, uuid.New(), w.Version)
+	_, err = s.Confirm(ctx, user, date, w.Plan.DraftID, w.Version-1)
 	require.ErrorIs(t, err, ErrConflict)
 	_, err = s.Discard(ctx, user, date, w.Plan.DraftID, w.Version-1)
 	require.ErrorIs(t, err, ErrConflict)
+}
+
+func TestConfirmAppliesTheDraftOverDirectEdits(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	task := createTask(t, s, user, date, "Report")
+	a.ops = []TaskOperation{{Kind: "update", TaskID: &task.ID, Fields: map[string]json.RawMessage{"duration": json.RawMessage("90")}}, add("Slides")}
+	r, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "the report takes 90 minutes", RequestID: uuid.New()})
+	require.NoError(t, err)
+	_, err = s.store.Pool.Exec(ctx, `UPDATE tasks SET title='Renamed directly',updated_at=clock_timestamp() WHERE id=$1`, task.ID)
+	require.NoError(t, err)
+	_, err = s.Confirm(ctx, user, date, r.Workflow.Plan.DraftID, r.Workflow.Version)
+	require.NoError(t, err)
+	saved, err := s.store.Queries.GetTaskByID(ctx, generated.GetTaskByIDParams{ID: task.ID, UserID: user})
+	require.NoError(t, err)
+	require.Equal(t, "Renamed directly", saved.Title)
+	require.EqualValues(t, 90, *saved.Duration)
 }
 
 func TestClarifyingTurnKeepsTheDraftAndDiscardKeepsTheThread(t *testing.T) {
