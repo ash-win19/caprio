@@ -70,24 +70,24 @@ func (e draftEnv) arrivable(day string) error {
 }
 
 // AddTaskInput is what the planner may set on a new task: a title, an
-// Estimate, notes, and a Day or Later. Urgency and CategoryID are read only to
-// reject them.
+// Estimate, and a Day or Later. The other task fields are read only to reject
+// them.
 type AddTaskInput struct {
 	Title         string          `json:"title"`
-	Description   *string         `json:"description"`
 	Duration      *int32          `json:"duration"`
+	Description   json.RawMessage `json:"description"`
 	Urgency       json.RawMessage `json:"urgency"`
 	CategoryID    json.RawMessage `json:"categoryId"`
-	DueDate       *string         `json:"dueDate"`
+	DueDate       json.RawMessage `json:"dueDate"`
 	Date          string          `json:"date"`
 	Inbox         bool            `json:"inbox"`
 	NewOccurrence bool            `json:"newOccurrence"`
 }
 
-// errUnsupportedField tells the planner that tasks have no category or
-// urgency, so it stops trying to set them.
+// errUnsupportedField tells the planner what a task is made of, so it stops
+// trying to set anything else.
 func errUnsupportedField() error {
-	return invalidCode("unsupported_field", "Tasks have a title, an estimate, and a day or Later. Category and urgency can't be set.")
+	return invalidCode("unsupported_field", "A task has only a title, an estimate, and a day or Later. Put a detail that matters, such as a deadline, in the title.")
 }
 
 func given(raw json.RawMessage) bool { return len(raw) > 0 && string(raw) != "null" }
@@ -267,8 +267,8 @@ func effective(saved *generated.Task, entry *DraftEntry, env draftEnv) (generate
 func (e draftEnv) checkFields(base generated.Task, fields map[string]json.RawMessage) error {
 	for key := range fields {
 		switch key {
-		case "title", "description", "duration", "dueDate":
-		case "categoryId", "urgency":
+		case "title", "duration":
+		case "description", "dueDate", "categoryId", "urgency":
 			return errUnsupportedField()
 		default:
 			return invalid("unsupported task field %s", key)
@@ -314,19 +314,13 @@ func (d *Draft) uniqueNewTitle(env draftEnv, ref string, title string) error {
 }
 
 func (d *Draft) AddTask(env draftEnv, turn uuid.UUID, in AddTaskInput) (DraftResult, error) {
-	if given(in.Urgency) || given(in.CategoryID) {
+	if given(in.Description) || given(in.DueDate) || given(in.Urgency) || given(in.CategoryID) {
 		return DraftResult{}, errUnsupportedField()
 	}
 	title := strings.TrimSpace(in.Title)
 	fields := map[string]json.RawMessage{"title": mustJSON(title)}
-	if in.Description != nil {
-		fields["description"] = mustJSON(*in.Description)
-	}
 	if in.Duration != nil {
 		fields["duration"] = mustJSON(*in.Duration)
-	}
-	if in.DueDate != nil {
-		fields["dueDate"] = mustJSON(*in.DueDate)
 	}
 	if err := env.checkFields(generated.Task{Urgency: generated.UrgencyLevelMedium}, fields); err != nil {
 		return DraftResult{}, err

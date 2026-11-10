@@ -113,7 +113,7 @@ export async function openPlan(page: Page) {
 
 // A day whose chat turns return scripted replies and drafts, and whose
 // Confirm and Discard behave like the backend. Writes are recorded.
-export async function conversationDay(page: Page, start: Partial<Workflow>, turns: Array<{ text: string; plan?: PlanView | null }>) {
+export async function conversationDay(page: Page, start: Partial<Workflow>, turns: Array<{ text: string; plan?: PlanView | null; availableMinutes?: number }>) {
   const tasks = tasksForDay();
   await mockDay(page, { state: start.state ?? 'planning', tasks, firstVisit: true });
   let workflow: Workflow = { date, state: 'planning', version: 1, tasks, messages: [], backlog: [], plan: null, availableMinutes: null, review: null, ...start };
@@ -139,6 +139,7 @@ export async function conversationDay(page: Page, start: Partial<Workflow>, turn
       const { content } = route.request().postDataJSON();
       const reply = turns[turn++];
       workflow = { ...workflow, version: workflow.version + 1, plan: reply.plan === undefined ? workflow.plan : reply.plan,
+        availableMinutes: reply.availableMinutes ?? workflow.availableMinutes,
         messages: [...workflow.messages, { id: `u${turn}`, role: 'user', content }, { id: `a${turn}`, role: 'assistant', content: reply.text }] };
       return route.fulfill({ contentType: 'text/event-stream', body: `event: done\ndata: ${JSON.stringify({ text: reply.text, workflow })}\n\n` });
     }

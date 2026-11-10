@@ -152,14 +152,12 @@ func TestOperationsValidateOwnershipQuoteAndFieldPresence(t *testing.T) {
 	s, a, user, date := testService(t)
 	ctx := context.Background()
 	task := createTask(t, s, user, date, "Preserve me")
-	op := TaskOperation{Kind: "update", TaskID: &task.ID, Fields: fields(map[string]any{"duration": nil, "description": "Keep brand behavior; speed up publishing per Cozad."})}
+	op := TaskOperation{Kind: "update", TaskID: &task.ID, Fields: fields(map[string]any{"duration": nil})}
 	r := command(t, s, a, user, date, op)
 	require.Nil(t, r.Workflow.Tasks[0].Duration)
-	require.NotNil(t, r.Workflow.Tasks[0].Description)
 	undone, err := s.Undo(ctx, user, r.AppliedChange.ID)
 	require.NoError(t, err)
 	require.Equal(t, task.Duration, undone.Tasks[0].Duration)
-	require.Nil(t, undone.Tasks[0].Description)
 	// Invalid changes are rejected at the tool, so the model can correct them;
 	// nothing reaches the draft.
 	for code, bad := range map[string]TaskOperation{

@@ -9,14 +9,13 @@ import { z } from 'zod';
 const ref = z.string().describe('A task id from ownedTasks, or a ref from the plan (new tasks use "new:…").');
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('ISO date YYYY-MM-DD.');
 
-// A task is a title, an estimate, notes, and a day or Later. Tasks have no
-// category or urgency. Unknown fields pass through instead of being dropped
-// here, so the backend can reject them and the model learns not to send them.
+// A task is a title, an estimate, and a day or Later; it has no notes, due
+// date, category or urgency. Unknown fields pass through instead of being
+// dropped here, so the backend can reject them and the model learns not to
+// send them.
 const taskFields = z.looseObject({
-  title: z.string().min(1).max(500).optional(),
-  description: z.string().max(12000).nullable().optional(),
+  title: z.string().min(1).max(500).optional().describe('Short and specific. A detail that matters, such as a deadline, goes here.'),
   duration: z.number().int().min(1).max(1440).nullable().optional().describe('Minutes. Only when the person gave an estimate.'),
-  dueDate: isoDate.nullable().optional(),
 });
 
 async function callBackend(name: string, input: unknown, requestContext: { get(key: string): unknown } | undefined, signal?: AbortSignal) {
@@ -58,7 +57,7 @@ export const plannerTools = {
   ),
   edit_task: plannerTool(
     'edit_task',
-    'Change fields of a task in the plan. Include only the fields the person asked to change; null clears a field.',
+    'Change the title or estimate of a task in the plan. Include only what the person asked to change; a null duration clears the estimate.',
     z.object({ ref, fields: taskFields }),
   ),
   move_task: plannerTool(
@@ -73,5 +72,10 @@ export const plannerTools = {
     z.object({ ref, completed: z.boolean() }),
   ),
   revert_change: plannerTool('revert_change', 'Undo the latest change to a task in the plan, e.g. when the person says "undo that" or "keep it after all".', z.object({ ref })),
+  set_available_time: plannerTool(
+    'set_available_time',
+    'Record how much time the person says they have for the day, in minutes. null clears it. Call it only when they state or change that time; it is saved at once.',
+    z.object({ minutes: z.number().int().min(1).max(1440).nullable() }),
+  ),
   read_plan: plannerTool('read_plan', 'Return the current plan without changing it.', z.object({})),
 };

@@ -15,7 +15,7 @@ assert.deepEqual(Object.keys(mastra.listAgents()), ['generalConversationAgent'])
 assert.equal(await agent.getMemory(), undefined, 'Conversation history comes from the backend.');
 assert.deepEqual(
   Object.keys(await agent.listTools()).sort(),
-  ['add_task', 'edit_task', 'move_task', 'read_plan', 'remove_task', 'revert_change', 'set_completed'],
+  ['add_task', 'edit_task', 'move_task', 'read_plan', 'remove_task', 'revert_change', 'set_available_time', 'set_completed'],
   'The planner changes the draft only through its planner tools.',
 );
 

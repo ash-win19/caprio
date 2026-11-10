@@ -97,3 +97,15 @@ test('the Draft footer stays hidden when nothing has an Estimate', async ({ page
   await expect(panel.getByRole('button', { name: 'Confirm plan' })).toBeVisible();
   await expect(panel.getByText(/^Planned/)).toHaveCount(0);
 });
+
+test('the time stated in the Conversation appears in the Draft footer', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await conversationDay(page, { tasks: [] }, [{
+    text: 'That fits in your 4 hours.',
+    plan: planView([{ ref: 'new:1', title: 'Stats problem set (due 5pm)', badge: 'new', date, duration: 120 }]),
+    availableMinutes: 240,
+  }]);
+  await page.goto(`/conversation?date=${date}`);
+  await send(page, 'Stats problem set is due at 5, about two hours. I have 4 hours.', 'That fits in your 4 hours.');
+  await expect(page.getByRole('complementary', { name: 'Today’s plan' }).getByText('Planned ~2h for your 4h', { exact: true })).toBeVisible();
+});

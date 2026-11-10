@@ -208,8 +208,8 @@ func TestTurnsBuildOneDraftForTheDayUntilConfirm(t *testing.T) {
 	sleepRef := second.Workflow.Plan.Today[2].Ref
 	require.Equal(t, "Sleep early", second.Workflow.Plan.Today[2].Title)
 	a.ops, a.script = nil, func(_ context.Context, _ mastra.Call, tool toolFunc) (string, error) {
-		tool("edit_task", map[string]any{"ref": sleepRef, "fields": map[string]any{"description": "Lights out by 10pm"}})
-		return "Sleep early now says lights out by 10pm.", nil
+		tool("edit_task", map[string]any{"ref": sleepRef, "fields": map[string]any{"duration": 45}})
+		return "Sleep early is down for 45 minutes.", nil
 	}
 	third := send("make sleep early 10pm")
 	require.Equal(t, "Plan updated · Edited Sleep early", events(third.Workflow, "plan_update")[2].Content)
@@ -230,7 +230,7 @@ func TestTurnsBuildOneDraftForTheDayUntilConfirm(t *testing.T) {
 	require.ElementsMatch(t, []string{"Ship Phenyx", "Ship slides and prepare for demo", "Sleep early"}, titles)
 	for _, task := range confirmed.Tasks {
 		if task.Title == "Sleep early" {
-			require.Equal(t, "Lights out by 10pm", *task.Description)
+			require.EqualValues(t, 45, *task.Duration)
 		}
 		if task.Title == "Ship Phenyx" {
 			require.Equal(t, phenyx.ID, task.ID)
@@ -323,29 +323,63 @@ func TestReplanningATaskInTheDraftEndsItsCarryHistory(t *testing.T) {
 	}
 }
 
-func TestPlannerToolsRejectCategoryAndUrgency(t *testing.T) {
+func TestThePlannerRecordsTheTimeThePersonHas(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	say := func(content string, calls ...map[string]any) *ProcessResponse {
+		a.results = nil
+		a.script = func(_ context.Context, _ mastra.Call, tool toolFunc) (string, error) {
+			for _, input := range calls {
+				tool("set_available_time", input)
+			}
+			return "Noted.", nil
+		}
+		r, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: content, RequestID: uuid.New()})
+		require.NoError(t, err)
+		return r
+	}
+	r := say("I have about four hours", map[string]any{"minutes": 240})
+	require.True(t, a.results[0].OK)
+	require.EqualValues(t, 240, *r.Workflow.AvailableMinutes)
+	require.Nil(t, r.Workflow.Plan, "stating time alone drafts nothing")
+
+	say("what does that leave me?")
+	require.Contains(t, a.last[0].Content, `"availableMinutes":240`, "the next turn's context has the stated time")
+
+	for _, bad := range []map[string]any{{"minutes": 0}, {"minutes": 2000}, {}} {
+		r = say("never mind", bad)
+		require.False(t, a.results[0].OK)
+		require.Equal(t, "invalid_input", a.results[0].Error.Code)
+		require.EqualValues(t, 240, *r.Workflow.AvailableMinutes)
+	}
+	r = say("forget the time limit", map[string]any{"minutes": nil})
+	require.True(t, a.results[0].OK)
+	require.Nil(t, r.Workflow.AvailableMinutes)
+}
+
+func TestPlannerToolsAcceptOnlyATitleAnEstimateAndADayOrLater(t *testing.T) {
 	s, a, user, date := testService(t)
 	ctx := context.Background()
 	task := createTask(t, s, user, date, "Report")
-	category := uuid.NewString()
+	extras := map[string]any{"urgency": "high", "categoryId": uuid.NewString(), "description": "Lights out by 10pm", "dueDate": "2026-09-08"}
 	a.script = func(_ context.Context, _ mastra.Call, tool toolFunc) (string, error) {
-		tool("add_task", map[string]any{"title": "Slides", "urgency": "high"})
-		tool("add_task", map[string]any{"title": "Slides", "categoryId": category})
-		tool("edit_task", map[string]any{"ref": task.ID.String(), "fields": map[string]any{"urgency": "high"}})
-		tool("edit_task", map[string]any{"ref": task.ID.String(), "fields": map[string]any{"categoryId": category}})
+		for field, value := range extras {
+			tool("add_task", map[string]any{"title": "Slides", field: value})
+			tool("edit_task", map[string]any{"ref": task.ID.String(), "fields": map[string]any{field: value}})
+		}
 		tool("add_task", map[string]any{"title": "Slides", "duration": 45})
 		tool("add_task", map[string]any{"title": "Renew passport", "inbox": true})
 		return "Slides is in, and the passport is in Later.", nil
 	}
 	r, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "add slides, high priority, in Work", RequestID: uuid.New()})
 	require.NoError(t, err)
-	require.Len(t, a.results, 6)
-	for _, rejected := range a.results[:4] {
+	require.Len(t, a.results, 2*len(extras)+2)
+	for _, rejected := range a.results[:2*len(extras)] {
 		require.False(t, rejected.OK)
 		require.Equal(t, "unsupported_field", rejected.Error.Code)
 	}
-	require.True(t, a.results[4].OK, "title and Estimate are accepted")
-	require.True(t, a.results[5].OK, "Later is accepted")
+	require.True(t, a.results[2*len(extras)].OK, "title and Estimate are accepted")
+	require.True(t, a.results[2*len(extras)+1].OK, "Later is accepted")
 	require.Equal(t, []string{"Slides", "Renew passport"}, []string{r.Workflow.Plan.Today[len(r.Workflow.Plan.Today)-1].Title, r.Workflow.Plan.OtherDays[0].Title})
 }
 
