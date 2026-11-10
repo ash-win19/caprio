@@ -172,13 +172,6 @@ describe('AuthGuard morning reopen routing', () => {
     expect(screen.queryByTestId('review-page')).not.toBeInTheDocument();
   });
 
-  it('lets a brand-new account in without any setup', async () => {
-    // Bootstrap reports no onboarding and no categories; nothing is required first.
-    mount('/');
-    expect(await screen.findByTestId('conversation-page')).toBeInTheDocument();
-    expect(screen.queryByTestId('today-page')).not.toBeInTheDocument();
-  });
-
   it('allows deliberate planning with unfinished older days', async () => {
     vi.mocked(api.getWorkflow).mockImplementation(async (date = today) => ({ ...workflow(date), oldestUnclosedDate: yesterday }));
     mount('/conversation');

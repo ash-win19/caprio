@@ -54,21 +54,12 @@ export function localDay(page: Page): Promise<string> {
 /**
  * Sign in the way a local user does: Login -> "Continue as demo user" (shown in
  * Vite dev mode). In stack mode the API's dev bypass maps this session to
- * dev@caprio.app in the throwaway database. Finishes onboarding through the UI
- * when the account is new.
+ * dev@caprio.app in the throwaway database. A new account needs no setup.
  */
 export async function enterAsDemoUser(page: Page) {
   await page.goto('/login');
   await page.getByRole('button', { name: /Continue as demo user/ }).click();
   await page.waitForURL(url => !url.pathname.startsWith('/login'));
   await expect(page.getByText('Loading your day...')).toHaveCount(0, { timeout: 20_000 });
-  if (new URL(page.url()).pathname === '/onboarding') {
-    await page.getByRole('button', { name: 'Work', exact: true }).click();
-    await page.getByRole('button', { name: 'Gym', exact: true }).click();
-    await page.getByRole('button', { name: /Continue/ }).click();
-    await expect(page).toHaveURL(/\/onboarding\/prefs$/);
-    await page.getByRole('button', { name: 'Plan my day', exact: true }).click();
-    await expect(page).toHaveURL(/\/new/);
-  }
   await expect(page.getByRole('alert')).toHaveCount(0);
 }

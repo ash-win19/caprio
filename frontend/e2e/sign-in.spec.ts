@@ -29,3 +29,17 @@ test('a new account that opens an old setup link still starts in the Conversatio
   await page.goto('/onboarding');
   await expect(page).toHaveURL('/conversation');
 });
+
+test('the demo sign-in goes straight to the Conversation', async ({ page }) => {
+  await mockDay(page, { state: 'planning', tasks: [], firstVisit: true });
+  // Start signed out; the fixture's demo session only applies after the first load.
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('signed-out-once')) return;
+    sessionStorage.setItem('signed-out-once', '1');
+    localStorage.removeItem('caprio_session');
+  });
+  await page.goto('/login');
+  await page.getByRole('button', { name: /Continue as demo user/ }).click();
+  await expect(page).toHaveURL('/conversation');
+  await expect(page.getByRole('textbox', { name: 'Message about your day' })).toBeEnabled();
+});

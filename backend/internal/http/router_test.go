@@ -30,7 +30,7 @@ func testRouter(t *testing.T) *gin.Engine {
 	return NewRouter(config.Config{CORSAllowedOrigins: "http://localhost:5173"}, db.NewStore(pool))
 }
 
-func status(r http.Handler, method, path string) int {
+func statusOf(r http.Handler, method, path string) int {
 	result := httptest.NewRecorder()
 	r.ServeHTTP(result, httptest.NewRequest(method, path, strings.NewReader("{}")))
 	return result.Code
@@ -43,7 +43,7 @@ func TestRemovedEndpointsReturnNotFound(t *testing.T) {
 		{"POST", "/api/onboarding"},
 		{"PATCH", "/api/settings"},
 	} {
-		require.Equal(t, http.StatusNotFound, status(r, endpoint.method, endpoint.path), "%s %s", endpoint.method, endpoint.path)
+		require.Equal(t, http.StatusNotFound, statusOf(r, endpoint.method, endpoint.path), "%s %s", endpoint.method, endpoint.path)
 	}
-	require.Equal(t, http.StatusOK, status(r, "GET", "/api/bootstrap?date=2090-09-06"), "the router still serves the app")
+	require.Equal(t, http.StatusOK, statusOf(r, "GET", "/api/bootstrap?date=2090-09-06"), "the router still serves the app")
 }

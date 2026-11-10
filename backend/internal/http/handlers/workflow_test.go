@@ -105,10 +105,8 @@ func TestTaskMutationKeepsCompletionConsistentAndKeepsTheDraft(t *testing.T) {
 }
 
 func TestANewAccountIsUsableWithoutOnboarding(t *testing.T) {
-	r, store, user := setupWorkflowHTTP(t)
-	var onboarded bool
-	require.NoError(t, store.Pool.QueryRow(context.Background(), `SELECT onboarding_complete FROM users WHERE id=$1`, user).Scan(&onboarded))
-	require.False(t, onboarded, "the account never went through onboarding")
+	// The account was only just created: no onboarding, no categories.
+	r, _, _ := setupWorkflowHTTP(t)
 	bootstrap := httpJSON(t, r, "GET", "/api/bootstrap?date=2090-09-06", nil, 200)
 	require.NotContains(t, bootstrap, "onboardingComplete", "bootstrap no longer reports onboarding")
 	require.Empty(t, bootstrap["categories"])
