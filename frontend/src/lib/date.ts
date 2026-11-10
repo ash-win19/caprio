@@ -9,6 +9,11 @@ export function isValidDate(value: string): boolean {
   return !Number.isNaN(date.getTime()) && localDate(date) === value;
 }
 
+/** Whole calendar days from one date to a later one. */
+export function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T12:00:00`) - Date.parse(`${from}T12:00:00`)) / 86_400_000);
+}
+
 export function nextDate(value: string): string {
   const date = new Date(`${value}T12:00:00`);
   date.setDate(date.getDate() + 1);

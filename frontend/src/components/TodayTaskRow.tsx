@@ -3,10 +3,11 @@ import { useRef } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
-import { CATEGORY_COLORS, type Task } from '@/lib/types';
-import { dateLabel } from './workflow/dates';
+import type { Task } from '@/lib/types';
+import { STALE_DAYS } from '@/lib/carried';
+import { formatMinutes } from '@/lib/duration';
 
-export function TodayTaskRow({ task, readOnly, sortable = false, canMoveUp = false, canMoveDown = false, onToggle, onMove, carriedFrom }: {
+export function TodayTaskRow({ task, readOnly, sortable = false, canMoveUp = false, canMoveDown = false, onToggle, onMove, carriedDays = 0 }: {
   task: Task;
   readOnly: boolean;
   sortable?: boolean;
@@ -14,7 +15,8 @@ export function TodayTaskRow({ task, readOnly, sortable = false, canMoveUp = fal
   canMoveDown?: boolean;
   onToggle: (task: Task) => void;
   onMove?: (direction: -1 | 1) => void;
-  carriedFrom?: string;
+  /** Days this Carried task has rolled forward; zero when it isn't carried. */
+  carriedDays?: number;
 }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: task.id, disabled: readOnly || !sortable });
   const movedFromMenu = useRef(false);
@@ -30,14 +32,13 @@ export function TodayTaskRow({ task, readOnly, sortable = false, canMoveUp = fal
       </label>
       <div className="min-w-0 flex-1 py-2.5">
         <p className={`today-task-title ${task.completed ? 'text-muted-foreground line-through' : 'text-foreground'}`}>{task.title}</p>
-        <div className="today-task-meta">
-          <span className="inline-flex items-center gap-1.5"><span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: CATEGORY_COLORS[task.category] || '#888888' }} aria-hidden />{task.category}</span>
-          {task.duration != null && <span>{task.duration} min</span>}
-          {task.carriedOver && <span className="rounded bg-accent px-2 py-0.5 text-foreground">{carriedFrom ? <time dateTime={carriedFrom} title={dateLabel(carriedFrom, true)}>Since {new Date(`${carriedFrom}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</time> : 'Carried forward'}</span>}
-        </div>
-        {(task.description || task.priorityReason) && <details className="today-task-note">
-          <summary><span>Plan note</span><ChevronDown size={13} aria-hidden /></summary>
-          <p className="mt-1 max-w-prose whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{task.description || task.priorityReason}</p>
+        {(task.duration != null || carriedDays > 0) && <div className="today-task-meta">
+          {task.duration != null && <span>{formatMinutes(task.duration)}</span>}
+          {carriedDays > 0 && <span className={carriedDays >= STALE_DAYS ? 'today-task-stale' : 'today-task-carried'}>carried · {carriedDays}d</span>}
+        </div>}
+        {task.description && <details className="today-task-note">
+          <summary><span>Notes</span><ChevronDown size={13} aria-hidden /></summary>
+          <p className="mt-1 max-w-prose whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{task.description}</p>
         </details>}
       </div>
       {sortable && <div className="today-task-tools">

@@ -13,6 +13,8 @@ export interface Task {
   completed: boolean;
   addedToday: boolean;
   carriedOver: boolean;
+  /** How many times Rollover has carried the task forward. */
+  carryCount?: number;
   order: number;
   plannedForDate?: string;
   priorityReason?: string;
@@ -48,18 +50,6 @@ export interface VoiceEntry {
   transcript: string;
   timestamp: string;
 }
-
-export const CATEGORY_COLORS: Record<string, string> = {
-  Work: '#4A7CFF',
-  Gym: '#F97316',
-  'Personal Growth': '#A855F7',
-  Health: '#EF4444',
-  Finance: '#EAB308',
-  Social: '#EC4899',
-  Learning: '#06B6D4',
-  Family: '#84CC16',
-};
-
 export const DEFAULT_CATEGORIES: Category[] = [
   { id: '1', name: 'Work', color: '#4A7CFF', hoursPerWeek: 40 },
   { id: '2', name: 'Gym', color: '#F97316', hoursPerWeek: 5 },

@@ -1,12 +1,12 @@
 import { test, expect } from '@playwright/test';
 import { date, mockDay, titles } from './fixtures/day';
 
-test('login opens today and historical review can return without a redirect or mutation', async ({ page }) => {
+test('login opens today with no recovery notice, and a historical review can return without a redirect or mutation', async ({ page }) => {
   const writes = await mockDay(page, { oldestUnclosedDate: '2026-09-06' });
   await page.goto('/');
   await expect(page).toHaveURL(/\/today$/);
-  await page.getByRole('link', { name: 'Review unfinished day' }).click();
-  await expect(page).toHaveURL(/\/review\?date=2026-09-06&reopen=1$/);
+  await expect(page.getByRole('link', { name: 'Review unfinished day' })).toHaveCount(0);
+  await page.goto('/review?date=2026-09-06&reopen=1');
   await page.getByRole('button', { name: 'Today', exact: true }).click();
   await expect(page).toHaveURL(`/review?date=${date}`);
   await expect(page.getByRole('button', { name: 'Next day' })).toBeDisabled();

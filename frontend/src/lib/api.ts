@@ -160,6 +160,7 @@ export function mapBackendTaskToTask(backendTask: BackendTask, categories: Categ
     description: backendTask.description || undefined,
     addedToday: backendTask.status === 'planned',
     carriedOver: backendTask.deferCount > 0,
+    carryCount: backendTask.deferCount,
     order: backendTask.sortOrder,
   };
 }
