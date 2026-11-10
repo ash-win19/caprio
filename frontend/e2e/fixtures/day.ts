@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import type { BackendTask, PlanItem, PlanView, Workflow } from '../../src/lib/api';
+import type { BackendTask, HistoryDay, PlanItem, PlanView, Workflow } from '../../src/lib/api';
 
 export const date = '2026-09-14';
 export const titles = [
@@ -26,6 +26,7 @@ export async function mockDay(page: Page, options: {
   carryoverOrigins?: Record<string, string>;
   firstVisit?: boolean;
   opener?: string;
+  history?: HistoryDay[];
 } = {}) {
   const tasks = options.tasks ?? tasksForDay();
   const writes: Array<{ path: string; body: unknown }> = [];
@@ -92,6 +93,8 @@ export async function mockDay(page: Page, options: {
       } });
     } else if (url.pathname === '/api/tasks') {
       await route.fulfill({ json: { tasks } });
+    } else if (url.pathname === '/api/history') {
+      await route.fulfill({ json: { days: (options.history ?? []).filter(day => day.date < (url.searchParams.get('before') ?? '')) } });
     } else if (url.pathname === '/api/chat/sessions') {
       await route.fulfill({ json: { sessions: [{ sessionDate: date, title: 'A focused day', messageCount: 2, updatedAt: date, state: 'active' }] } });
     } else {
@@ -156,4 +159,10 @@ export async function conversationDay(page: Page, start: Partial<Workflow>, turn
     return route.fallback();
   });
   return writes;
+}
+
+// A past Day as History lists it.
+export function historyDay(day: Partial<HistoryDay> & { date: string }): HistoryDay {
+  const full = { wrappedUp: true, note: '', taskDetailsAvailable: true, done: [], carried: [], dropped: [], ...day };
+  return { doneCount: full.done.length, carriedCount: full.carried.length, droppedCount: full.dropped.length, ...full };
 }

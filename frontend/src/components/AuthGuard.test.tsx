@@ -191,7 +191,7 @@ describe('AuthGuard morning reopen routing', () => {
     await waitFor(() => expect(screen.getByTestId('conversation-page')).toBeInTheDocument());
   });
 
-  it.each(['', 'invalid', '2026-02-30'])('opens the Conversation when a Today date is unusable: %s', async (date) => {
+  it.each(['', 'invalid', '2026-02-30', yesterday, today, nextDate(today)])('applies the entry rule to Today whatever date the link carries: %s', async (date) => {
     mount(`/today?date=${date}`);
     expect(await screen.findByTestId('conversation-page')).toBeInTheDocument();
   });
@@ -305,18 +305,5 @@ describe('AuthGuard morning reopen routing', () => {
     vi.mocked(api.getWorkflow).mockResolvedValue(workflow(today));
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByTestId('conversation-page')).toBeInTheDocument();
-  });
-
-  it.each([yesterday, today, nextDate(today)])('preserves an explicit task view for %s', async (date) => {
-    mount(`/today?date=${date}`);
-    expect(await screen.findByTestId('today-page')).toBeInTheDocument();
-    expect(api.getWorkflow).not.toHaveBeenCalled();
-  });
-
-  it('keeps a deliberately selected historical day usable while recovery is unavailable', async () => {
-    vi.mocked(api.getWorkflow).mockRejectedValue(new Error('Workflow unavailable'));
-    mount(`/today?date=${yesterday}`);
-    expect(await screen.findByTestId('today-page')).toBeInTheDocument();
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });

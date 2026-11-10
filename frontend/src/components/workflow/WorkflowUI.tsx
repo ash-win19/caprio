@@ -115,7 +115,7 @@ export function DaySummary({ workflow }: { workflow: Workflow }) {
     <ReviewHistory workflow={workflow} />
     <div className="flex flex-wrap gap-3">
       <Button asChild><Link to={nextPath}>{nextLabel} <ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
-      <Button asChild variant="outline"><Link to="/momentum">View history</Link></Button>
+      <Button asChild variant="outline"><Link to="/history">View history</Link></Button>
     </div>
   </section>;
 }

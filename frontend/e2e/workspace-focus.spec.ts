@@ -56,12 +56,11 @@ for (const width of [320, 390, 1440]) {
   test(`workspace pages prioritize their content at ${width}px`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 900 });
     const { writes } = await workspace(page);
-    for (const route of ['/capture', '/review', '/momentum', '/settings', '/settings/categories', '/settings/notifications', '/settings/voice', '/conversation']) {
+    for (const route of ['/capture', '/review', '/history', '/settings', '/settings/categories', '/settings/notifications', '/settings/voice', '/conversation']) {
       await page.goto(route);
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Plan my day', exact: true })).toHaveCount(0);
       if (route === '/capture') await expect(page.getByRole('list', { name: 'Inbox tasks' })).toBeVisible();
-      if (route === '/momentum') await expect(page.getByRole('list', { name: 'Saved days' })).toBeVisible();
       await noOverflow(page);
       await page.screenshot({ path: info.outputPath(`${route.replaceAll('/', '-')}-${width}.png`), animations: 'disabled' });
     }
@@ -169,19 +168,6 @@ test('review asks only for unfinished decisions and keeps reflection optional', 
   expect(writes[0].body).toMatchObject({ date, taskActions: [{ taskId: 'task-0', action: 'done' }, { taskId: 'task-1', action: 'tomorrow' }, { taskId: 'task-2', action: 'drop' }] });
 });
 
-test('history finds a date and makes its saved day the primary destination', async ({ page }) => {
-  const { writes } = await workspace(page);
-  await page.goto('/momentum');
-  await expect(page.getByRole('link', { name: 'Open conversation' })).not.toBeVisible();
-  await page.getByRole('searchbox', { name: 'Search history by date or title' }).fill('2026-09-13');
-  const days = page.getByRole('list', { name: 'Saved days' });
-  await expect(days.locator(':scope > li')).toHaveCount(1);
-  await expect(days).toContainText('3 planned · 2 done · 1 carried · 0 dropped');
-  await days.getByRole('link', { name: /View day/ }).click();
-  await expect(page).toHaveURL('/today?date=2026-09-13');
-  expect(writes).toEqual([]);
-});
-
 test('categories preserve edits across navigation and save only on confirmation', async ({ page }) => {
   const { writes } = await workspace(page);
   await page.goto('/settings/categories');
@@ -257,5 +243,5 @@ test('a category save locks navigation until the request finishes', async ({ pag
   release();
   await expect(page.getByRole('status').filter({ hasText: 'Categories saved.' })).toBeVisible();
   await page.getByRole('navigation', { name: 'App', exact: true }).getByRole('link', { name: 'History', exact: true }).click();
-  await expect(page).toHaveURL('/momentum');
+  await expect(page).toHaveURL('/history');
 });

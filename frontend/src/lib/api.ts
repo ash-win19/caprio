@@ -81,19 +81,6 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promi
 }
 
 // Persisted daily conversations and proposals
-export interface ChatSession {
-  sessionDate: string;
-  title: string;
-  messageCount: number;
-  updatedAt: string;
-  /** planning | active | closed — empty when only chat exists without a plan */
-  state?: string;
-  completedCount?: number;
-  carriedCount?: number;
-  droppedCount?: number;
-  plannedCount?: number;
-}
-
 export interface DayStatus {
   date: string;
   hasTasks: boolean;
@@ -400,9 +387,26 @@ export async function rolloverDay(signal?: AbortSignal): Promise<Workflow> {
   })).json();
 }
 
-export async function getChatSessions(): Promise<ChatSession[]> {
-  const data = await (await fetchWithAuth('/api/chat/sessions')).json();
-  return data.sessions || [];
+/** What happened to one past Day's tasks, by the names they had that Day. */
+export interface HistoryDay {
+  date: string;
+  /** True once the person wrapped the Day up, however it finally ended. */
+  wrappedUp: boolean;
+  note: string;
+  /** Days that ended before task names were kept have only the counts. */
+  taskDetailsAvailable: boolean;
+  done: string[];
+  carried: string[];
+  dropped: string[];
+  doneCount: number;
+  carriedCount: number;
+  droppedCount: number;
+}
+
+/** Past Days before the given local date, newest first. */
+export async function getHistory(before: string): Promise<HistoryDay[]> {
+  const data = await (await fetchWithAuth(`/api/history?before=${before}`)).json();
+  return data.days || [];
 }
 
 export interface ChatReply {

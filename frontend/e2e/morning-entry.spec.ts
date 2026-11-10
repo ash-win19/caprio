@@ -209,7 +209,7 @@ for (const width of [390, 1440]) {
   test(`only the Today and History tabs and the avatar menu navigate the app at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await mockDay(page);
-    for (const route of ['/today', '/conversation', '/momentum']) {
+    for (const route of ['/today', '/conversation', '/history']) {
       await page.goto(route);
       await expect(page.getByRole('navigation', { name: 'App' }).getByRole('link')).toHaveText(['Today', 'History']);
       await expect(page.getByRole('navigation', { name: /primary/i })).toHaveCount(0);
@@ -220,7 +220,7 @@ for (const width of [390, 1440]) {
     await page.goto('/today');
     await expect(page.getByRole('navigation', { name: 'App' }).getByRole('link', { name: 'Today', exact: true })).toHaveAttribute('aria-current', 'page');
     await page.getByRole('navigation', { name: 'App' }).getByRole('link', { name: 'History', exact: true }).click();
-    await expect(page).toHaveURL('/momentum');
+    await expect(page).toHaveURL('/history');
     await page.getByRole('button', { name: 'Account menu' }).click();
     await expect(page.getByRole('menuitem')).toHaveText(['Sign out']);
     await page.getByRole('menuitem', { name: 'Sign out' }).click();

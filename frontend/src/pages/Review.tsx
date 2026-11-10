@@ -50,7 +50,7 @@ function DayReview({ date, forceCloseBanner }: { date: string; forceCloseBanner:
     onSuccess: async () => {
       setSaved(true);
       setActions({}); setNotes(''); setEnergy(null); setReflectionOpen(false); setStep(0);
-      await Promise.all(['workflow', 'tasks', 'inbox', 'bootstrap', 'chat-sessions'].map((key) => queryClient.invalidateQueries({ queryKey: [key] })));
+      await Promise.all(['workflow', 'tasks', 'inbox', 'bootstrap', 'history'].map((key) => queryClient.invalidateQueries({ queryKey: [key] })));
     },
     onError: () => { void workflowQuery.refetch(); },
   });
@@ -103,7 +103,7 @@ export default function Review() {
   const workflow = useWorkflow(date);
   const forceCloseBanner = params.get('reopen') === '1';
   return <Page>
-    <PageHeader title="Review" date={date} maxDate={today} status={workflow.data ? workflow.data.state === 'closed' ? 'Closed' : 'Open' : undefined} actions={<Button asChild variant="outline"><Link to={`/today?date=${date}`}>View day</Link></Button>} />
+    <PageHeader title="Review" date={date} maxDate={today} status={workflow.data ? workflow.data.state === 'closed' ? 'Closed' : 'Open' : undefined} actions={<Button asChild variant="outline"><Link to="/today">View day</Link></Button>} />
     <PageBody width="form"><DayReview key={date} date={date} forceCloseBanner={forceCloseBanner} /></PageBody>
   </Page>;
 }

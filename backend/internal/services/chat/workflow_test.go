@@ -803,6 +803,101 @@ func TestConversationEventsFrameTheDaysThread(t *testing.T) {
 	require.EqualValues(t, 4, sessions[0].MessageCount, "events are not counted as messages")
 }
 
+func TestHistoryListsPastDaysByTaskNameWithTheirNote(t *testing.T) {
+	s, _, user, today := testService(t)
+	ctx := context.Background()
+	wrappedDay, err := ParseDate("2026-09-04")
+	require.NoError(t, err)
+	rolledDay, err := ParseDate("2026-09-05")
+	require.NoError(t, err)
+	done := createTask(t, s, user, wrappedDay, "Econ problem set")
+	carry := createTask(t, s, user, wrappedDay, "Update résumé")
+	drop := createTask(t, s, user, wrappedDay, "Clean desk")
+	_, err = s.Close(ctx, user, CloseRequest{Date: "2026-09-04", Notes: ptr("Good day. Phone stayed in the other room."), TaskActions: []TaskAction{{done.ID, "done"}, {carry.ID, "tomorrow"}, {drop.ID, "drop"}}})
+	require.NoError(t, err)
+	laundry := createTask(t, s, user, rolledDay, "Laundry")
+	tickOff(t, s, laundry)
+	// The next open rolls the unwrapped day forward on its own.
+	_, err = s.Rollover(ctx, user, today)
+	require.NoError(t, err)
+	// History keeps the name a task had on the day, whatever happens to it later.
+	_, err = s.store.Pool.Exec(ctx, `UPDATE tasks SET title='Renamed later' WHERE id=$1`, carry.ID)
+	require.NoError(t, err)
+	createTask(t, s, user, today, "Not history yet")
+
+	days, err := s.History(ctx, user, today)
+	require.NoError(t, err)
+	require.Equal(t, []HistoryDay{
+		{Date: "2026-09-05", Done: []string{"Laundry"}, Carried: []string{"Update résumé"}, Dropped: []string{}, TaskDetailsAvailable: true, DoneCount: 1, CarriedCount: 1},
+		{Date: "2026-09-04", WrappedUp: true, Note: "Good day. Phone stayed in the other room.", Done: []string{"Econ problem set"}, Carried: []string{"Update résumé"}, Dropped: []string{"Clean desk"}, TaskDetailsAvailable: true, DoneCount: 1, CarriedCount: 1, DroppedCount: 1},
+	}, days)
+
+	// A wrapped-up today is not a past Day until tomorrow.
+	_, err = s.Close(ctx, user, CloseRequest{Date: "2026-09-06", TaskActions: closeActions(t, s, user, today)})
+	require.NoError(t, err)
+	days, err = s.History(ctx, user, today)
+	require.NoError(t, err)
+	require.Len(t, days, 2)
+}
+
+func TestHistoryKeepsTheWrapUpOfADayThatWasContinued(t *testing.T) {
+	s, a, user, today := testService(t)
+	ctx := context.Background()
+	report := createTask(t, s, user, today, "Report")
+	_, err := s.Close(ctx, user, CloseRequest{Date: "2026-09-06", Notes: ptr("Report slipped. Start with it tomorrow."), TaskActions: []TaskAction{{report.ID, "tomorrow"}}})
+	require.NoError(t, err)
+	// Adding work after Wrap up continues the Day; the next open rolls it forward.
+	w := propose(t, s, a, user, today, "Late errand")
+	_, err = s.Confirm(ctx, user, today, w.Plan.DraftID, w.Version)
+	require.NoError(t, err)
+	s.now = func() time.Time { return time.Date(2026, 9, 7, 9, 0, 0, 0, time.UTC) }
+	tomorrow, err := ParseDate("2026-09-07")
+	require.NoError(t, err)
+	_, err = s.Rollover(ctx, user, tomorrow)
+	require.NoError(t, err)
+
+	days, err := s.History(ctx, user, tomorrow)
+	require.NoError(t, err)
+	require.Len(t, days, 1)
+	require.True(t, days[0].WrappedUp, "the Day was wrapped up, even though Rollover ended it the second time")
+	require.Equal(t, "Report slipped. Start with it tomorrow.", days[0].Note)
+	require.ElementsMatch(t, []string{"Report", "Late errand"}, days[0].Carried)
+}
+
+func TestHistoryListsAPastDayThatOnlyHadAConversation(t *testing.T) {
+	s, a, user, today := testService(t)
+	ctx := context.Background()
+	yesterday, err := ParseDate("2026-09-05")
+	require.NoError(t, err)
+	s.now = func() time.Time { return time.Date(2026, 9, 5, 9, 0, 0, 0, time.UTC) }
+	a.ops = nil
+	_, err = s.Process(ctx, ProcessRequest{UserID: user, SessionDate: yesterday, Content: "Nothing to plan today, just checking in.", RequestID: uuid.New()})
+	require.NoError(t, err)
+	s.now = func() time.Time { return time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC) }
+	_, err = s.Rollover(ctx, user, today)
+	require.NoError(t, err)
+
+	days, err := s.History(ctx, user, today)
+	require.NoError(t, err)
+	require.Equal(t, []HistoryDay{{Date: "2026-09-05", Done: []string{}, Carried: []string{}, Dropped: []string{}, TaskDetailsAvailable: true}}, days)
+}
+
+// closeActions keeps every open task of a day and marks finished ones done.
+func closeActions(t *testing.T, s *Service, user uuid.UUID, date pgtype.Date) []TaskAction {
+	t.Helper()
+	w, err := s.Get(context.Background(), user, date)
+	require.NoError(t, err)
+	actions := []TaskAction{}
+	for _, task := range w.Tasks {
+		action := "tomorrow"
+		if task.Completed {
+			action = "done"
+		}
+		actions = append(actions, TaskAction{task.ID, action})
+	}
+	return actions
+}
+
 func TestCloseRequiresEveryOutcomeOnce(t *testing.T) {
 	one := generated.Task{ID: uuid.New(), Status: generated.TaskStatusPlanned}
 	two := generated.Task{ID: uuid.New(), Status: generated.TaskStatusCompleted, Completed: true}

@@ -70,7 +70,7 @@ for (const width of [320, 1440]) {
     await mockDay(page);
     let left: number | undefined;
     let bodyLeft: number | undefined;
-    for (const route of ['/capture', '/review', '/momentum', '/settings', '/settings/categories', '/settings/notifications', '/settings/voice']) {
+    for (const route of ['/capture', '/review', '/settings', '/settings/categories', '/settings/notifications', '/settings/voice']) {
       await page.goto(route);
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       const heading = await box(page.locator('.topbar-page'));
@@ -171,20 +171,6 @@ test('a waiting Draft and the daily review footer stay distinct, with no recover
   expect(writes).toEqual([]);
 });
 
-test('historical and future dates retain read-only controls and the planning shortcut still works on Today', async ({ page }) => {
-  const writes = await mockDay(page);
-  for (const value of ['2026-09-12', '2026-09-16']) {
-    await page.goto(`/today?date=${value}`);
-    await expect(page.getByRole('checkbox').first()).toBeDisabled();
-    await expect(page.getByRole('button', { name: /^Task actions/ })).toHaveCount(0);
-    await expect(page.getByRole('link', { name: 'Review day', exact: true })).toHaveCount(0);
-  }
-  await page.goto('/today');
-  await page.keyboard.press('Control+Shift+Space');
-  await expect(page).toHaveURL('/conversation');
-  expect(writes).toEqual([]);
-});
-
 test('task notes disclose detail without changing state and large text still reflows', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const tasks = tasksForDay();
@@ -244,22 +230,22 @@ test('failed reorder restores the saved order', async ({ page }) => {
   await expect(page.getByRole('button', { name: `Task actions for ${titles[0]}` })).toBeFocused();
 });
 
-test('loading and failed plans preserve a retry path', async ({ page }) => {
+test('a loading and a failed list keep a retry path', async ({ page }) => {
   await mockDay(page);
   let fail = true;
   let release!: () => void;
   const pending = new Promise<void>(resolve => { release = resolve; });
-  await page.route('**/api/workflow?*', async route => {
+  await page.route('**/api/tasks?*', async route => {
     if (!fail) return route.fallback();
     await pending;
-    await route.fulfill({ status: 400, json: { error: 'Could not load the plan' } });
+    await route.fulfill({ status: 400, json: { error: 'Could not load the list' } });
   });
-  await page.goto(`/today?date=${date}`);
+  await page.goto('/today');
   await expect(page.getByRole('status', { name: '', exact: true }).filter({ hasText: 'Loading your list' })).toBeVisible();
   await expect(page.getByRole('list', { name: 'Remaining tasks' })).toHaveCount(0);
   release();
   // The application retries queries three times with backoff before showing failure.
-  await expect(page.locator('.today-page').getByRole('alert')).toContainText('Could not load the plan', { timeout: 15000 });
+  await expect(page.locator('.today-page').getByRole('alert')).toContainText('Could not load the list', { timeout: 15000 });
   fail = false;
   await page.locator('.today-page').getByRole('button', { name: 'Try again' }).click();
   await expect(page.getByRole('list', { name: 'Remaining tasks' })).toBeVisible();

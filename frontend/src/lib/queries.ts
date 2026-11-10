@@ -9,7 +9,7 @@ export const QUERY_KEYS = {
   categories: ['categories'],
   workflow: ['workflow'],
   inbox: ['inbox'],
-  sessions: ['chat-sessions'],
+  history: ['history'],
 } as const;
 
 export async function invalidatePlanningQueries(client: QueryClient) {
@@ -24,8 +24,8 @@ export function useWorkflow(date = localDate()) {
   return useQuery({ queryKey: [...QUERY_KEYS.workflow, date], queryFn: () => api.getWorkflow(date), staleTime: 0 });
 }
 
-export function useChatSessions() {
-  return useQuery({ queryKey: QUERY_KEYS.sessions, queryFn: api.getChatSessions, staleTime: 30_000 });
+export function useHistory(today = localDate()) {
+  return useQuery({ queryKey: [...QUERY_KEYS.history, today], queryFn: () => api.getHistory(today), staleTime: 30_000 });
 }
 
 export function useTasks(date = localDate()) {

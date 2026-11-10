@@ -134,20 +134,6 @@ test('Skip to my list shows the drafted prompt when a Draft is waiting', async (
   await expect(page.locator('.today-prompt')).toContainText('Your plan is drafted. 1 change is waiting for you.');
 });
 
-test('the message bar keeps its confirmed wording while the day loads', async ({ page }) => {
-  await mockDay(page);
-  let release!: () => void;
-  const pending = new Promise<void>(resolve => { release = resolve; });
-  await page.route('**/api/workflow?*', async route => { await pending; await route.fallback(); });
-  // A dated link to today skips the app-entry check, so the page loads the Day itself.
-  await page.goto(`/today?date=${date}`);
-  await expect(page.getByRole('status').filter({ hasText: 'Loading your list' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Tell Caprio what changed…' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Plan your day with Caprio…' })).toHaveCount(0);
-  release();
-  await expect(rows(page)).toHaveCount(3);
-});
-
 for (const width of [390, 1440]) {
   test(`the message bar opens the Conversation and Back to Today returns at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });

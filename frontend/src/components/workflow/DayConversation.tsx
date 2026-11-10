@@ -45,8 +45,8 @@ const INTERRUPT_CHIPS = [
 export function DayConversation({ date, intent, seed, taskId }: { date: string; intent: string | null; seed: string; taskId?: string }) {
   const navigate = useNavigate();
   const openSavedPlan = useCallback(() => {
-    navigate(date === localDate() ? '/today' : `/today?date=${date}`, { state: openTodayState(date) });
-  }, [date, navigate]);
+    navigate('/today', { state: openTodayState(localDate()) });
+  }, [navigate]);
   const queryClient = useQueryClient();
   const workflowQuery = useWorkflow(date);
   const workflow = workflowQuery.data;
@@ -82,7 +82,7 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
   }, [seed, setInput]);
 
   const refresh = () => {
-    for (const key of ['workflow', 'tasks', 'inbox', 'bootstrap', 'chat-sessions']) void queryClient.invalidateQueries({ queryKey: [key] });
+    for (const key of ['workflow', 'tasks', 'inbox', 'bootstrap', 'history']) void queryClient.invalidateQueries({ queryKey: [key] });
   };
   // Confirm's variable says whether this is the Day's first plan, for the toast.
   const confirm = useMutation({

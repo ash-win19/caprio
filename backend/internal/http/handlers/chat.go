@@ -133,6 +133,26 @@ func (h *ChatHandler) Sessions(c *gin.Context) {
 	c.JSON(200, gin.H{"sessions": sessions})
 }
 
+// History lists the past Days before the client's local date.
+func (h *ChatHandler) History(c *gin.Context) {
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		c.JSON(401, gin.H{"error": "unauthorized"})
+		return
+	}
+	before, err := chat.ParseDate(c.Query("before"))
+	if err != nil {
+		workflowError(c, err)
+		return
+	}
+	days, err := h.chatService.History(c.Request.Context(), userID, before)
+	if err != nil {
+		workflowError(c, err)
+		return
+	}
+	c.JSON(200, gin.H{"days": days})
+}
+
 type chatMessageRequest struct {
 	TaskID    *uuid.UUID `json:"taskId"`
 	Content   string     `json:"content" binding:"required"`

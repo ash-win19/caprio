@@ -46,6 +46,7 @@ func setupWorkflowHTTP(t *testing.T) (*gin.Engine, *db.Store, uuid.UUID) {
 	workflow := handlers.NewChatHandler(store, chat.NewService(store, nil))
 	r.GET("/api/workflow", workflow.GetWorkflow)
 	r.POST("/api/day/plan/confirm", workflow.Confirm)
+	r.GET("/api/history", workflow.History)
 	bootstrap := handlers.NewBootstrapHandler(store)
 	r.GET("/api/bootstrap", bootstrap.Get)
 	close := handlers.NewDayCloseHandler(store)
@@ -170,4 +171,19 @@ func TestConfirmNeverUndoesATaskTickedOffWhileTheDraftWaited(t *testing.T) {
 		titles = append(titles, task.(map[string]any)["title"].(string))
 	}
 	require.Contains(t, titles, "Call the bank")
+}
+
+func TestHistoryEndpointListsDaysBeforeTheGivenDate(t *testing.T) {
+	r, _, _ := setupWorkflowHTTP(t)
+	id := httpJSON(t, r, "POST", "/api/tasks", map[string]any{"title": "Finish report", "plannedForDate": "2090-09-06"}, 201)["id"].(string)
+	httpJSON(t, r, "POST", "/api/day/close", map[string]any{"date": "2090-09-06", "notes": "Report is in.", "taskActions": []any{map[string]any{"taskId": id, "action": "done"}}}, 200)
+	history := httpJSON(t, r, "GET", "/api/history?before=2090-09-07", nil, 200)
+	require.Equal(t, []any{map[string]any{
+		"date": "2090-09-06", "wrappedUp": true, "note": "Report is in.", "taskDetailsAvailable": true,
+		"done": []any{"Finish report"}, "carried": []any{}, "dropped": []any{},
+		"doneCount": float64(1), "carriedCount": float64(0), "droppedCount": float64(0),
+	}}, history["days"])
+	require.Empty(t, httpJSON(t, r, "GET", "/api/history?before=2090-09-06", nil, 200)["days"])
+	httpJSON(t, r, "GET", "/api/history", nil, 400)
+	httpJSON(t, r, "GET", "/api/history?before=soon", nil, 400)
 }
