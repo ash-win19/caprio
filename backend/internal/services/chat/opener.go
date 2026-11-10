@@ -4,12 +4,38 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	generated "github.com/ashwinshanmugam/caprio/backend/internal/db/generated"
 	"github.com/ashwinshanmugam/caprio/backend/internal/mastra"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+)
+
+// staleAfterDays is when a Carried task becomes a Stale task.
+const staleAfterDays = 3
+
+// carriedDays is how many Days a Carried task has rolled forward: from the day
+// in its carryover record to the day it is planned for now. It is zero for a
+// task that isn't carried; a carried task with no record counts its carries.
+func carriedDays(t generated.Task, origins map[string]string) int {
+	if t.Completed || t.Status != generated.TaskStatusPlanned || t.DeferCount == 0 {
+		return 0
+	}
+	origin, err := time.Parse("2006-01-02", origins[t.ID.String()])
+	if err != nil {
+		return int(t.DeferCount)
+	}
+	return max(1, int(t.PlannedForDate.Time.Sub(origin).Hours()/24))
+}
+
+// The opener names this many carried tasks, and this many Stale tasks, before
+// counting the rest.
+const (
+	openerNamedTasks = 5
+	openerNamedStale = 3
 )
 
 // openerText is the app-written first message of a day's conversation. It costs
@@ -30,29 +56,71 @@ func openerText(date pgtype.Date, now time.Time, tasks []generated.Task, origins
 		} else if now.Hour() >= 12 {
 			greeting = "Afternoon"
 		}
-		yesterday := day.AddDate(0, 0, -1).Format("2006-01-02")
-		carried, fromYesterday := 0, 0
-		for _, t := range tasks {
-			if t.Completed || t.Status != generated.TaskStatusPlanned || t.DeferCount == 0 {
-				continue
-			}
-			carried++
-			if origins[t.ID.String()] == yesterday {
-				fromYesterday++
-			}
-		}
-		switch {
-		case carried == 0:
-			text = greeting + ". What's on today?"
-		case fromYesterday == carried:
-			text = fmt.Sprintf("%s. %s carried over from yesterday. What's on today?", greeting, plural(carried, "task"))
-		case fromYesterday == 0:
-			text = fmt.Sprintf("%s. %s carried over. What's on today?", greeting, plural(carried, "task"))
-		default:
-			text = fmt.Sprintf("%s. %s carried over, %d from yesterday. What's on today?", greeting, plural(carried, "task"), fromYesterday)
-		}
+		text = greeting + "." + carriedSummary(tasks, origins) + " What's on today?"
 	}
 	return &text
+}
+
+// carriedSummary names the day's carried tasks and calls out the Stale ones,
+// oldest first. It is empty when nothing carried over.
+func carriedSummary(tasks []generated.Task, origins map[string]string) string {
+	type aged struct {
+		title string
+		days  int
+	}
+	var carried, stale []aged
+	fromYesterday := true
+	for _, t := range tasks {
+		days := carriedDays(t, origins)
+		if days == 0 {
+			continue
+		}
+		carried = append(carried, aged{t.Title, days})
+		fromYesterday = fromYesterday && days == 1
+		if days >= staleAfterDays {
+			stale = append(stale, aged{t.Title, days})
+		}
+	}
+	if len(carried) == 0 {
+		return ""
+	}
+	names := []string{}
+	for i, c := range carried {
+		if i == openerNamedTasks {
+			names = append(names, fmt.Sprintf("%d more", len(carried)-i))
+			break
+		}
+		names = append(names, c.title)
+	}
+	when := ""
+	if fromYesterday {
+		when = " from yesterday"
+	}
+	text := fmt.Sprintf(" %s carried over%s: %s.", plural(len(carried), "task"), when, joinAnd(names))
+	if len(stale) == 0 {
+		return text
+	}
+	if len(carried) == 1 {
+		return text + fmt.Sprintf(" It has carried over for %d days.", stale[0].days)
+	}
+	sort.SliceStable(stale, func(i, j int) bool { return stale[i].days > stale[j].days })
+	ages := []string{fmt.Sprintf("%s has carried over for %d days", stale[0].title, stale[0].days)}
+	for _, s := range stale[1:min(len(stale), openerNamedStale)] {
+		ages = append(ages, fmt.Sprintf("%s for %d", s.title, s.days))
+	}
+	text += " " + joinAnd(ages)
+	if rest := len(stale) - openerNamedStale; rest > 0 {
+		text += fmt.Sprintf(", and %d more for %d days or longer", rest, staleAfterDays)
+	}
+	return text + "."
+}
+
+// joinAnd writes a list the way a person would: "A, B and C".
+func joinAnd(items []string) string {
+	if len(items) < 2 {
+		return strings.Join(items, "")
+	}
+	return strings.Join(items[:len(items)-1], ", ") + " and " + items[len(items)-1]
 }
 
 func plural(n int, noun string) string {

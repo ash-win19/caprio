@@ -163,9 +163,9 @@ func TestOperationsValidateOwnershipQuoteAndFieldPresence(t *testing.T) {
 	// Invalid changes are rejected at the tool, so the model can correct them;
 	// nothing reaches the draft.
 	for code, bad := range map[string]TaskOperation{
-		"unknown_task":     {Kind: "remove", TaskID: ptr(uuid.New())},
-		"validation":       {Kind: "update", TaskID: &task.ID, Fields: fields(map[string]any{"sortOrder": 0})},
-		"unknown_category": {Kind: "update", TaskID: &task.ID, Fields: fields(map[string]any{"categoryId": uuid.New()})},
+		"unknown_task":      {Kind: "remove", TaskID: ptr(uuid.New())},
+		"validation":        {Kind: "update", TaskID: &task.ID, Fields: fields(map[string]any{"sortOrder": 0})},
+		"unsupported_field": {Kind: "update", TaskID: &task.ID, Fields: fields(map[string]any{"categoryId": uuid.New()})},
 	} {
 		a.ops = []TaskOperation{bad}
 		rejected, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "Do this", RequestID: uuid.New()})

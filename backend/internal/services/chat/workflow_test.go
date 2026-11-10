@@ -256,6 +256,73 @@ func TestTheAgentSeesTheDraftAndReceivesATurnToken(t *testing.T) {
 	require.Contains(t, a.last[0].Content, w.Plan.Today[0].Ref, "the next turn sees the draft's refs")
 }
 
+// carry makes a saved task a Carried task first planned on origin.
+func carry(t *testing.T, s *Service, task generated.Task, origin string) {
+	t.Helper()
+	ctx := context.Background()
+	_, err := s.store.Pool.Exec(ctx, `UPDATE tasks SET defer_count=1,carried_over=true WHERE id=$1`, task.ID)
+	require.NoError(t, err)
+	_, err = s.store.Pool.Exec(ctx, `INSERT INTO task_carryovers(task_id,first_planned_date) VALUES($1,$2)`, task.ID, origin)
+	require.NoError(t, err)
+}
+
+func TestThePlannerSeesEachCarriedTasksAgeAndTheOpenerNamesThem(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	stale := createTask(t, s, user, date, "Update résumé")
+	recent := createTask(t, s, user, date, "Read chapter 7")
+	createTask(t, s, user, date, "New today")
+	carry(t, s, stale, "2026-09-02")
+	carry(t, s, recent, "2026-09-05")
+	opened, err := s.Get(ctx, user, date)
+	require.NoError(t, err)
+	require.Equal(t, "Afternoon. 2 tasks carried over: Update résumé and Read chapter 7. Update résumé has carried over for 4 days. What's on today?", *opened.Opener)
+	a.ops = nil
+	_, err = s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "what's waiting?", RequestID: uuid.New()})
+	require.NoError(t, err)
+	var trusted struct {
+		OwnedTasks []struct {
+			Title       string `json:"title"`
+			CarriedDays int    `json:"carriedDays"`
+			Stale       bool   `json:"stale"`
+		} `json:"ownedTasks"`
+	}
+	raw := a.last[0].Content
+	raw = raw[strings.Index(raw, "{"):]
+	require.NoError(t, json.NewDecoder(strings.NewReader(raw)).Decode(&trusted))
+	ages := map[string][2]any{}
+	for _, task := range trusted.OwnedTasks {
+		ages[task.Title] = [2]any{task.CarriedDays, task.Stale}
+	}
+	require.Equal(t, map[string][2]any{"Update résumé": {4, true}, "Read chapter 7": {1, false}, "New today": {0, false}}, ages)
+}
+
+func TestPlannerToolsRejectCategoryAndUrgency(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	task := createTask(t, s, user, date, "Report")
+	category := uuid.NewString()
+	a.script = func(_ context.Context, _ mastra.Call, tool toolFunc) (string, error) {
+		tool("add_task", map[string]any{"title": "Slides", "urgency": "high"})
+		tool("add_task", map[string]any{"title": "Slides", "categoryId": category})
+		tool("edit_task", map[string]any{"ref": task.ID.String(), "fields": map[string]any{"urgency": "high"}})
+		tool("edit_task", map[string]any{"ref": task.ID.String(), "fields": map[string]any{"categoryId": category}})
+		tool("add_task", map[string]any{"title": "Slides", "duration": 45})
+		tool("add_task", map[string]any{"title": "Renew passport", "inbox": true})
+		return "Slides is in, and the passport is in Later.", nil
+	}
+	r, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "add slides, high priority, in Work", RequestID: uuid.New()})
+	require.NoError(t, err)
+	require.Len(t, a.results, 6)
+	for _, rejected := range a.results[:4] {
+		require.False(t, rejected.OK)
+		require.Equal(t, "unsupported_field", rejected.Error.Code)
+	}
+	require.True(t, a.results[4].OK, "title and Estimate are accepted")
+	require.True(t, a.results[5].OK, "Later is accepted")
+	require.Equal(t, []string{"Slides", "Renew passport"}, []string{r.Workflow.Plan.Today[len(r.Workflow.Plan.Today)-1].Title, r.Workflow.Plan.OtherDays[0].Title})
+}
+
 func TestConcurrentRetriesOfOneMessageShareOneTurn(t *testing.T) {
 	s, a, user, date := testService(t)
 	ctx := context.Background()

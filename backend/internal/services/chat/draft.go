@@ -42,7 +42,6 @@ type draftEnv struct {
 	Date       pgtype.Date
 	Today      string // the person's current day; a closed today can still receive new work
 	Owned      []generated.Task
-	Categories []generated.Category
 	ClosedDays map[string]bool
 	Writable   func(pgtype.Date) error
 }
@@ -70,17 +69,28 @@ func (e draftEnv) arrivable(day string) error {
 	return nil
 }
 
+// AddTaskInput is what the planner may set on a new task: a title, an
+// Estimate, notes, and a Day or Later. Urgency and CategoryID are read only to
+// reject them.
 type AddTaskInput struct {
-	Title         string     `json:"title"`
-	Description   *string    `json:"description"`
-	Duration      *int32     `json:"duration"`
-	Urgency       string     `json:"urgency"`
-	CategoryID    *uuid.UUID `json:"categoryId"`
-	DueDate       *string    `json:"dueDate"`
-	Date          string     `json:"date"`
-	Inbox         bool       `json:"inbox"`
-	NewOccurrence bool       `json:"newOccurrence"`
+	Title         string          `json:"title"`
+	Description   *string         `json:"description"`
+	Duration      *int32          `json:"duration"`
+	Urgency       json.RawMessage `json:"urgency"`
+	CategoryID    json.RawMessage `json:"categoryId"`
+	DueDate       *string         `json:"dueDate"`
+	Date          string          `json:"date"`
+	Inbox         bool            `json:"inbox"`
+	NewOccurrence bool            `json:"newOccurrence"`
 }
+
+// errUnsupportedField tells the planner that tasks no longer carry a category
+// or urgency, so it stops trying to set them.
+func errUnsupportedField() error {
+	return invalidCode("unsupported_field", "Tasks have a title, an estimate, and a day or Later. Category and urgency can't be set.")
+}
+
+func given(raw json.RawMessage) bool { return len(raw) > 0 && string(raw) != "null" }
 
 // DraftResult tells the agent what a change did. "exists" means nothing was
 // added because the task is already saved or already in the draft.
@@ -257,23 +267,14 @@ func effective(saved *generated.Task, entry *DraftEntry, env draftEnv) (generate
 func (e draftEnv) checkFields(base generated.Task, fields map[string]json.RawMessage) error {
 	for key := range fields {
 		switch key {
-		case "title", "description", "categoryId", "urgency", "duration", "dueDate":
+		case "title", "description", "duration", "dueDate":
+		case "categoryId", "urgency":
+			return errUnsupportedField()
 		default:
 			return invalid("unsupported task field %s", key)
 		}
 	}
-	if err := patchTask(&base, fields); err != nil {
-		return err
-	}
-	if base.CategoryID != nil {
-		for _, c := range e.Categories {
-			if c.ID == *base.CategoryID {
-				return nil
-			}
-		}
-		return invalidCode("unknown_category", "That category does not exist.")
-	}
-	return nil
+	return patchTask(&base, fields)
 }
 
 func (e draftEnv) destination(date string, inbox bool) (string, error) {
@@ -313,6 +314,9 @@ func (d *Draft) uniqueNewTitle(env draftEnv, ref string, title string) error {
 }
 
 func (d *Draft) AddTask(env draftEnv, turn uuid.UUID, in AddTaskInput) (DraftResult, error) {
+	if given(in.Urgency) || given(in.CategoryID) {
+		return DraftResult{}, errUnsupportedField()
+	}
 	title := strings.TrimSpace(in.Title)
 	fields := map[string]json.RawMessage{"title": mustJSON(title)}
 	if in.Description != nil {
@@ -320,12 +324,6 @@ func (d *Draft) AddTask(env draftEnv, turn uuid.UUID, in AddTaskInput) (DraftRes
 	}
 	if in.Duration != nil {
 		fields["duration"] = mustJSON(*in.Duration)
-	}
-	if in.Urgency != "" {
-		fields["urgency"] = mustJSON(in.Urgency)
-	}
-	if in.CategoryID != nil {
-		fields["categoryId"] = mustJSON(*in.CategoryID)
 	}
 	if in.DueDate != nil {
 		fields["dueDate"] = mustJSON(*in.DueDate)

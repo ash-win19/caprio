@@ -9,12 +9,12 @@ import { z } from 'zod';
 const ref = z.string().describe('A task id from ownedTasks, or a ref from the plan (new tasks use "new:…").');
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('ISO date YYYY-MM-DD.');
 
+// A task is a title, an estimate, notes, and a day or Later. Tasks have no
+// category or urgency; the backend rejects both.
 const taskFields = z.object({
   title: z.string().min(1).max(500).optional(),
   description: z.string().max(12000).nullable().optional(),
   duration: z.number().int().min(1).max(1440).nullable().optional().describe('Minutes. Only when the person gave an estimate.'),
-  urgency: z.enum(['low', 'medium', 'high']).optional(),
-  categoryId: z.string().uuid().nullable().optional(),
   dueDate: isoDate.nullable().optional(),
 });
 
@@ -49,7 +49,7 @@ export const plannerTools = {
     taskFields.extend({
       title: z.string().min(1).max(500),
       date: isoDate.optional().describe('Work date. Omit for the conversation day.'),
-      inbox: z.boolean().optional().describe('Only when the person wants it kept unplanned.'),
+      inbox: z.boolean().optional().describe('true puts the task in Later: undated work for "sometime".'),
       newOccurrence: z.boolean().optional().describe('Only when the person explicitly asks to do completed work again.'),
     }),
   ),
@@ -60,7 +60,7 @@ export const plannerTools = {
   ),
   move_task: plannerTool(
     'move_task',
-    'Move a task to another day, or to the inbox.',
+    'Move a task to another day, or to Later with inbox: true.',
     z.object({ ref, date: isoDate.optional(), inbox: z.boolean().optional() }),
   ),
   remove_task: plannerTool('remove_task', 'Remove a task from the plan.', z.object({ ref })),
