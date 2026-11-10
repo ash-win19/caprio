@@ -272,8 +272,12 @@ func TestThePlannerSeesEachCarriedTasksAgeAndTheOpenerNamesThem(t *testing.T) {
 	stale := createTask(t, s, user, date, "Update résumé")
 	recent := createTask(t, s, user, date, "Read chapter 7")
 	createTask(t, s, user, date, "New today")
+	friday, err := ParseDate("2026-09-11")
+	require.NoError(t, err)
+	redated := createTask(t, s, user, friday, "Planned for Friday")
 	carry(t, s, stale, "2026-09-02")
 	carry(t, s, recent, "2026-09-05")
+	carry(t, s, redated, "2026-09-01")
 	opened, err := s.Get(ctx, user, date)
 	require.NoError(t, err)
 	require.Equal(t, "Afternoon. 2 tasks carried over: Update résumé and Read chapter 7. Update résumé has carried over for 4 days. What's on today?", *opened.Opener)
@@ -294,7 +298,29 @@ func TestThePlannerSeesEachCarriedTasksAgeAndTheOpenerNamesThem(t *testing.T) {
 	for _, task := range trusted.OwnedTasks {
 		ages[task.Title] = [2]any{task.CarriedDays, task.Stale}
 	}
-	require.Equal(t, map[string][2]any{"Update résumé": {4, true}, "Read chapter 7": {1, false}, "New today": {0, false}}, ages)
+	require.Equal(t, map[string][2]any{"Update résumé": {4, true}, "Read chapter 7": {1, false}, "New today": {0, false}, "Planned for Friday": {0, false}}, ages, "only the conversation day's carried tasks have an age")
+}
+
+func TestReplanningATaskInTheDraftEndsItsCarryHistory(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	parked := createTask(t, s, user, date, "Update résumé")
+	redated := createTask(t, s, user, date, "File taxes")
+	carry(t, s, parked, "2026-09-01")
+	carry(t, s, redated, "2026-09-01")
+	a.ops = []TaskOperation{{Kind: "move", TaskID: &parked.ID, Inbox: true}, {Kind: "move", TaskID: &redated.ID, Date: "2026-09-08"}}
+	r, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "résumé sometime, taxes on Tuesday", RequestID: uuid.New()})
+	require.NoError(t, err)
+	_, err = s.Confirm(ctx, user, date, r.Workflow.Plan.DraftID, r.Workflow.Version)
+	require.NoError(t, err)
+	for _, id := range []uuid.UUID{parked.ID, redated.ID} {
+		saved, err := s.store.Queries.GetTaskByID(ctx, generated.GetTaskByIDParams{ID: id, UserID: user})
+		require.NoError(t, err)
+		require.Zero(t, saved.DeferCount, saved.Title)
+		var records int
+		require.NoError(t, s.store.Pool.QueryRow(ctx, `SELECT count(*) FROM task_carryovers WHERE task_id=$1`, id).Scan(&records))
+		require.Zero(t, records, "a task the person re-planned is no longer a Carried task")
+	}
 }
 
 func TestPlannerToolsRejectCategoryAndUrgency(t *testing.T) {

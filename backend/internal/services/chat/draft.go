@@ -84,8 +84,8 @@ type AddTaskInput struct {
 	NewOccurrence bool            `json:"newOccurrence"`
 }
 
-// errUnsupportedField tells the planner that tasks no longer carry a category
-// or urgency, so it stops trying to set them.
+// errUnsupportedField tells the planner that tasks have no category or
+// urgency, so it stops trying to set them.
 func errUnsupportedField() error {
 	return invalidCode("unsupported_field", "Tasks have a title, an estimate, and a day or Later. Category and urgency can't be set.")
 }

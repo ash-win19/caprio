@@ -15,7 +15,10 @@ for (const width of [390, 1440]) {
       text: reply,
       plan: planView([{ ref: 'new:1', title: 'Stats problem set', badge: 'new', date, duration: 120 }], {
         carried: [{ ref: reading.id, taskId: reading.id, title: reading.title, date, duration: 40, carried: true, carriedSince: '2026-09-13' }],
-        otherDays: [{ ref: resume.id, taskId: resume.id, title: resume.title, inbox: true, badge: 'moved', duration: 45, carried: true, carriedSince: '2026-09-08' }],
+        otherDays: [
+          { ref: 'new:2', title: 'Study group', badge: 'new', date: '2026-09-15' },
+          { ref: resume.id, taskId: resume.id, title: resume.title, date, inbox: true, badge: 'moved', duration: 45, carried: true, carriedSince: '2026-09-08' },
+        ],
       }),
     }]);
     await page.goto('/');
@@ -27,8 +30,10 @@ for (const width of [390, 1440]) {
     await expect(page.getByText(reply, { exact: true })).toBeVisible();
 
     const plan = await openPlan(page);
+    // Later holds undated work and work dated for a future Day, labelled with that day.
     const later = plan.getByRole('region', { name: 'Later' });
-    await expect(later.locator('li')).toHaveText(/Update résumé.*Moved/);
+    await expect(later.locator('li')).toHaveText([/Study group.*Tuesday, September 15.*New/, /Update résumé.*Moved/]);
+    await expect(later.locator('li').nth(1)).not.toContainText('September');
     await expect(plan.getByRole('region', { name: 'Carried forward' }).locator('li')).toHaveText(/Read chapter 7/);
     await expect(plan.getByText('Inbox')).toHaveCount(0);
     await expect(plan.getByRole('region', { name: 'Other days' })).toHaveCount(0);

@@ -15,7 +15,8 @@ const BADGE_CLASS: Record<PlanBadge, string> = {
 };
 
 function PlanRow({ item, showDate, highlighted }: { item: PlanItem; showDate?: boolean; highlighted: boolean }) {
-  const where = item.date ? dateLabel(item.date) : '';
+  // Later rows show their day; undated ones have none to show.
+  const where = !item.inbox && item.date ? dateLabel(item.date) : '';
   return <li data-ref={item.ref} data-highlighted={highlighted || undefined} className={`flex items-start justify-between gap-3 rounded-lg bg-background px-3 py-2.5 ${highlighted ? 'plan-row-highlight' : ''}`}>
     <div className="min-w-0 flex-1">
       <p className={`break-words text-sm font-medium ${item.badge === 'removed' ? 'text-muted-foreground line-through' : ''}`}>{item.title}</p>
@@ -106,8 +107,7 @@ export function PlanCard({ plan, date, availableMinutes, busy, confirming, disca
       </div>
       <Group label={isToday ? 'Today' : 'This day'} items={plan.today} highlighted={highlighted} />
       <Group label="Carried forward" items={plan.carried} highlighted={highlighted}><span className="ml-2 normal-case tracking-normal">· kept unless you say otherwise</span></Group>
-      <Group label="Later" items={plan.otherDays.filter(item => item.inbox)} highlighted={highlighted} />
-      <Group label="Other days" items={plan.otherDays.filter(item => !item.inbox)} showDate highlighted={highlighted} />
+      <Group label="Later" items={plan.otherDays} showDate highlighted={highlighted} />
       {plan.doneCount > 0 && <p className="mt-4 text-xs text-muted-foreground">Done · {plan.doneCount}</p>}
       <p className="mt-5 text-xs leading-5 text-muted-foreground">Confirming saves this plan. Completed tasks stay completed.</p>
       {error && <div className="mt-4">{error}</div>}

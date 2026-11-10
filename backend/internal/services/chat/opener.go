@@ -14,23 +14,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// staleAfterDays is when a Carried task becomes a Stale task.
-const staleAfterDays = 3
-
-// carriedDays is how many Days a Carried task has rolled forward: from the day
-// in its carryover record to the day it is planned for now. It is zero for a
-// task that isn't carried; a carried task with no record counts its carries.
-func carriedDays(t generated.Task, origins map[string]string) int {
-	if t.Completed || t.Status != generated.TaskStatusPlanned || t.DeferCount == 0 {
-		return 0
-	}
-	origin, err := time.Parse("2006-01-02", origins[t.ID.String()])
-	if err != nil {
-		return int(t.DeferCount)
-	}
-	return max(1, int(t.PlannedForDate.Time.Sub(origin).Hours()/24))
-}
-
 // The opener names this many carried tasks, and this many Stale tasks, before
 // counting the rest.
 const (
@@ -68,26 +51,26 @@ func carriedSummary(tasks []generated.Task, origins map[string]string) string {
 		title string
 		days  int
 	}
-	var carried, stale []aged
+	var rolled, stale []aged
 	fromYesterday := true
 	for _, t := range tasks {
 		days := carriedDays(t, origins)
 		if days == 0 {
 			continue
 		}
-		carried = append(carried, aged{t.Title, days})
+		rolled = append(rolled, aged{t.Title, days})
 		fromYesterday = fromYesterday && days == 1
-		if days >= staleAfterDays {
+		if isStale(days) {
 			stale = append(stale, aged{t.Title, days})
 		}
 	}
-	if len(carried) == 0 {
+	if len(rolled) == 0 {
 		return ""
 	}
 	names := []string{}
-	for i, c := range carried {
+	for i, c := range rolled {
 		if i == openerNamedTasks {
-			names = append(names, fmt.Sprintf("%d more", len(carried)-i))
+			names = append(names, fmt.Sprintf("%d more", len(rolled)-i))
 			break
 		}
 		names = append(names, c.title)
@@ -96,11 +79,11 @@ func carriedSummary(tasks []generated.Task, origins map[string]string) string {
 	if fromYesterday {
 		when = " from yesterday"
 	}
-	text := fmt.Sprintf(" %s carried over%s: %s.", plural(len(carried), "task"), when, joinAnd(names))
+	text := fmt.Sprintf(" %s carried over%s: %s.", plural(len(rolled), "task"), when, joinAnd(names))
 	if len(stale) == 0 {
 		return text
 	}
-	if len(carried) == 1 {
+	if len(rolled) == 1 {
 		return text + fmt.Sprintf(" It has carried over for %d days.", stale[0].days)
 	}
 	sort.SliceStable(stale, func(i, j int) bool { return stale[i].days > stale[j].days })
@@ -110,7 +93,7 @@ func carriedSummary(tasks []generated.Task, origins map[string]string) string {
 	}
 	text += " " + joinAnd(ages)
 	if rest := len(stale) - openerNamedStale; rest > 0 {
-		text += fmt.Sprintf(", and %d more for %d days or longer", rest, staleAfterDays)
+		text += fmt.Sprintf(", and %d more for %d days or longer", rest, staleDays)
 	}
 	return text + "."
 }

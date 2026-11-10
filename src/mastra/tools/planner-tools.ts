@@ -10,8 +10,9 @@ const ref = z.string().describe('A task id from ownedTasks, or a ref from the pl
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('ISO date YYYY-MM-DD.');
 
 // A task is a title, an estimate, notes, and a day or Later. Tasks have no
-// category or urgency; the backend rejects both.
-const taskFields = z.object({
+// category or urgency. Unknown fields pass through instead of being dropped
+// here, so the backend can reject them and the model learns not to send them.
+const taskFields = z.looseObject({
   title: z.string().min(1).max(500).optional(),
   description: z.string().max(12000).nullable().optional(),
   duration: z.number().int().min(1).max(1440).nullable().optional().describe('Minutes. Only when the person gave an estimate.'),
@@ -24,10 +25,12 @@ async function callBackend(name: string, input: unknown, requestContext: { get(k
   const token = requestContext?.get('turnToken');
   if (!base || !secret) throw new Error('Planner tools are not configured (CAPRIO_BACKEND_URL, PLANNER_TOOL_SECRET).');
   if (typeof token !== 'string' || !token) throw new Error('This turn has no planner token.');
+  // The model says Later; the backend still calls that flag inbox.
+  const { later, ...rest } = (input ?? {}) as Record<string, unknown>;
   const response = await fetch(`${base.replace(/\/$/, '')}/internal/planner/tools/${name}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Caprio-Internal': secret, 'X-Caprio-Turn': token },
-    body: JSON.stringify(input ?? {}),
+    body: JSON.stringify(later === undefined ? rest : { ...rest, inbox: later }),
     signal,
   });
   if (!response.ok) throw new Error(`Planner tool ${name} failed with status ${response.status}.`);
@@ -49,7 +52,7 @@ export const plannerTools = {
     taskFields.extend({
       title: z.string().min(1).max(500),
       date: isoDate.optional().describe('Work date. Omit for the conversation day.'),
-      inbox: z.boolean().optional().describe('true puts the task in Later: undated work for "sometime".'),
+      later: z.boolean().optional().describe('true puts the task in Later with no day, for "sometime" work.'),
       newOccurrence: z.boolean().optional().describe('Only when the person explicitly asks to do completed work again.'),
     }),
   ),
@@ -60,8 +63,8 @@ export const plannerTools = {
   ),
   move_task: plannerTool(
     'move_task',
-    'Move a task to another day, or to Later with inbox: true.',
-    z.object({ ref, date: isoDate.optional(), inbox: z.boolean().optional() }),
+    'Move a task to another day, or to Later with no day (later: true).',
+    z.object({ ref, date: isoDate.optional(), later: z.boolean().optional() }),
   ),
   remove_task: plannerTool('remove_task', 'Remove a task from the plan.', z.object({ ref })),
   set_completed: plannerTool(

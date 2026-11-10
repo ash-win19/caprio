@@ -248,6 +248,14 @@ func applyOperations(ctx context.Context, tx pgx.Tx, user uuid.UUID, date pgtype
 					action = "Moved from Inbox"
 				}
 			}
+			// A task the person re-plans for another day or Later starts fresh
+			// there: it is no longer a Carried task.
+			if before != nil && carried(*before) && (arrival || op.Inbox) {
+				task.DeferCount, task.CarriedOver = 0, false
+				if _, err := tx.Exec(ctx, `DELETE FROM task_carryovers WHERE task_id=$1`, task.ID); err != nil {
+					return nil, err
+				}
+			}
 		case "complete":
 			task.Completed = *op.Completed
 			task.Status = generated.TaskStatusPlanned

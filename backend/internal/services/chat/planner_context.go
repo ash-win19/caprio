@@ -9,8 +9,8 @@ import (
 
 // Each owned task appears once. Persistence metadata and duplicate day/Inbox
 // copies consumed the fallback model's input budget on ordinary accounts. A
-// Carried task says how many Days it has rolled forward, and whether that
-// makes it a Stale task.
+// Carried task on the conversation day says how many Days it has rolled
+// forward, and whether that makes it a Stale task.
 func operationContext(w *Workflow, owned []generated.Task, today string, referenced *uuid.UUID) []byte {
 	type task struct {
 		ID          uuid.UUID            `json:"id"`
@@ -29,8 +29,11 @@ func operationContext(w *Workflow, owned []generated.Task, today string, referen
 		if t.Status == generated.TaskStatusDropped {
 			continue
 		}
-		days := carriedDays(t, w.CarryoverOrigins)
-		item := task{ID: t.ID, Title: t.Title, Description: t.Description, Duration: t.Duration, Date: t.PlannedForDate.Time.Format("2006-01-02"), Status: t.Status, Completed: t.Completed, CarriedDays: days, Stale: days >= staleAfterDays}
+		days := 0
+		if t.PlannedForDate.Time.Format("2006-01-02") == w.Date {
+			days = carriedDays(t, w.CarryoverOrigins)
+		}
+		item := task{ID: t.ID, Title: t.Title, Description: t.Description, Duration: t.Duration, Date: t.PlannedForDate.Time.Format("2006-01-02"), Status: t.Status, Completed: t.Completed, CarriedDays: days, Stale: isStale(days)}
 		if t.DueDate.Valid {
 			item.DueDate = t.DueDate.Time.Format("2006-01-02")
 		}

@@ -38,7 +38,7 @@ func TestOperationContextPreservesIdentityAndDetailsWithoutDatabaseMetadata(t *t
 			t.Errorf("duplicated task list %s", key)
 		}
 	}
-	// Categories and urgency are no longer part of a task the planner works with.
+	// Categories and urgency are not part of a task the planner works with.
 	for _, key := range []string{"userId", "createdAt", "updatedAt", "sortOrder", "completedAt", "categoryId", "urgency", "categories"} {
 		if strings.Contains(string(raw), `"`+key+`"`) {
 			t.Errorf("unnecessary metadata %s", key)
