@@ -26,6 +26,9 @@ type Config struct {
 
 	// Mastra Agent Server
 	MastraURL string
+	// MastraAgentSecret is sent on every call to the agent server, which rejects
+	// requests without it. It must match the agent server's AGENT_SERVER_SECRET.
+	MastraAgentSecret string
 	// PlannerToolSecret is shared with the planner agent. Its tools send it when
 	// they call back into /internal/planner, and it signs turn tokens.
 	PlannerToolSecret string
@@ -57,6 +60,7 @@ func Load() Config {
 
 		// Mastra
 		MastraURL:         os.Getenv("MASTRA_URL"),
+		MastraAgentSecret: os.Getenv("MASTRA_AGENT_SECRET"),
 		PlannerToolSecret: os.Getenv("PLANNER_TOOL_SECRET"),
 
 		// CORS

@@ -11,6 +11,8 @@ const databaseUrl = process.env.CHECK_DATABASE_URL;
 if (!databaseUrl) throw new Error('CHECK_DATABASE_URL is required.');
 
 const server = new URL('../.mastra/output/index.mjs', import.meta.url).pathname;
+const secret = 'check-agent-server-secret';
+const SECRET_HEADER = 'X-Caprio-Agent-Secret';
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -68,7 +70,7 @@ async function mastraTables() {
 {
   const port = await freePort();
   const base = `http://127.0.0.1:${port}`;
-  const run = start({ PORT: String(port), MASTRA_DATABASE_URL: databaseUrl });
+  const run = start({ PORT: String(port), MASTRA_DATABASE_URL: databaseUrl, AGENT_SERVER_SECRET: secret });
   try {
     await waitForHealth(base, run);
     const health = await fetch(`${base}/health`);
@@ -80,6 +82,20 @@ async function mastraTables() {
     }
     assert.ok(tables.length > 0, 'Mastra must create its tables in the `mastra` schema on start.');
     console.log(`ok: healthy, ${tables.length} tables in schema mastra`);
+
+    // Only the backend may call the agent server: everything but the health
+    // check needs the secret header.
+    const status = async (path, headers = {}) => (await fetch(`${base}${path}`, { headers })).status;
+    assert.equal(await status('/health'), 200, 'GET /health must stay open without the secret.');
+    assert.equal(await status('/api/agents'), 401, 'GET /api/agents without the secret must return 401.');
+    assert.equal(await status('/api/agents', { [SECRET_HEADER]: 'wrong' }), 401, 'GET /api/agents with a wrong secret must return 401.');
+    assert.equal(await status('/api/agents', { [SECRET_HEADER]: secret }), 200, 'GET /api/agents with the secret must return 200.');
+    assert.equal(await status('/'), 401, 'The root path must not be served without the secret.');
+    const generate = await fetch(`${base}/api/agents/general-conversation-agent/generate`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] }),
+    });
+    assert.equal(generate.status, 401, 'The agent generate endpoint without the secret must return 401 before any model call.');
+    console.log('ok: only requests with the agent secret get through');
   } finally {
     await stop(run);
   }
@@ -89,13 +105,26 @@ async function mastraTables() {
 //    missing variable.
 {
   const port = await freePort();
-  const run = start({ PORT: String(port) });
+  const run = start({ PORT: String(port), AGENT_SERVER_SECRET: secret });
   const code = await Promise.race([run.exited, new Promise((resolve) => setTimeout(() => resolve('timeout'), 30_000))]);
   if (code === 'timeout') await stop(run);
   assert.notEqual(code, 'timeout', 'The server must exit when MASTRA_DATABASE_URL is missing.');
   assert.notEqual(code, 0, 'The server must exit with a failure code when MASTRA_DATABASE_URL is missing.');
   assert.match(run.output(), /MASTRA_DATABASE_URL is required/, 'The startup error must name MASTRA_DATABASE_URL.');
   console.log('ok: refuses to start without MASTRA_DATABASE_URL');
+}
+
+// 3. Outside `mastra dev`, the server refuses to start without
+//    AGENT_SERVER_SECRET, so it can never run open to the internet.
+{
+  const port = await freePort();
+  const run = start({ PORT: String(port), MASTRA_DATABASE_URL: databaseUrl });
+  const code = await Promise.race([run.exited, new Promise((resolve) => setTimeout(() => resolve('timeout'), 30_000))]);
+  if (code === 'timeout') await stop(run);
+  assert.notEqual(code, 'timeout', 'The server must exit when AGENT_SERVER_SECRET is missing.');
+  assert.notEqual(code, 0, 'The server must exit with a failure code when AGENT_SERVER_SECRET is missing.');
+  assert.match(run.output(), /AGENT_SERVER_SECRET is required/, 'The startup error must name AGENT_SERVER_SECRET.');
+  console.log('ok: refuses to start without AGENT_SERVER_SECRET');
 }
 
 console.log('Agent server checks passed.');

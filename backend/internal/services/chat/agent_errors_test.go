@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/ashwinshanmugam/caprio/backend/internal/mastra"
 	"github.com/stretchr/testify/require"
 )
 
@@ -23,4 +24,11 @@ func TestClassifyAgentError_Generic(t *testing.T) {
 	err := classifyAgentError(errors.New("mastra returned empty text"))
 	require.False(t, errors.Is(err, ErrModelCapacity))
 	require.Contains(t, err.Error(), "call planning assistant")
+}
+
+func TestClassifyAgentError_RejectedSecretIsNotCapacity(t *testing.T) {
+	err := classifyAgentError(fmt.Errorf("%w (HTTP 401): check the secrets", mastra.ErrUnauthorized))
+	require.False(t, errors.Is(err, ErrModelCapacity), "a secret mismatch must never trigger a retry or the model fallback")
+	require.ErrorIs(t, err, mastra.ErrUnauthorized)
+	require.Contains(t, err.Error(), "misconfigured")
 }

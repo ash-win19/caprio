@@ -1,8 +1,11 @@
 package chat
 
 import (
+	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/ashwinshanmugam/caprio/backend/internal/mastra"
 )
 
 // classifyAgentError maps provider overload/timeout failures to ErrModelCapacity
@@ -10,6 +13,11 @@ import (
 func classifyAgentError(err error) error {
 	if err == nil {
 		return nil
+	}
+	// A rejected secret is misconfiguration: report it plainly and never let it
+	// look like a capacity problem that a retry or model fallback could fix.
+	if errors.Is(err, mastra.ErrUnauthorized) {
+		return fmt.Errorf("planning assistant is misconfigured: %w", err)
 	}
 	msg := strings.ToLower(err.Error())
 	for _, needle := range []string{
