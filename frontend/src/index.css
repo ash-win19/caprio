@@ -49,6 +49,7 @@
     --brand: 40 7% 96%;
     --brand-dim: 40 5% 72%;
     --amber: 44 93% 56%;
+    --green: 142 40% 68%;
     --red: 0 91% 71%;
     --blue: 217 91% 68%;
 
@@ -200,7 +201,7 @@
   .history-outcomes { display: grid; gap: 0.125rem; font-size: 0.8125rem; }
   .history-outcome { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr); gap: 0.625rem; }
   .history-outcome p { @apply text-muted-foreground; }
-  .history-done > span, .history-done > h2 { color: hsl(142 40% 68%); }
+  .history-done > span, .history-done > h2 { color: hsl(var(--green)); }
   .history-carried > span, .history-carried > h2 { color: hsl(var(--amber)); }
   .history-dropped > span, .history-dropped > h2 { color: hsl(var(--red)); }
   .history-note { @apply mt-2.5 border-l-2 border-border pl-2.5 text-sm italic text-muted-foreground; }

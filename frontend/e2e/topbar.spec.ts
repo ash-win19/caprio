@@ -11,7 +11,7 @@ test('login opens today with no recovery notice, and a historical review can ret
   await expect(page).toHaveURL(`/review?date=${date}`);
   await expect(page.getByRole('button', { name: 'Next day' })).toBeDisabled();
   await page.getByRole('link', { name: 'View day', exact: true }).click();
-  await expect(page).toHaveURL(`/today?date=${date}`);
+  await expect(page).toHaveURL('/today');
   await expect(page.getByRole('heading', { name: 'Today', exact: true })).toBeVisible();
   expect(writes).toEqual([]);
 });

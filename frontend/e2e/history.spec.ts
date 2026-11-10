@@ -56,8 +56,8 @@ test('History says so when there are no past days', async ({ page }) => {
   await expect(page.getByRole('list', { name: 'Past days' })).toHaveCount(0);
 });
 
-test('a day archived before task names were kept shows its counts', async ({ page }) => {
-  await mockDay(page, { history: [historyDay({ date: '2026-09-01', taskNamesAvailable: false, doneCount: 2, carriedCount: 1, droppedCount: 0 })] });
+test('a day that ended before task names were kept shows its counts', async ({ page }) => {
+  await mockDay(page, { history: [historyDay({ date: '2026-09-01', taskDetailsAvailable: false, doneCount: 2, carriedCount: 1, droppedCount: 0 })] });
   await page.goto('/history');
   const day = dayCard(page, 'Tuesday, September 1');
   await expect(day).toContainText('2 done · 1 carried · 0 dropped');
@@ -114,6 +114,36 @@ for (const width of [390, 1440]) {
     expect(writes).toEqual([]);
   });
 }
+
+test('a past day shows how it ended: not wrapped up, wrapped up then continued, or without task names', async ({ page }) => {
+  await mockDay(page, { history: history() });
+  const [base] = tasksForDay();
+  const ended = (review: Partial<NonNullable<Workflow['review']>>, extra: Partial<Workflow> = {}): Workflow => ({
+    date: '2026-09-11', state: 'closed', version: 2, plan: null, availableMinutes: null, backlog: [], messages: [],
+    tasks: [{ ...base, id: 'quiz', title: 'Stats quiz prep', completed: true, status: 'completed' }],
+    review: { completedCount: 1, carriedToTomorrowCount: 0, droppedCount: 0, notes: '', energyLevel: null, ...review }, ...extra,
+  });
+  const record = (id: string, review: NonNullable<Workflow['review']>) => ({ id, createdAt: '2026-09-11T20:00:00Z', review, tasks: [], taskDetailsAvailable: true });
+  let day = ended({ automatic: true });
+  await page.route('**/api/workflow?date=2026-09-11', route => route.fulfill({ json: day }));
+
+  await page.goto('/history/2026-09-11');
+  await expect(page.getByRole('region', { name: 'Done' }).getByRole('listitem')).toHaveText(['Stats quiz prep']);
+  await expect(page.getByText('Not wrapped up', { exact: true })).toBeVisible();
+  await expect(page.getByText('No conversation that day.')).toBeVisible();
+
+  // Wrapped up with a note, continued, then ended by Rollover: the note stands.
+  const own = { completedCount: 1, carriedToTomorrowCount: 0, droppedCount: 0, notes: 'Quiz went fine.', energyLevel: null };
+  day = ended({ automatic: true }, { reviewHistory: [record('first', own), record('second', { ...own, notes: '', automatic: true })] });
+  await page.reload();
+  await expect(page.getByText('Quiz went fine.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Not wrapped up')).toHaveCount(0);
+
+  day = ended({ completedCount: 2 }, { tasks: [], taskDetailsAvailable: false });
+  await page.reload();
+  await expect(page.getByText('Task names weren’t recorded for this day.')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Done' })).toHaveCount(0);
+});
 
 test('today, a future day and a malformed date have no History page', async ({ page }) => {
   await mockDay(page, { history: history() });

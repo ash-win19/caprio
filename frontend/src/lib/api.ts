@@ -390,11 +390,11 @@ export async function rolloverDay(signal?: AbortSignal): Promise<Workflow> {
 /** What happened to one past Day's tasks, by the names they had that Day. */
 export interface HistoryDay {
   date: string;
-  /** False when Rollover carried the Day forward on its own. */
+  /** True once the person wrapped the Day up, however it finally ended. */
   wrappedUp: boolean;
   note: string;
-  /** Days archived before task names were kept have only the counts. */
-  taskNamesAvailable: boolean;
+  /** Days that ended before task names were kept have only the counts. */
+  taskDetailsAvailable: boolean;
   done: string[];
   carried: string[];
   dropped: string[];

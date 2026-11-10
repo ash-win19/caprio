@@ -179,7 +179,7 @@ func TestHistoryEndpointListsDaysBeforeTheGivenDate(t *testing.T) {
 	httpJSON(t, r, "POST", "/api/day/close", map[string]any{"date": "2090-09-06", "notes": "Report is in.", "taskActions": []any{map[string]any{"taskId": id, "action": "done"}}}, 200)
 	history := httpJSON(t, r, "GET", "/api/history?before=2090-09-07", nil, 200)
 	require.Equal(t, []any{map[string]any{
-		"date": "2090-09-06", "wrappedUp": true, "note": "Report is in.", "taskNamesAvailable": true,
+		"date": "2090-09-06", "wrappedUp": true, "note": "Report is in.", "taskDetailsAvailable": true,
 		"done": []any{"Finish report"}, "carried": []any{}, "dropped": []any{},
 		"doneCount": float64(1), "carriedCount": float64(0), "droppedCount": float64(0),
 	}}, history["days"])

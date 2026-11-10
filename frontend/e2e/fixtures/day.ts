@@ -163,6 +163,6 @@ export async function conversationDay(page: Page, start: Partial<Workflow>, turn
 
 // A past Day as History lists it.
 export function historyDay(day: Partial<HistoryDay> & { date: string }): HistoryDay {
-  const full = { wrappedUp: true, note: '', taskNamesAvailable: true, done: [], carried: [], dropped: [], ...day };
+  const full = { wrappedUp: true, note: '', taskDetailsAvailable: true, done: [], carried: [], dropped: [], ...day };
   return { doneCount: full.done.length, carriedCount: full.carried.length, droppedCount: full.dropped.length, ...full };
 }
