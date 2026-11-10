@@ -56,7 +56,7 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 	})
 	var agent chat.Agent
 	if cfg.MastraURL != "" {
-		agent = mastra.NewClient(cfg.MastraURL)
+		agent = mastra.NewClient(cfg.MastraURL, cfg.MastraAgentSecret)
 		if cfg.PlannerToolSecret == "" {
 			slog.Warn("PLANNER_TOOL_SECRET is not set; the planner cannot change the draft plan")
 		}

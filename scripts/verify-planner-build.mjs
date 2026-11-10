@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 // Inspect the built agent without opening a database or calling a model. The
-// Mastra instance requires a storage URL, but nothing here touches storage, so
-// this placeholder is never connected to.
+// Mastra instance requires a storage URL and an agent-server secret, but nothing
+// here touches storage or serves requests, so these placeholders are never used.
 process.env.MASTRA_DATABASE_URL = 'postgres://verify:verify@127.0.0.1:9/verify';
+process.env.AGENT_SERVER_SECRET = 'verify';
 
 const { m: mastra } = await import('../.mastra/output/mastra.mjs');
 const agent = mastra.getAgent('generalConversationAgent');

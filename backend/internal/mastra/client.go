@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,16 +13,27 @@ import (
 	"time"
 )
 
+// SecretHeader carries the shared secret the agent server requires on every
+// route except its health check.
+const SecretHeader = "X-Caprio-Agent-Secret"
+
+// ErrUnauthorized means the agent server rejected this client's secret. It is a
+// configuration problem, never a capacity one, so it must not be retried.
+var ErrUnauthorized = errors.New("agent server rejected the request credentials")
+
 // Client is a thin HTTP client for the Mastra agent server.
 type Client struct {
 	baseURL    string
+	secret     string
 	httpClient *http.Client
 }
 
-// NewClient creates a Mastra HTTP client.
-func NewClient(baseURL string) *Client {
+// NewClient creates a Mastra HTTP client. secret must match the agent server's
+// AGENT_SERVER_SECRET.
+func NewClient(baseURL, secret string) *Client {
 	return &Client{
 		baseURL: baseURL,
+		secret:  secret,
 		// A planning turn can take several tool steps.
 		httpClient: &http.Client{Timeout: 120 * time.Second},
 	}
@@ -80,7 +92,20 @@ func (c *Client) newRequest(ctx context.Context, path string, call Call) (*http.
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	if c.secret != "" {
+		httpReq.Header.Set(SecretHeader, c.secret)
+	}
 	return httpReq, nil
+}
+
+// statusError reports a non-200 response. A 401 becomes ErrUnauthorized so
+// callers can tell a secret mismatch apart from a model outage.
+func statusError(resp *http.Response) error {
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode == http.StatusUnauthorized {
+		return fmt.Errorf("%w (HTTP 401): check that the backend's MASTRA_AGENT_SECRET matches the agent server's AGENT_SERVER_SECRET", ErrUnauthorized)
+	}
+	return fmt.Errorf("mastra returned status %d: %s", resp.StatusCode, string(respBody))
 }
 
 // Chat sends messages to the Mastra agent and returns the assistant's reply.
@@ -97,8 +122,7 @@ func (c *Client) Chat(ctx context.Context, call Call) (*ChatResponse, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("mastra returned status %d: %s", resp.StatusCode, string(respBody))
+		return nil, statusError(resp)
 	}
 
 	var generateResp GenerateResponse
@@ -176,8 +200,7 @@ func (c *Client) StreamChat(ctx context.Context, call Call, onDelta func(string)
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("mastra returned status %d: %s", resp.StatusCode, string(respBody))
+		return nil, statusError(resp)
 	}
 
 	var text strings.Builder

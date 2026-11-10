@@ -64,7 +64,7 @@ func TestChat_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL)
+	client := NewClient(server.URL, "")
 	messages := []ChatMessage{{Role: "user", Content: "hello"}}
 
 	resp, err := client.Chat(context.Background(), Call{Messages: messages, ThreadID: "user-123:2024-01-15", ResourceID: "user-123", RequestContext: map[string]any{"turnToken": "token-1"}, MaxSteps: 10})
@@ -84,7 +84,7 @@ func TestChat_NonOKStatus(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL)
+	client := NewClient(server.URL, "")
 	messages := []ChatMessage{{Role: "user", Content: "hello"}}
 
 	_, err := client.Chat(context.Background(), Call{Messages: messages, Model: ""})
@@ -108,7 +108,7 @@ func TestChat_EmptyText(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL)
+	client := NewClient(server.URL, "")
 	messages := []ChatMessage{{Role: "user", Content: "hello"}}
 
 	_, err := client.Chat(context.Background(), Call{Messages: messages, Model: ""})
@@ -129,7 +129,7 @@ func TestChat_InvalidJSON(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL)
+	client := NewClient(server.URL, "")
 	messages := []ChatMessage{{Role: "user", Content: "hello"}}
 
 	_, err := client.Chat(context.Background(), Call{Messages: messages, Model: ""})
@@ -166,7 +166,7 @@ func TestChat_IncludesModel(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL)
+	client := NewClient(server.URL, "")
 	messages := []ChatMessage{{Role: "user", Content: "hello"}}
 
 	resp, err := client.Chat(context.Background(), Call{Messages: messages, Model: "groq/openai/gpt-oss-20b"})

@@ -29,7 +29,7 @@ func TestProviderHighDemandEnablesFallbackWithoutSaving(t *testing.T) {
 			}))
 			defer upstream.Close()
 			r, store, user := setupWorkflowHTTP(t)
-			h := handlers.NewChatHandler(store, chat.NewService(store, mastra.NewClient(upstream.URL)))
+			h := handlers.NewChatHandler(store, chat.NewService(store, mastra.NewClient(upstream.URL, "")))
 			if stream {
 				r.POST("/test/chat", h.StreamMessage)
 			} else {

@@ -13,7 +13,9 @@ To run Mastra Studio locally:
 3. Run `npm run dev`.
 4. Open `http://localhost:4111`.
 
-Mastra keeps its storage in the `mastra` schema of that Postgres database and creates its tables on first start. `npm run check:server` starts the built server against a throwaway database (`CHECK_DATABASE_URL`) and checks its health, its tables, and that it refuses to start without `MASTRA_DATABASE_URL`; CI runs it on every PR.
+Mastra keeps its storage in the `mastra` schema of that Postgres database and creates its tables on first start. Only the Go backend may call the agent server. Every route except `/health` needs the `X-Caprio-Agent-Secret` header matching `AGENT_SERVER_SECRET`; the backend sends its `MASTRA_AGENT_SECRET`, and a mismatch shows up in backend logs as "planning assistant is misconfigured". The server refuses to start without the secret, except under `mastra dev`, so Studio works locally. The planner tools use a separate secret, `PLANNER_TOOL_SECRET`, for calls in the other direction.
+
+`npm run check:server` starts the built server against a throwaway database (`CHECK_DATABASE_URL`) and checks its health, its tables, the secret on every other route, and that it refuses to start without `MASTRA_DATABASE_URL` or `AGENT_SERVER_SECRET`; CI runs it on every PR.
 
 The Mastra platform deploys `src/mastra` from the repository root. In its GitHub setup screen, mark this repository as a monorepo and use `main` for both the server and Studio branches.
 
