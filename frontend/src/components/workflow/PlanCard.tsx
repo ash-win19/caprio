@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import type { PlanBadge, PlanItem, PlanView } from '@/lib/api';
 import { dateLabel } from './dates';
 import { localDate } from '@/lib/date';
+import { formatMinutes } from '@/lib/duration';
 
 const BADGE_LABEL: Record<PlanBadge, string> = { new: 'New', edited: 'Edited', moved: 'Moved', removed: 'Removed', done: 'Done' };
 const BADGE_CLASS: Record<PlanBadge, string> = {
@@ -44,18 +45,13 @@ export function planChangeCount(plan: PlanView) {
   return counts.new + counts.edited + counts.moved + counts.removed;
 }
 
-function hoursAndMinutes(minutes: number) {
-  const h = Math.floor(minutes / 60), m = minutes % 60;
-  return h ? `${h}h${m ? ` ${m}m` : ''}` : `${m}m`;
-}
-
 /** The Day's estimated work after Confirm, against the time the person stated. */
 function plannedTotal(plan: PlanView, availableMinutes: number | null) {
   const minutes = [...plan.today, ...plan.carried]
     .filter(item => item.badge !== 'removed' && !item.completed)
     .reduce((sum, item) => sum + (item.duration ?? 0), 0);
   if (!minutes) return null;
-  return `Planned ~${hoursAndMinutes(minutes)}${availableMinutes != null ? ` for your ${hoursAndMinutes(availableMinutes)}` : ''}`;
+  return `Planned ~${formatMinutes(minutes)}${availableMinutes != null ? ` for your ${formatMinutes(availableMinutes)}` : ''}`;
 }
 
 export function planSummary(plan: PlanView) {

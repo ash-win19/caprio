@@ -111,6 +111,7 @@
     flex-shrink: 0;
     padding: 0.375rem 1.5rem;
   }
+  .app-topbar:not(:has(.topbar-page)) { display: none; }
   .topbar-page { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem 0.75rem; min-width: 0; grid-column: 1; }
   .topbar-page h1 { @apply text-sm font-medium; margin: 0; overflow-wrap: anywhere; }
   .topbar-breadcrumb { @apply text-xs text-muted-foreground; display: flex; gap: 0.5rem; align-items: center; }
@@ -166,26 +167,35 @@
     container: page / inline-size;
   }
 
-  .today-page { max-width: 64rem; }
+  /* Room below the list for the fixed message bar. */
+  .today-page { max-width: 64rem; padding-bottom: 5rem; }
+  .today-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 0.5rem 1rem; margin-bottom: 1rem; }
+  .today-head h1 { @apply text-2xl font-semibold tracking-tight; overflow-wrap: anywhere; }
+  .today-date { @apply mt-0.5 text-sm text-muted-foreground; }
+  .today-summary { @apply text-sm tabular-nums text-muted-foreground; white-space: nowrap; }
+  .today-summary strong { @apply font-medium text-foreground; }
+  .today-prompt { @apply rounded-xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.625rem 1rem; margin-bottom: 0.75rem; }
+  .today-prompt p { flex: 1 1 14rem; min-width: 0; }
+  .today-prompt strong { @apply font-medium text-foreground; }
+  .today-prompt-drafted { border-style: solid; border-color: hsl(var(--blue) / 0.35); background: hsl(var(--blue) / 0.06); }
+  .today-prompt-drafted strong { color: hsl(var(--blue)); }
+  .today-quick-add { @apply rounded-lg text-muted-foreground; display: flex; align-items: center; gap: 0.75rem; min-height: 2.75rem; padding: 0.25rem 0.75rem; margin-bottom: 0.5rem; }
+  .today-quick-add:focus-within { background: hsl(var(--card)); }
+  .today-quick-add svg { flex-shrink: 0; }
+  .today-quick-add input { @apply text-base text-foreground placeholder:text-muted-foreground; flex: 1; min-width: 0; min-height: 2.25rem; background: none; border: 0; outline: none; }
+  .today-quick-add-hint { @apply rounded border border-border px-1.5 text-[11px]; flex-shrink: 0; }
+  .today-task-carried { color: hsl(var(--text-secondary)); }
+  .today-task-stale { color: hsl(var(--amber)); }
+  .today-empty { @apply px-3 py-4 text-sm text-muted-foreground; }
+  .today-message-bar { position: fixed; inset-inline: 0; bottom: 0; z-index: 20; padding: 1.5rem 1rem max(1rem, env(safe-area-inset-bottom)); background: linear-gradient(to bottom, transparent, hsl(var(--background)) 45%); pointer-events: none; }
+  .today-message-bar a { @apply rounded-2xl border border-border bg-card text-sm text-muted-foreground shadow-lg transition-colors hover:border-muted-foreground/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary; pointer-events: auto; display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; max-width: 40rem; min-height: 3rem; margin-inline: auto; padding: 0.5rem 0.625rem 0.5rem 1rem; cursor: text; }
+  .today-message-bar a span { @apply grid h-7 w-7 shrink-0 place-items-center rounded-full bg-accent text-muted-foreground; }
   .workspace-details > summary { display: flex; min-height: 2.75rem; align-items: center; flex-wrap: wrap; gap: 0.5rem; cursor: pointer; list-style: none; font-size: 0.8125rem; color: hsl(var(--muted-foreground)); }
   .workspace-details > summary::-webkit-details-marker { display: none; }
   .workspace-details > summary:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 3px; border-radius: 0.25rem; }
   .workspace-details[open] > summary > svg { transform: rotate(180deg); }
   .workspace-details-compact > summary { min-height: 2rem; font-size: 0.75rem; }
   .today-work { min-width: 0; }
-  .today-list-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; }
-  .today-progress { min-width: 9rem; }
-  .today-capacity { margin-block: 1rem 1.25rem; font-size: 0.8125rem; line-height: 1.5; }
-  .today-carried { margin-top: 1.5rem; border: 1px solid hsl(var(--border)); border-radius: 1rem; background: hsl(var(--card)); }
-  .today-carried > summary { display: flex; align-items: center; gap: 0.75rem; padding: 1.1rem 1.25rem; min-height: 4.5rem; cursor: pointer; list-style: none; }
-  .today-carried > summary::-webkit-details-marker { display: none; }
-  .today-carried > summary > svg { flex-shrink: 0; color: hsl(var(--muted-foreground)); transform: rotate(-90deg); transition: transform 160ms; }
-  .today-carried[open] > summary > svg { transform: rotate(0); }
-  .today-carried > summary:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 3px; border-radius: 1rem; }
-  .today-carried-body { padding: 0 1.25rem 1.25rem; }
-  .today-carried .today-task-row { background: hsl(var(--background)); }
-  .today-plan-notice { @apply rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground; display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
-  .today-plan-notice a { @apply inline-flex min-h-8 items-center gap-2 text-foreground underline underline-offset-4; }
   .today-task-list { @apply overflow-hidden rounded-xl border border-border bg-card; }
   .today-task-row { min-width: 0; overflow-wrap: anywhere; background: hsl(var(--card)); }
   .today-task-row + .today-task-row { border-top: 1px solid hsl(var(--border)); }
@@ -195,18 +205,17 @@
   .today-task-title { font-size: 1rem; font-weight: 500; line-height: 1.5; }
   .today-task-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; margin-top: 0.25rem; font-size: 0.75rem; line-height: 1.5; color: hsl(var(--muted-foreground)); }
   .today-task-note > summary { @apply text-xs text-muted-foreground hover:text-foreground; display: inline-flex; min-height: 2rem; align-items: center; gap: 0.25rem; cursor: pointer; list-style: none; }
-  .today-task-note > summary::-webkit-details-marker, .today-completed > summary::-webkit-details-marker { display: none; }
-  .today-task-note[open] > summary svg, .today-completed[open] > summary svg { transform: rotate(180deg); }
+  .today-task-note > summary::-webkit-details-marker, .today-done > summary::-webkit-details-marker { display: none; }
+  .today-task-note[open] > summary svg, .today-done[open] > summary svg { transform: rotate(180deg); }
   .today-task-tools { display: flex; flex-shrink: 0; }
   .today-task-tool { @apply flex items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary; width: 2.75rem; height: 2.75rem; }
   .today-task-tool.touch-none { display: none; }
-  .today-completed { margin-top: 1.25rem; }
-  .today-completed > summary { @apply text-sm text-muted-foreground hover:text-foreground; display: flex; min-height: 2.75rem; align-items: center; gap: 0.5rem; cursor: pointer; list-style: none; }
-  .today-task-note > summary:focus-visible, .today-completed > summary:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 3px; border-radius: 0.25rem; }
+  .today-done { margin-top: 1.25rem; }
+  .today-done > summary { @apply text-sm text-muted-foreground hover:text-foreground; display: flex; min-height: 2.75rem; align-items: center; gap: 0.5rem; cursor: pointer; list-style: none; }
+  .today-task-note > summary:focus-visible, .today-done > summary:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 3px; border-radius: 0.25rem; }
   .today-review-entry { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1.5rem; padding-block: 1.25rem; border-top: 1px solid hsl(var(--border)); }
   .today-review-entry > div { flex: 1 1 16rem; }
   .today-review-ready { @apply rounded-xl border border-primary/20 bg-primary/5 px-5; }
-  .today-empty { @apply rounded-xl border border-dashed border-border px-6 py-10; margin-top: 1.5rem; }
   @media (min-width: 768px) { .today-task-tool.touch-none { display: flex; } }
 
   .page-grid {

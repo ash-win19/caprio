@@ -26,7 +26,8 @@ test('the task list dominates Today', async ({ page }, info) => {
   expect((await box(list)).y).toBeLessThan(280);
   await expect(page.locator('main').getByRole('complementary')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Plan my day', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Adjust plan', exact: true })).toHaveCount(1);
+  await expect(page.getByRole('link', { name: 'Adjust plan', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Tell Caprio what changed…' })).toHaveCount(1);
   await expect(page.getByRole('link', { name: /Something changed/ })).toHaveCount(0);
   await expect(page.getByRole('link', { name: /Open inbox/ })).toHaveCount(0);
   const review = await box(page.locator('.today-review-entry'));
@@ -69,18 +70,16 @@ for (const width of [320, 1440]) {
     await mockDay(page);
     let left: number | undefined;
     let bodyLeft: number | undefined;
-    for (const route of ['/today', '/capture', '/review', '/momentum', '/settings', '/settings/categories', '/settings/notifications', '/settings/voice']) {
+    for (const route of ['/capture', '/review', '/momentum', '/settings', '/settings/categories', '/settings/notifications', '/settings/voice']) {
       await page.goto(route);
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       const heading = await box(page.locator('.topbar-page'));
       left ??= heading.x;
       expect(heading.x, route).toBeCloseTo(left, 0);
-      if (route !== '/today') {
-        const body = await box(page.locator('.page-body'));
-        bodyLeft ??= body.x;
-        expect(body.x, route).toBeCloseTo(bodyLeft, 0);
-        expect(body.width).toBeLessThanOrEqual(760);
-      }
+      const body = await box(page.locator('.page-body'));
+      bodyLeft ??= body.x;
+      expect(body.x, route).toBeCloseTo(bodyLeft, 0);
+      expect(body.width).toBeLessThanOrEqual(760);
       await noOverflow(page);
     }
   });
@@ -90,32 +89,34 @@ for (const state of ['planning', 'active', 'closed'] as const) {
   test(`${state} empty day has a clear next step`, async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await mockDay(page, { state, tasks: [] });
-    await page.goto(`/today?date=${date}`);
-    const title = state === 'planning' ? 'Make room for what matters today' : state === 'active' ? 'Nothing planned for this day' : 'Day closed';
-    await expect(page.getByRole('heading', { name: title })).toBeVisible();
-    await expect(page.getByRole('progressbar')).toHaveCount(0);
+    await page.goto('/today');
+    await expect(page.getByText('Nothing on today’s list yet.', { exact: true })).toBeVisible();
+    await expect(page.locator('.today-prompt')).toHaveCount(state === 'planning' ? 1 : 0);
+    await expect(page.getByRole('textbox', { name: 'Add a task to today' })).toHaveCount(state === 'closed' ? 0 : 1);
+    await expect(page.locator('.today-message-bar').getByRole('link')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Plan my day' })).toHaveCount(0);
     await noOverflow(page);
   });
 }
 
-test('completing and restoring a task preserves focus, progress and explicit review', async ({ page }, info) => {
+test('completing and restoring a task preserves focus, the count and explicit review', async ({ page }, info) => {
   const writes = await mockDay(page);
   await page.goto('/today');
   const first = page.getByRole('checkbox', { name: `Mark ${titles[0]} complete` });
   await first.focus();
   await first.press('Space');
   await expect(page.getByRole('checkbox', { name: `Mark ${titles[1]} complete` })).toBeFocused();
-  await expect(page.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '1');
-  const completed = page.locator('.today-completed');
+  await expect(page.locator('.today-summary')).toHaveText('2 left · ~3h');
+  const completed = page.locator('.today-done');
   await expect(completed).not.toHaveAttribute('open');
   await completed.locator(':scope > summary').click();
   await page.getByRole('checkbox', { name: `Mark ${titles[0]} incomplete` }).click();
   await expect(page.getByRole('checkbox', { name: `Mark ${titles[0]} complete` })).toBeFocused();
   for (const title of titles) await page.getByRole('checkbox', { name: `Mark ${title} complete` }).click();
   await expect(page.getByRole('heading', { name: 'Your tasks are complete' })).toBeVisible();
-  await expect(page.locator('.today-completed > summary')).toBeFocused();
-  await expect(page.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '3');
+  await expect(page.locator('.today-done > summary')).toBeFocused();
+  await expect(page.locator('.today-summary')).toHaveText('0 left');
+  await expect(page.getByText('Nothing left for today.', { exact: true })).toBeVisible();
   await expect(page).toHaveURL('/today');
   await expect(page.locator('.today-review-ready').getByRole('link', { name: 'Review day' })).toBeVisible();
   expect(writes).toHaveLength(5);
@@ -149,41 +150,6 @@ test('keyboard and pointer reordering preserve the displayed order of today task
   expect(writes.filter(write => write.path === '/api/tasks/reorder')).toHaveLength(2);
 });
 
-for (const width of [390, 1440]) {
-  test(`carried work stays in a separate expandable section at ${width}px`, async ({ page }, info) => {
-    await page.setViewportSize({ width, height: 1050 });
-    const tasks = tasksForDay();
-    tasks[0].title = 'Ship the conversational workflow';
-    tasks[0].duration = 120;
-    tasks[1].title = 'Fix Headlines publishing';
-    tasks[1].deferCount = 1;
-    tasks[1].duration = 120;
-    tasks[2].title = 'Restore Headlines brand behavior';
-    tasks[2].deferCount = 4;
-    tasks[2].duration = 120;
-    const writes = await mockDay(page, { tasks, carryoverOrigins: { 'task-1': '2026-09-13', 'task-2': '2026-09-10' } });
-    await page.goto('/today');
-    const carried = page.locator('.today-carried');
-    await expect(carried).toBeVisible();
-    await expect(carried).not.toHaveAttribute('open');
-    await expect(carried.locator(':scope > summary')).toContainText('1 from yesterday · 1 from earlier days');
-    await expect(page.getByRole('list', { name: 'Remaining tasks' }).locator('li')).toHaveCount(1);
-    await page.screenshot({ path: info.outputPath(`carryovers-collapsed-${width}.png`), fullPage: true, animations: 'disabled' });
-    await carried.locator(':scope > summary').click();
-    await expect(page.getByRole('list', { name: 'Carried forward tasks' }).locator('li')).toHaveCount(2);
-    await expect(carried).toContainText('Since Sep 10');
-    await noOverflow(page);
-    await page.screenshot({ path: info.outputPath(`carryovers-expanded-${width}.png`), fullPage: true, animations: 'disabled' });
-    await page.getByRole('checkbox', { name: 'Mark Fix Headlines publishing complete' }).click();
-    await expect(page.getByRole('list', { name: 'Carried forward tasks' }).locator('li')).toHaveCount(1);
-    await expect(carried.locator(':scope > summary')).toContainText('1 from earlier days');
-    expect(writes.filter(write => write.path === '/api/tasks/task-1')).toHaveLength(1);
-    await page.reload();
-    await expect(carried.locator(':scope > summary')).toContainText('1 from earlier days');
-    await expect(page.locator('.today-completed')).toContainText('Completed · 1');
-  });
-}
-
 test('failed completion restores the task and keeps the failure visible', async ({ page }) => {
   await mockDay(page);
   await page.route('**/api/tasks/task-0', route => route.fulfill({ status: 400, json: { error: 'Could not save completion' } }));
@@ -193,17 +159,15 @@ test('failed completion restores the task and keeps the failure visible', async 
   await expect(page.getByRole('alert')).toContainText('Could not save completion');
   await expect(checkbox).not.toBeChecked();
   await expect(checkbox).toBeFocused();
-  await expect(page.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
+  await expect(page.locator('.today-summary')).toHaveText('3 left · ~3h 40m');
 });
 
-test('proposal and older recovery remain distinct from the daily review footer', async ({ page }) => {
+test('a waiting Draft and the daily review footer stay distinct, with no recovery notice', async ({ page }) => {
   const writes = await mockDay(page, { oldestUnclosedDate: '2026-09-06', plan: planView([{ ref: 'new:1', title: 'Adjusted work', badge: 'new', date }]) });
   await page.goto('/today');
-  await expect(page.getByRole('link', { name: 'Review the Draft' })).toHaveAttribute('href', `/conversation?date=${date}`);
+  await expect(page.locator('.today-prompt').getByRole('link', { name: 'Review draft' })).toHaveAttribute('href', '/conversation');
   await expect(page.getByRole('link', { name: 'Review day', exact: true })).toHaveAttribute('href', `/review?date=${date}`);
-  const recovery = page.getByRole('link', { name: 'Review unfinished day' });
-  await expect(recovery).toHaveAttribute('href', '/review?date=2026-09-06&reopen=1');
-  expect((await box(recovery)).y).toBeGreaterThan((await box(page.locator('.today-review-entry'))).y);
+  await expect(page.getByRole('link', { name: 'Review unfinished day' })).toHaveCount(0);
   expect(writes).toEqual([]);
 });
 
@@ -223,19 +187,25 @@ test('historical and future dates retain read-only controls and the planning sho
 
 test('task notes disclose detail without changing state and large text still reflows', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  const writes = await mockDay(page);
+  const tasks = tasksForDay();
+  tasks[0].description = 'Bring the printed agenda.';
+  const writes = await mockDay(page, { tasks });
   await page.goto('/today');
-  const first = page.getByRole('list', { name: 'Remaining tasks' }).locator('li').first();
-  await expect(first.getByText('Protect a focused block of time for this priority.')).not.toBeVisible();
+  const rows = page.getByRole('list', { name: 'Remaining tasks' }).locator('li');
+  const first = rows.first();
+  await expect(first.getByText('Bring the printed agenda.')).not.toBeVisible();
   await first.locator('summary').click();
-  await expect(first.getByText('Protect a focused block of time for this priority.')).toBeVisible();
+  await expect(first.getByText('Bring the printed agenda.')).toBeVisible();
+  // Old priority notes are not shown.
+  await expect(rows.nth(1).locator('summary')).toHaveCount(0);
+  await expect(page.getByText('Protect a focused block of time for this priority.')).toHaveCount(0);
   await page.addStyleTag({ content: 'html { font-size: 200%; }' });
   await noOverflow(page);
   expect(writes).toEqual([]);
 });
 
 
-test('mobile tasks offer a pointer reorder alternative and disclose missing estimates', async ({ page }, info) => {
+test('mobile tasks offer a pointer reorder alternative and total only the estimates given', async ({ page }, info) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const tasks = tasksForDay();
   tasks[0].duration = null;
@@ -244,7 +214,7 @@ test('mobile tasks offer a pointer reorder alternative and disclose missing esti
   const pending = new Promise<void>(resolve => { release = resolve; });
   await page.route('**/api/tasks/reorder', async route => { await pending; await route.fallback(); });
   await page.goto('/today');
-  await expect(page.locator('.today-capacity')).toContainText('180 min estimated remaining · 1 task without an estimate');
+  await expect(page.locator('.today-summary')).toHaveText('3 left · ~3h');
   await expect(page.getByRole('button', { name: `Reorder ${titles[0]}` })).not.toBeVisible();
   await page.getByRole('button', { name: `Task actions for ${titles[0]}` }).click();
   await page.getByRole('menuitem', { name: 'Move down' }).click();
@@ -285,7 +255,7 @@ test('loading and failed plans preserve a retry path', async ({ page }) => {
     await route.fulfill({ status: 400, json: { error: 'Could not load the plan' } });
   });
   await page.goto(`/today?date=${date}`);
-  await expect(page.getByRole('status', { name: '', exact: true }).filter({ hasText: 'Loading your plan' })).toBeVisible();
+  await expect(page.getByRole('status', { name: '', exact: true }).filter({ hasText: 'Loading your list' })).toBeVisible();
   await expect(page.getByRole('list', { name: 'Remaining tasks' })).toHaveCount(0);
   release();
   // The application retries queries three times with backoff before showing failure.

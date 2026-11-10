@@ -10,7 +10,7 @@ async function expectOnlyConversation(page: Page) {
   await expect(page).toHaveURL('/conversation');
   await expect(composer(page)).toBeEnabled();
   await expect(todayList(page)).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Your tasks' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { level: 1, name: 'Today', exact: true })).toHaveCount(0);
 }
 
 for (const width of [390, 1440]) {
@@ -102,7 +102,7 @@ test('a confirmed day where every task carried over stays on Today', async ({ pa
   for (const entry of ['/', '/today']) {
     await page.goto(entry);
     await expect(page).toHaveURL('/today');
-    await expect(page.getByRole('heading', { name: 'Your tasks' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Today', exact: true })).toBeVisible();
   }
 });
 
@@ -112,7 +112,7 @@ test('an unconfirmed day of carried tasks stays on Today once skipped', async ({
   for (const entry of ['/', '/today']) {
     await page.goto(entry);
     await expect(page).toHaveURL('/today');
-    await expect(page.getByRole('heading', { name: 'Your tasks' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Today', exact: true })).toBeVisible();
   }
 });
 

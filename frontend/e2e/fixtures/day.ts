@@ -47,6 +47,16 @@ export async function mockDay(page: Page, options: {
     if (request.method() !== 'GET') {
       const body = request.postDataJSON();
       writes.push({ path: url.pathname, body });
+      // A task created directly, as Today's quick add does.
+      if (request.method() === 'POST' && url.pathname === '/api/tasks') {
+        const task: BackendTask = {
+          ...tasksForDay()[0], id: `created-${tasks.length}`, title: body.title, duration: body.duration ?? null, sortOrder: body.sortOrder,
+          plannedForDate: body.plannedForDate ?? date, status: body.status ?? 'planned', priorityReason: undefined,
+        };
+        tasks.push(task);
+        await route.fulfill({ status: 201, json: task });
+        return;
+      }
       if (request.method() === 'PATCH') {
         const task = tasks.find((item) => url.pathname.endsWith(`/${item.id}`));
         if (task) {

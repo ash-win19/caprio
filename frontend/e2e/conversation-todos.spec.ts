@@ -50,7 +50,7 @@ for (const width of [390, 1440]) {
     // Confirm opens bare /today for local today (fixture clock = date) so overnight tabs are not pinned.
     await expect(page).toHaveURL('/today');
     await expect(page.getByRole('list', { name: 'Remaining tasks' }).locator(':scope > li')).toHaveCount(3);
-    await expect(page.locator('.today-page')).toContainText('280 min estimated remaining');
+    await expect(page.locator('.today-summary')).toHaveText('3 left · ~4h 40m');
     const publishing = page.getByRole('listitem').filter({ hasText: 'Fix Headlines publishing' });
     await publishing.locator('summary').click();
     await expect(publishing.getByText('Preserve the Headlines brand and use Cozad’s feedback.')).toBeVisible();
