@@ -1,7 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
-import { mockDay, date, tasksForDay, planView } from './fixtures/day';
+import { conversationDay, mockDay, date, tasksForDay, planView } from './fixtures/day';
 
 const list = (page: Page) => page.getByRole('list', { name: 'Remaining tasks' });
+const rows = (page: Page) => list(page).locator(':scope > li');
 
 for (const width of [390, 1440]) {
   test(`Today is a plain list with a header, quick add and a message bar at ${width}px`, async ({ page }, info) => {
@@ -13,7 +14,7 @@ for (const width of [390, 1440]) {
     await expect(page.getByRole('heading', { level: 1, name: 'Today', exact: true })).toBeVisible();
     await expect(page.getByText('Monday, September 14', { exact: true })).toBeVisible();
     await expect(page.getByText('3 left · ~3h 40m', { exact: true })).toBeVisible();
-    await expect(list(page).locator(':scope > li')).toHaveCount(3);
+    await expect(rows(page)).toHaveCount(3);
     await expect(page.getByRole('link', { name: 'Tell Caprio what changed…' })).toBeVisible();
 
     // Done work waits in a collapsed section.
@@ -41,8 +42,8 @@ test('quick add saves a task to today right away', async ({ page }) => {
   const add = page.getByRole('textbox', { name: 'Add a task to today' });
   await add.fill('  Call the bank  ');
   await add.press('Enter');
-  await expect(list(page).locator(':scope > li')).toHaveCount(4);
-  await expect(list(page).locator(':scope > li').last()).toContainText('Call the bank');
+  await expect(rows(page)).toHaveCount(4);
+  await expect(rows(page).last()).toContainText('Call the bank');
   await expect(add).toHaveValue('');
   await expect(add).toBeFocused();
   await expect(page.getByText('4 left · ~3h 40m', { exact: true })).toBeVisible();
@@ -51,6 +52,18 @@ test('quick add saves a task to today right away', async ({ page }) => {
   // An empty line adds nothing.
   await add.press('Enter');
   expect(writes).toHaveLength(1);
+});
+
+test('quick add lands below every task even when their positions have gaps', async ({ page }) => {
+  // Rollover keeps each task's old position, so positions on a day can skip numbers.
+  const tasks = tasksForDay().map((task, index) => ({ ...task, sortOrder: [0, 5, 9][index] }));
+  const writes = await mockDay(page, { tasks });
+  await page.goto('/today');
+  const add = page.getByRole('textbox', { name: 'Add a task to today' });
+  await add.fill('Call the bank');
+  await add.press('Enter');
+  await expect(rows(page)).toHaveCount(4);
+  expect(writes[0].body).toMatchObject({ title: 'Call the bank', sortOrder: 10 });
 });
 
 test('a failed quick add keeps what was typed and says why', async ({ page }) => {
@@ -62,7 +75,7 @@ test('a failed quick add keeps what was typed and says why', async ({ page }) =>
   await add.press('Enter');
   await expect(page.getByRole('alert')).toContainText('Could not save task');
   await expect(add).toHaveValue('Call the bank');
-  await expect(list(page).locator(':scope > li')).toHaveCount(3);
+  await expect(rows(page)).toHaveCount(3);
 });
 
 test('carried tasks sit in the list with their age, and stale ones stand out', async ({ page }) => {
@@ -70,14 +83,13 @@ test('carried tasks sit in the list with their age, and stale ones stand out', a
   const tasks = [a, { ...b, deferCount: 1 }, { ...c, deferCount: 4 }];
   await mockDay(page, { tasks, carryoverOrigins: { [b.id]: '2026-09-13', [c.id]: '2026-09-08' } });
   await page.goto('/today');
-  const rows = list(page).locator(':scope > li');
-  await expect(rows).toHaveCount(3);
-  await expect(rows.nth(0)).not.toContainText('carried');
-  await expect(rows.nth(1).getByText('carried · 1d', { exact: true })).not.toHaveClass(/stale/);
-  await expect(rows.nth(2).getByText('carried · 6d', { exact: true })).toHaveClass(/stale/);
+  await expect(rows(page)).toHaveCount(3);
+  await expect(rows(page).nth(0)).not.toContainText('carried');
+  await expect(rows(page).nth(1).getByText('carried · 1d', { exact: true })).not.toHaveClass(/stale/);
+  await expect(rows(page).nth(2).getByText('carried · 6d', { exact: true })).toHaveClass(/stale/);
   await expect(page.getByText('Carried forward')).toHaveCount(0);
   // Carried tasks reorder with the rest.
-  await expect(rows.nth(2).getByRole('button', { name: `Reorder ${c.title}` })).toBeVisible();
+  await expect(rows(page).nth(2).getByRole('button', { name: `Reorder ${c.title}` })).toBeVisible();
 });
 
 test('an unplanned day prompts to plan, and the prompt opens the Conversation', async ({ page }) => {
@@ -108,6 +120,34 @@ for (const state of ['planning', 'active'] as const) {
   });
 }
 
+test('a Draft with no changes left is still prompted, without a count', async ({ page }) => {
+  await mockDay(page, { plan: planView(tasksForDay().map(task => ({ ref: task.id, taskId: task.id, title: task.title, date }))) });
+  await page.goto('/today');
+  await expect(page.locator('.today-prompt')).toHaveText(/^Your plan is drafted\. It’s waiting for you\.Review draft$/);
+});
+
+test('Skip to my list shows the drafted prompt when a Draft is waiting', async ({ page }) => {
+  await conversationDay(page, { plan: planView([{ ref: 'new:1', title: 'Call the bank', badge: 'new', date }]) }, []);
+  await page.goto('/');
+  await page.getByRole('link', { name: 'Skip to my list', exact: true }).click();
+  await expect(page).toHaveURL('/today');
+  await expect(page.locator('.today-prompt')).toContainText('Your plan is drafted. 1 change is waiting for you.');
+});
+
+test('the message bar keeps its confirmed wording while the day loads', async ({ page }) => {
+  await mockDay(page);
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/api/workflow?*', async route => { await pending; await route.fallback(); });
+  // A dated link to today skips the app-entry check, so the page loads the Day itself.
+  await page.goto(`/today?date=${date}`);
+  await expect(page.getByRole('status').filter({ hasText: 'Loading your list' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Tell Caprio what changed…' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Plan your day with Caprio…' })).toHaveCount(0);
+  release();
+  await expect(rows(page)).toHaveCount(3);
+});
+
 for (const width of [390, 1440]) {
   test(`the message bar opens the Conversation and Back to Today returns at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
@@ -116,8 +156,8 @@ for (const width of [390, 1440]) {
     const bar = page.getByRole('link', { name: 'Tell Caprio what changed…' });
     await expect(bar).toBeInViewport();
     // The bar never covers the last row.
-    await list(page).locator(':scope > li').last().scrollIntoViewIfNeeded();
-    const [row, barBox] = await Promise.all([list(page).locator(':scope > li').last().boundingBox(), bar.boundingBox()]);
+    await rows(page).last().scrollIntoViewIfNeeded();
+    const [row, barBox] = await Promise.all([rows(page).last().boundingBox(), bar.boundingBox()]);
     expect(row!.y + row!.height).toBeLessThanOrEqual(barBox!.y + 1);
     await bar.click();
     await expect(page).toHaveURL('/conversation');
@@ -131,7 +171,7 @@ for (const width of [390, 1440]) {
 test('a wrapped-up day shows its list without the closed-day summary', async ({ page }) => {
   await mockDay(page, { state: 'closed' });
   await page.goto('/today');
-  await expect(list(page).locator(':scope > li')).toHaveCount(3);
+  await expect(rows(page)).toHaveCount(3);
   await expect(page.getByText(/closed/i)).toHaveCount(0);
   await expect(page.getByRole('textbox', { name: 'Add a task to today' })).toHaveCount(0);
 });

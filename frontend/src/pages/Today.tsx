@@ -6,7 +6,7 @@ import { SortableContext, verticalListSortingStrategy, arrayMove, sortableKeyboa
 import { useCreateTask, useTasks, useToggleTask, useReorderTasks, useWorkflow } from '@/lib/queries';
 import { useLocalDay } from '@/lib/useLocalDay';
 import { useNavigationLock } from '@/lib/dateDrafts';
-import { carriedDays } from '@/lib/carried';
+import { daysCarried } from '@/lib/carried';
 import { isConfirmed } from '@/lib/dayEntry';
 import { formatMinutes } from '@/lib/duration';
 import { Button } from '@/components/ui/button';
@@ -85,13 +85,18 @@ export default function Today() {
     event.preventDefault();
     const title = newTitle.trim();
     if (!title || create.isPending) return;
-    create.mutate({ title, sortOrder: tasks.length, status: 'planned', plannedForDate: date }, {
+    // Below everything on the Day: positions can skip numbers after Rollover.
+    const sortOrder = Math.max(-1, ...tasks.map(task => task.order)) + 1;
+    create.mutate({ title, sortOrder, status: 'planned', plannedForDate: date }, {
       onSuccess: () => { setNewTitle(''); quickAdd.current?.focus(); },
     });
   };
   const allComplete = tasks.length > 0 && active.length === 0;
   const draftChanges = workflow?.plan ? planChangeCount(workflow.plan) : 0;
-  const error = tasksQuery.error || workflowQuery.error;
+  // Unknown while the Day loads, so nothing asks for planning until it is known.
+  const unplanned = Boolean(workflow) && !isConfirmed(workflow);
+  const loadError = tasksQuery.error || workflowQuery.error;
+  const saveError = create.error || reorder.error || toggle.error;
 
   return <Page className="today-page">
     <header className="today-head">
@@ -101,11 +106,11 @@ export default function Today() {
       </div>
       {tasksQuery.isSuccess && <p className="today-summary" aria-live="polite" aria-atomic="true"><strong>{active.length} left</strong>{remainingMinutes > 0 && ` · ~${formatMinutes(remainingMinutes)}`}</p>}
     </header>
-    {tasksQuery.isLoading || workflowQuery.isLoading ? <p role="status" className="py-16 text-center text-sm text-muted-foreground">Loading your list…</p> : error ? <WorkflowError error={error} retry={() => { void tasksQuery.refetch(); void workflowQuery.refetch(); }} /> : <section className="today-work" aria-label={isToday ? 'Today’s list' : 'This day’s list'}>
+    {tasksQuery.isLoading || workflowQuery.isLoading ? <p role="status" className="py-16 text-center text-sm text-muted-foreground">Loading your list…</p> : loadError ? <WorkflowError error={loadError} retry={() => { void tasksQuery.refetch(); void workflowQuery.refetch(); }} /> : <section className="today-work" aria-label={isToday ? 'Today’s list' : 'This day’s list'}>
       {isToday && workflow?.plan ? <div className="today-prompt today-prompt-drafted">
-        <p><strong>Your plan is drafted.</strong> {draftChanges} {draftChanges === 1 ? 'change is' : 'changes are'} waiting for you.</p>
+        <p><strong>Your plan is drafted.</strong> {draftChanges === 0 ? 'It’s' : draftChanges === 1 ? '1 change is' : `${draftChanges} changes are`} waiting for you.</p>
         <Button asChild size="sm" className="shrink-0"><Link to="/conversation">Review draft</Link></Button>
-      </div> : isToday && !isConfirmed(workflow) ? <div className="today-prompt">
+      </div> : isToday && unplanned ? <div className="today-prompt">
         <p><strong>You haven’t planned today.</strong> {active.some(task => task.carriedOver) ? 'Caprio has your carried tasks ready.' : 'Tell Caprio what’s on, or add tasks below.'}</p>
         <Button asChild size="sm" variant="outline" className="shrink-0"><Link to="/conversation">Plan with Caprio</Link></Button>
       </div> : null}
@@ -114,10 +119,10 @@ export default function Today() {
         <input ref={quickAdd} value={newTitle} onChange={event => setNewTitle(event.target.value)} aria-label="Add a task to today" placeholder="Add a task" maxLength={500} autoComplete="off" enterKeyHint="done" />
         <span className="today-quick-add-hint" aria-hidden>saves now</span>
       </form>}
-      {(create.error || reorder.error || toggle.error) && <WorkflowError error={create.error || reorder.error || toggle.error} />}
+      {saveError && <WorkflowError error={saveError} />}
       {active.length > 0 ? <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={active.map(task => task.id)} strategy={verticalListSortingStrategy}>
-          <ol aria-label="Remaining tasks" className="today-task-list">{active.map((task, index) => <TodayTaskRow key={task.id} task={task} carriedDays={carriedDays(task, workflow?.carryoverOrigins?.[task.id], date)} readOnly={rowsReadOnly} sortable={editable} onToggle={toggleTask} canMoveUp={index > 0} canMoveDown={index < active.length - 1} onMove={direction => moveTask(index, index + direction, 'actions')} />)}</ol>
+          <ol aria-label="Remaining tasks" className="today-task-list">{active.map((task, index) => <TodayTaskRow key={task.id} task={task} carriedDays={daysCarried(task, workflow?.carryoverOrigins?.[task.id], date)} readOnly={rowsReadOnly} sortable={editable} onToggle={toggleTask} canMoveUp={index > 0} canMoveDown={index < active.length - 1} onMove={direction => moveTask(index, index + direction, 'actions')} />)}</ol>
         </SortableContext>
       </DndContext> : <p className="today-empty">{tasks.length ? 'Nothing left for today.' : isToday ? 'Nothing on today’s list yet.' : 'Nothing on this day’s list.'}</p>}
       {completed.length > 0 && <details key={date} className="today-done">
@@ -133,7 +138,7 @@ export default function Today() {
       </section>}
     </section>}
     {isToday && <div className="today-message-bar">
-      <Link to="/conversation">{isConfirmed(workflow) ? 'Tell Caprio what changed…' : 'Plan your day with Caprio…'}<span aria-hidden><ArrowUp size={15} /></span></Link>
+      <Link to="/conversation">{unplanned ? 'Plan your day with Caprio…' : 'Tell Caprio what changed…'}<span aria-hidden><ArrowUp size={15} /></span></Link>
     </div>}
   </Page>;
 }

@@ -46,6 +46,7 @@ for (const width of [390, 1440]) {
     await page.getByRole('link', { name: 'Skip to my list', exact: true }).click();
     await expect(page).toHaveURL('/today');
     await expect(todayList(page)).toBeVisible();
+    await expect(page.locator('.today-prompt')).toContainText('You haven’t planned today.');
 
     // The Conversation is still reachable, and the unsent message is kept.
     await page.keyboard.press('Control+Shift+Space');

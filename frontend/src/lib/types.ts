@@ -13,7 +13,8 @@ export interface Task {
   completed: boolean;
   addedToday: boolean;
   carriedOver: boolean;
-  deferCount?: number;
+  /** How many times Rollover has carried the task forward. */
+  carryCount?: number;
   order: number;
   plannedForDate?: string;
   priorityReason?: string;
