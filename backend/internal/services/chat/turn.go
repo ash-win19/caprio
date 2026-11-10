@@ -507,6 +507,9 @@ func applyTool(d *Draft, env draftEnv, turn uuid.UUID, name string, input json.R
 	}
 	switch name {
 	case "add_task":
+		if err := checkNewTaskKeys(input); err != nil {
+			return DraftResult{}, err
+		}
 		return d.AddTask(env, turn, in.AddTaskInput)
 	case "edit_task":
 		return d.EditTask(env, turn, in.Ref, in.Fields)

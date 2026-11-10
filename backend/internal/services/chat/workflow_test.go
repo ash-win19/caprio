@@ -323,6 +323,29 @@ func TestReplanningATaskInTheDraftEndsItsCarryHistory(t *testing.T) {
 	}
 }
 
+func TestAddTaskRejectsEveryFieldATaskDoesNotHave(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	a.script = func(_ context.Context, _ mastra.Call, tool toolFunc) (string, error) {
+		tool("add_task", map[string]any{"title": "Slides", "notes": "bring the clicker"})
+		tool("add_task", map[string]any{"title": "Slides", "priority": 1})
+		tool("add_task", map[string]any{"title": "Slides", "urgency": nil})
+		tool("add_task", map[string]any{"title": "Slides", "duration": 45, "date": "2026-09-07", "inbox": false, "newOccurrence": false})
+		return "Slides is in for tomorrow.", nil
+	}
+	r, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "add slides tomorrow", RequestID: uuid.New()})
+	require.NoError(t, err)
+	require.Len(t, a.results, 4)
+	for _, rejected := range a.results[:2] {
+		require.False(t, rejected.OK, "an unknown field is never dropped silently")
+		require.Contains(t, rejected.Error.Message, "unsupported task field")
+	}
+	require.False(t, a.results[2].OK, "a null still names a field a task does not have")
+	require.Equal(t, "unsupported_field", a.results[2].Error.Code)
+	require.True(t, a.results[3].OK, "%+v", a.results[3].Error)
+	require.Equal(t, []string{"Slides"}, []string{r.Workflow.Plan.OtherDays[0].Title})
+}
+
 func TestThePlannerRecordsTheTimeThePersonHas(t *testing.T) {
 	s, a, user, date := testService(t)
 	ctx := context.Background()

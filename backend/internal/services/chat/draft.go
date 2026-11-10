@@ -70,18 +70,33 @@ func (e draftEnv) arrivable(day string) error {
 }
 
 // AddTaskInput is what the planner may set on a new task: a title, an
-// Estimate, and a Day or Later. The other task fields are read only to reject
-// them.
+// Estimate, and a Day or Later.
 type AddTaskInput struct {
-	Title         string          `json:"title"`
-	Duration      *int32          `json:"duration"`
-	Description   json.RawMessage `json:"description"`
-	Urgency       json.RawMessage `json:"urgency"`
-	CategoryID    json.RawMessage `json:"categoryId"`
-	DueDate       json.RawMessage `json:"dueDate"`
-	Date          string          `json:"date"`
-	Inbox         bool            `json:"inbox"`
-	NewOccurrence bool            `json:"newOccurrence"`
+	Title         string `json:"title"`
+	Duration      *int32 `json:"duration"`
+	Date          string `json:"date"`
+	Inbox         bool   `json:"inbox"`
+	NewOccurrence bool   `json:"newOccurrence"`
+}
+
+// checkNewTaskKeys rejects any add_task input a task does not have. It goes by
+// key, as edit_task does, so nothing the planner sends is dropped silently and
+// a null still counts as naming the field.
+func checkNewTaskKeys(input json.RawMessage) error {
+	var keys map[string]json.RawMessage
+	if json.Unmarshal(input, &keys) != nil {
+		return nil // the tool's decoder reports malformed input
+	}
+	for key := range keys {
+		switch key {
+		case "title", "duration", "date", "inbox", "newOccurrence":
+		case "description", "dueDate", "categoryId", "urgency":
+			return errUnsupportedField()
+		default:
+			return invalid("unsupported task field %s", key)
+		}
+	}
+	return nil
 }
 
 // errUnsupportedField tells the planner what a task is made of, so it stops
@@ -89,8 +104,6 @@ type AddTaskInput struct {
 func errUnsupportedField() error {
 	return invalidCode("unsupported_field", "A task has only a title, an estimate, and a day or Later. Put a detail that matters, such as a deadline, in the title.")
 }
-
-func given(raw json.RawMessage) bool { return len(raw) > 0 && string(raw) != "null" }
 
 // DraftResult tells the agent what a change did. "exists" means nothing was
 // added because the task is already saved or already in the draft.
@@ -314,9 +327,6 @@ func (d *Draft) uniqueNewTitle(env draftEnv, ref string, title string) error {
 }
 
 func (d *Draft) AddTask(env draftEnv, turn uuid.UUID, in AddTaskInput) (DraftResult, error) {
-	if given(in.Description) || given(in.DueDate) || given(in.Urgency) || given(in.CategoryID) {
-		return DraftResult{}, errUnsupportedField()
-	}
 	title := strings.TrimSpace(in.Title)
 	fields := map[string]json.RawMessage{"title": mustJSON(title)}
 	if in.Duration != nil {
