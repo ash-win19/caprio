@@ -245,7 +245,7 @@ func applyOperations(ctx context.Context, tx pgx.Tx, user uuid.UUID, date pgtype
 				if before == nil {
 					action = "Added"
 				} else if before.Status == generated.TaskStatusBacklog {
-					action = "Moved from Inbox"
+					action = "Moved from Later"
 				}
 			}
 			// A task the person re-plans for another day or Later starts fresh
@@ -402,7 +402,7 @@ func receipt(ctx context.Context, conn generated.DBTX, user uuid.UUID, b changeB
 				noun = "task"
 			}
 			r.Summary = fmt.Sprintf("%s %d %s", action, len(r.Changes), noun)
-			if action == "Moved from Inbox" {
+			if action == "Moved from Later" {
 				r.Summary = fmt.Sprintf("Moved %d %s from Inbox", len(r.Changes), noun)
 			}
 		}
