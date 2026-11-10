@@ -48,11 +48,6 @@ func (h *BootstrapHandler) Get(c *gin.Context) {
 		workflowError(c, err)
 		return
 	}
-	var onboardingComplete bool
-	if err := h.store.Pool.QueryRow(ctx, `SELECT onboarding_complete FROM users WHERE id=$1`, userID).Scan(&onboardingComplete); err != nil {
-		workflowError(c, err)
-		return
-	}
 	todayTasks, err := h.store.Queries.ListTodayTasksByUser(ctx, generated.ListTodayTasksByUserParams{
 		UserID:         userID,
 		PlannedForDate: todayPgDate,
@@ -84,10 +79,9 @@ func (h *BootstrapHandler) Get(c *gin.Context) {
 			"language":                  user.Language,
 			"saveTranscripts":           user.SaveTranscripts,
 		},
-		"onboardingComplete": onboardingComplete,
-		"categories":         categories,
-		"todayTasks":         todayTasks,
-		"backlog":            backlog,
-		"streak":             user.Streak,
+		"categories": categories,
+		"todayTasks": todayTasks,
+		"backlog":    backlog,
+		"streak":     user.Streak,
 	})
 }

@@ -78,7 +78,7 @@ export async function mockDay(page: Page, options: {
     }
     if (url.pathname === '/api/bootstrap') {
       await route.fulfill({ json: {
-        user: { id: 'demo', name: 'Demo', email: 'demo@example.com' }, onboardingComplete: true,
+        user: { id: 'demo', name: 'Demo', email: 'demo@example.com' },
         preferences: { briefTime: '08:00' }, categories: [], todayTasks: tasks, backlog: [], streak: 0,
       } });
     } else if (url.pathname === '/api/workflow') {

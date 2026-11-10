@@ -25,7 +25,6 @@ vi.mock('@/lib/api', async (load) => {
     rolloverDay: vi.fn(),
     bootstrap: vi.fn(async () => ({
       user: { id: 'user-a', name: 'User A', email: 'a@example.com' },
-      onboardingComplete: true,
       preferences: useAppStore.getState().prefs,
       categories: useAppStore.getState().categories,
       todayTasks: [],
@@ -60,7 +59,6 @@ describe('AuthGuard profile sync', () => {
     useAppStore.getState().resetAccountState();
     localStorage.clear();
     localStorage.setItem('caprio_active_account', auth.user.sub);
-    localStorage.setItem('onboarding_complete', 'true');
   });
 
   it.each([

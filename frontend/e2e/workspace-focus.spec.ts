@@ -2,19 +2,18 @@ import { test, expect, type Page } from '@playwright/test';
 import { date, titles, tasksForDay, mockDay, planView } from './fixtures/day';
 import type { BackendTask, BackendCategory } from '../src/lib/api';
 
-async function workspace(page: Page, onboardingComplete = true) {
+async function workspace(page: Page) {
   await mockDay(page);
   const state = {
     inbox: [{ ...tasksForDay()[0], id: 'inbox-1', title: 'Write a brief', status: 'backlog', categoryId: 'work' }] as BackendTask[],
     categories: [{ id: 'work', name: 'Work', color: '#4A7CFF', hoursPerWeek: 40 }, { id: 'health', name: 'Health', color: '#EF4444', hoursPerWeek: 3 }] as BackendCategory[],
-    onboardingComplete,
   };
   const writes: Array<{ method: string; path: string; body: Record<string, unknown> }> = [];
   await page.route('**/api/**', async route => {
     const request = route.request();
     const url = new URL(request.url());
     const method = request.method();
-    if (url.pathname === '/api/bootstrap') return route.fulfill({ json: { user: { id: 'demo', name: 'Demo', email: 'demo@example.com' }, onboardingComplete: state.onboardingComplete, preferences: { briefTime: '08:00' }, categories: state.categories, todayTasks: tasksForDay(), backlog: state.inbox, streak: 0 } });
+    if (url.pathname === '/api/bootstrap') return route.fulfill({ json: { user: { id: 'demo', name: 'Demo', email: 'demo@example.com' }, preferences: { briefTime: '08:00' }, categories: state.categories, todayTasks: tasksForDay(), backlog: state.inbox, streak: 0 } });
     if (url.pathname === '/api/tasks' && method === 'GET' && url.searchParams.get('status') === 'backlog') return route.fulfill({ json: { tasks: state.inbox.filter(task => task.status === 'backlog') } });
     if (url.pathname === '/api/chat/sessions') return route.fulfill({ json: { sessions: [
       { sessionDate: date, title: 'A focused day', messageCount: 3, updatedAt: date, state: 'active' },
@@ -35,13 +34,6 @@ async function workspace(page: Page, onboardingComplete = true) {
       else if (task) Object.assign(task, body);
       return route.fulfill({ json: task ?? {} });
     }
-    if (url.pathname === '/api/settings' || url.pathname === '/api/onboarding') {
-      const body = request.postDataJSON();
-      writes.push({ method, path: url.pathname, body });
-      if (body.categories) state.categories = body.categories;
-      if (url.pathname === '/api/onboarding') state.onboardingComplete = true;
-      return route.fulfill({ json: {} });
-    }
     return route.fallback();
   });
   return { state, writes };
@@ -56,7 +48,7 @@ for (const width of [320, 390, 1440]) {
   test(`workspace pages prioritize their content at ${width}px`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 900 });
     const { writes } = await workspace(page);
-    for (const route of ['/capture', '/review', '/history', '/settings', '/settings/categories', '/settings/notifications', '/settings/voice', '/conversation']) {
+    for (const route of ['/capture', '/review', '/history', '/conversation']) {
       await page.goto(route);
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Plan my day', exact: true })).toHaveCount(0);
@@ -168,80 +160,12 @@ test('review asks only for unfinished decisions and keeps reflection optional', 
   expect(writes[0].body).toMatchObject({ date, taskActions: [{ taskId: 'task-0', action: 'done' }, { taskId: 'task-1', action: 'tomorrow' }, { taskId: 'task-2', action: 'drop' }] });
 });
 
-test('categories preserve edits across navigation and save only on confirmation', async ({ page }) => {
-  const { writes } = await workspace(page);
-  await page.goto('/settings/categories');
-  await page.locator('summary').filter({ hasText: 'Work' }).click();
-  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Projects');
-  await page.getByRole('button', { name: 'Move Projects down' }).click();
-  await expect(page.locator('#category-work')).toBeFocused();
-  await page.getByRole('navigation', { name: 'App', exact: true }).getByRole('link', { name: 'History', exact: true }).click();
-  await page.goBack();
-  await expect(page.locator('.page-body summary').last()).toContainText('Projects');
-  expect(writes).toEqual([]);
-  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'Categories saved.' })).toBeVisible();
-  expect(writes[0].body.categories).toMatchObject([{ id: 'health' }, { id: 'work', name: 'Projects', hoursPerWeek: 40 }]);
-  expect(writes[0].body.preferences).toEqual({});
-});
-
-test('failed category saves preserve edits and discard restores saved values', async ({ page }) => {
-  await workspace(page);
-  await page.route('**/api/settings', route => route.fulfill({ status: 400, json: { error: 'Could not save categories' } }));
-  await page.goto('/settings/categories');
-  await page.locator('summary').filter({ hasText: 'Work' }).click();
-  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Projects');
-  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('Could not save categories');
-  await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toHaveValue('Projects');
-  await page.getByRole('button', { name: 'Discard changes', exact: true }).click();
-  await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toHaveValue('Work');
-});
-
-test('setup confirms categories without asking for an inactive reminder preference', async ({ page }) => {
-  const { writes } = await workspace(page, false);
-  await page.goto('/onboarding');
-  await page.getByRole('button', { name: 'Work', exact: true }).click();
-  await page.getByRole('button', { name: 'Health', exact: true }).click();
-  await page.getByRole('button', { name: /Continue/ }).click();
-  await expect(page.getByRole('heading', { name: 'Your categories' })).toBeVisible();
-  await expect(page.locator('input[type=time]')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Plan my day', exact: true }).click();
-  await expect(page).toHaveURL('/conversation');
-  expect(writes[0].path).toBe('/api/onboarding');
-  expect(writes[0].body.preferences).toEqual({ proactiveReprioritization: false });
-  expect(writes[0].body.categories).toHaveLength(2);
-});
-
-
-test('expanded settings and capture details reflow with enlarged mobile text', async ({ page }) => {
+test('capture details reflow with enlarged mobile text', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 900 });
   const { writes } = await workspace(page);
   await page.goto('/capture');
   await page.locator('summary').filter({ hasText: 'Task details' }).click();
   await page.addStyleTag({ content: 'html { font-size: 200%; }' });
   await noOverflow(page);
-  await page.goto('/settings/categories');
-  await page.locator('summary').filter({ hasText: 'Work' }).click();
-  await page.addStyleTag({ content: 'html { font-size: 200%; }' });
-  await noOverflow(page);
   expect(writes).toEqual([]);
-});
-
-test('a category save locks navigation until the request finishes', async ({ page }) => {
-  await workspace(page);
-  let release!: () => void;
-  const pending = new Promise<void>(resolve => { release = resolve; });
-  await page.route('**/api/settings', async route => { await pending; await route.fallback(); });
-  await page.goto('/settings/categories');
-  await page.locator('summary').filter({ hasText: 'Work' }).click();
-  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Projects');
-  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Saving…', exact: true })).toBeDisabled();
-  await page.getByRole('navigation', { name: 'App', exact: true }).getByRole('link', { name: 'History', exact: true }).click();
-  await expect(page).toHaveURL('/settings/categories');
-  release();
-  await expect(page.getByRole('status').filter({ hasText: 'Categories saved.' })).toBeVisible();
-  await page.getByRole('navigation', { name: 'App', exact: true }).getByRole('link', { name: 'History', exact: true }).click();
-  await expect(page).toHaveURL('/history');
 });

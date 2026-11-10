@@ -157,7 +157,6 @@ describe('AuthGuard morning reopen routing', () => {
     } as unknown as Auth0ContextInterface);
     vi.mocked(api.bootstrap).mockResolvedValue({
       user: { id: 'user', name: 'Ashwin', email: 'a@example.com' },
-      onboardingComplete: true,
       preferences: prefs,
       categories: [],
       todayTasks: [],
@@ -173,8 +172,9 @@ describe('AuthGuard morning reopen routing', () => {
     expect(screen.queryByTestId('review-page')).not.toBeInTheDocument();
   });
 
-  it('opens the Conversation after setup is complete', async () => {
-    mount('/onboarding/prefs');
+  it('lets a brand-new account in without any setup', async () => {
+    // Bootstrap reports no onboarding and no categories; nothing is required first.
+    mount('/');
     expect(await screen.findByTestId('conversation-page')).toBeInTheDocument();
     expect(screen.queryByTestId('today-page')).not.toBeInTheDocument();
   });

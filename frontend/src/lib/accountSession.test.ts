@@ -22,18 +22,15 @@ describe('activateAccount', () => {
 
   it('preserves state for the same account', () => {
     localStorage.setItem('caprio_active_account', 'auth0|user-a');
-    localStorage.setItem('onboarding_complete', 'true');
     useAppStore.getState().setTasks([privateTask]);
 
     activateAccount('auth0|user-a');
 
     expect(useAppStore.getState().tasks).toEqual([privateTask]);
-    expect(localStorage.getItem('onboarding_complete')).toBe('true');
   });
 
   it('clears account state when the account changes', () => {
     localStorage.setItem('caprio_active_account', 'auth0|user-a');
-    localStorage.setItem('onboarding_complete', 'true');
     useAppStore.setState({
       user: { name: 'User A', email: 'a@example.com', categories: ['Work'] },
       tasks: [privateTask],
@@ -46,7 +43,6 @@ describe('activateAccount', () => {
     expect(state.user).toBeNull();
     expect(state.tasks).toEqual([]);
     expect(state.voiceEntries).not.toContainEqual(expect.objectContaining({ id: 'private-entry' }));
-    expect(localStorage.getItem('onboarding_complete')).toBeNull();
     expect(localStorage.getItem('caprio_active_account')).toBe('auth0|user-b');
   });
 });

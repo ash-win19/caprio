@@ -8,7 +8,6 @@ export function activateAccount(accountId: string) {
 
   useAppStore.getState().resetAccountState();
   clearDateDrafts();
-  localStorage.removeItem('onboarding_complete');
   localStorage.setItem(ACTIVE_ACCOUNT_KEY, accountId);
 }
 

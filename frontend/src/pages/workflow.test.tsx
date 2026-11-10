@@ -41,7 +41,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   workflow = baseWorkflow();
   vi.mocked(api.getWorkflow).mockImplementation(async () => workflow);
-  vi.mocked(api.bootstrap).mockResolvedValue({ user: { id: 'user', name: 'Ashwin', email: 'user@example.com' }, onboardingComplete: true, preferences: { briefTime: '08:00', nudgeFrequency: 'light', proactiveReprioritization: false, eodReminder: false, eodTime: '18:00', micSensitivity: 50, language: 'en', saveTranscripts: false }, categories: [], todayTasks: [], backlog: [], streak: 0 });
+  vi.mocked(api.bootstrap).mockResolvedValue({ user: { id: 'user', name: 'Ashwin', email: 'user@example.com' }, preferences: { briefTime: '08:00', nudgeFrequency: 'light', proactiveReprioritization: false, eodReminder: false, eodTime: '18:00', micSensitivity: 50, language: 'en', saveTranscripts: false }, categories: [], todayTasks: [], backlog: [], streak: 0 });
   vi.mocked(api.getTodayTasks).mockResolvedValue([]);
   vi.mocked(api.getInboxTasks).mockResolvedValue([]);
 });

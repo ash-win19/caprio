@@ -123,7 +123,6 @@ export interface BootstrapResponse {
     email: string;
     name: string;
   };
-  onboardingComplete: boolean;
   preferences: UserPrefs;
   categories: Category[];
   todayTasks: BackendTask[];
@@ -291,20 +290,6 @@ function mapBackendCategory(category: BackendCategory | Category): Category {
 
 export async function getCategories(): Promise<Category[]> {
   return (await bootstrap()).categories;
-}
-
-export async function updateSettings(preferences: Partial<UserPrefs>, categories?: Category[]): Promise<void> {
-  await fetchWithAuth('/api/settings', {
-    method: 'PATCH',
-    body: JSON.stringify({ preferences, categories }),
-  });
-}
-
-export async function completeOnboarding(preferences: Partial<UserPrefs>, categories: Category[]): Promise<void> {
-  await fetchWithAuth('/api/onboarding', {
-    method: 'POST',
-    body: JSON.stringify({ preferences, categories }),
-  });
 }
 
 // One row of the day's plan: saved work with the draft applied. The badge

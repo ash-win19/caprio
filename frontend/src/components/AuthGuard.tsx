@@ -81,11 +81,9 @@ export function AuthGuard({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!session.data || !account || preparedAccount !== account) return;
-    const { categories, preferences, onboardingComplete } = session.data;
+    const { categories, preferences } = session.data;
     useAppStore.getState().setCategories(categories);
     useAppStore.getState().setPrefs(preferences);
-    if (onboardingComplete) localStorage.setItem('onboarding_complete', 'true');
-    else localStorage.removeItem('onboarding_complete');
   }, [account, preparedAccount, session.data]);
 
   if (isLoading && !isDemo) return <SessionStatus>Loading your account...</SessionStatus>;
@@ -102,9 +100,6 @@ export function AuthGuard({ children }: { children: ReactNode }) {
       </SessionStatus>
     );
   }
-  if (!session.data.onboardingComplete && !location.pathname.startsWith('/onboarding')) return <Navigate to="/onboarding" replace />;
-
-  if (session.data.onboardingComplete && location.pathname.startsWith('/onboarding')) return <Navigate to="/conversation" replace />;
   const fromPublicRoute = PUBLIC_ROUTES.includes(location.pathname);
   // Today is always the current Day, so every way into it follows the entry rule.
   if (fromPublicRoute || location.pathname === '/today') return <DayEntry key={`${account}:${date}`} account={account} date={date} fromPublicRoute={fromPublicRoute} openedToday={opensToday(location.state, date)}>{children}</DayEntry>;

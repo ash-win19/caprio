@@ -8,18 +8,12 @@ import AppLayout from "@/layouts/AppLayout";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
-import Onboarding from "./pages/Onboarding";
-import OnboardingPrefs from "./pages/OnboardingPrefs";
 import Today from "./pages/Today";
 import Conversation from "./pages/Conversation";
 import Capture from "./pages/Capture";
 import Review from "./pages/Review";
 import History from "./pages/History";
 import HistoryDay from "./pages/HistoryDay";
-import SettingsPage from "./pages/Settings";
-import SettingsCategories from "./pages/SettingsCategories";
-import SettingsNotifications from "./pages/SettingsNotifications";
-import SettingsVoice from "./pages/SettingsVoice";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -42,8 +36,9 @@ const App = () => (
             <Route path="/landing" element={<Landing />} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
-            <Route path="/onboarding" element={<Onboarding />} />
-            <Route path="/onboarding/prefs" element={<OnboardingPrefs />} />
+            {/* Setup and Settings are gone; their old links open Today. */}
+            <Route path="/onboarding/*" element={<Navigate to="/today" replace />} />
+            <Route path="/settings/*" element={<Navigate to="/today" replace />} />
             <Route path="/conversation" element={<Conversation />} />
             <Route path="/new" element={<ToConversation />} />
             <Route element={<AppLayout />}>
@@ -53,10 +48,6 @@ const App = () => (
               <Route path="/history" element={<History />} />
               <Route path="/history/:date" element={<HistoryDay />} />
               <Route path="/momentum" element={<Navigate to="/history" replace />} />
-              <Route path="/settings" element={<SettingsPage />} />
-              <Route path="/settings/categories" element={<SettingsCategories />} />
-              <Route path="/settings/notifications" element={<SettingsNotifications />} />
-              <Route path="/settings/voice" element={<SettingsVoice />} />
               <Route path="*" element={<NotFound />} />
             </Route>
           </Routes>

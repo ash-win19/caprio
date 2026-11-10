@@ -40,9 +40,6 @@ func setupWorkflowHTTP(t *testing.T) (*gin.Engine, *db.Store, uuid.UUID) {
 	r.POST("/api/tasks", tasks.Create)
 	r.PATCH("/api/tasks/:id", tasks.Update)
 	r.DELETE("/api/tasks/:id", tasks.Delete)
-	onboarding := handlers.NewOnboardingHandler(store)
-	r.POST("/api/onboarding", onboarding.Complete)
-	r.PATCH("/api/settings", onboarding.UpdateSettings)
 	workflow := handlers.NewChatHandler(store, chat.NewService(store, nil))
 	r.GET("/api/workflow", workflow.GetWorkflow)
 	r.POST("/api/day/plan/confirm", workflow.Confirm)
@@ -107,29 +104,19 @@ func TestTaskMutationKeepsCompletionConsistentAndKeepsTheDraft(t *testing.T) {
 	require.Equal(t, "2090-09-07", moved["plannedForDate"])
 }
 
-func TestOnboardingAndSettingsPreserveCategoryIdentity(t *testing.T) {
+func TestANewAccountIsUsableWithoutOnboarding(t *testing.T) {
 	r, store, user := setupWorkflowHTTP(t)
-	first := httpJSON(t, r, "POST", "/api/onboarding", map[string]any{"preferences": map[string]any{"briefTime": "8 AM", "micSensitivity": 50}, "categories": []any{map[string]any{"id": "1", "name": "Work", "color": "#4A7CFF"}}}, 200)
-	require.Equal(t, true, first["onboardingComplete"])
-	categories := first["categories"].([]any)
-	require.Len(t, categories, 1)
-	id := categories[0].(map[string]any)["id"].(string)
-	task := httpJSON(t, r, "POST", "/api/tasks", map[string]any{"title": "Prepare brief", "categoryId": id, "plannedForDate": "2090-09-06"}, 201)
-	edited := httpJSON(t, r, "PATCH", "/api/settings", map[string]any{"categories": []any{map[string]any{"id": id, "name": "Client work", "color": "#4A7CFF"}}}, 200)
-	require.Equal(t, id, edited["categories"].([]any)[0].(map[string]any)["id"])
-	saved, err := store.Queries.GetTaskByID(context.Background(), generated.GetTaskByIDParams{ID: uuid.MustParse(task["id"].(string)), UserID: user})
-	require.NoError(t, err)
-	require.Equal(t, uuid.MustParse(id), *saved.CategoryID)
-	httpJSON(t, r, "PATCH", "/api/settings", map[string]any{"preferences": map[string]any{"nudgeFrequency": "minimal"}}, 200)
+	var onboarded bool
+	require.NoError(t, store.Pool.QueryRow(context.Background(), `SELECT onboarding_complete FROM users WHERE id=$1`, user).Scan(&onboarded))
+	require.False(t, onboarded, "the account never went through onboarding")
 	bootstrap := httpJSON(t, r, "GET", "/api/bootstrap?date=2090-09-06", nil, 200)
-	require.Equal(t, true, bootstrap["onboardingComplete"])
-	require.Len(t, bootstrap["todayTasks"], 1)
-	require.Len(t, bootstrap["categories"], 1)
-	httpJSON(t, r, "POST", "/api/tasks", map[string]any{"title": "Invalid category", "categoryId": uuid.NewString()}, 400)
-	httpJSON(t, r, "PATCH", "/api/settings", map[string]any{"categories": []any{}}, 200)
-	saved, err = store.Queries.GetTaskByID(context.Background(), generated.GetTaskByIDParams{ID: saved.ID, UserID: user})
-	require.NoError(t, err)
-	require.Nil(t, saved.CategoryID)
+	require.NotContains(t, bootstrap, "onboardingComplete", "bootstrap no longer reports onboarding")
+	require.Empty(t, bootstrap["categories"])
+	require.Equal(t, "Test", bootstrap["user"].(map[string]any)["name"])
+	// With no categories set up, the account can plan and save tasks at once.
+	httpJSON(t, r, "POST", "/api/tasks", map[string]any{"title": "Prepare brief", "plannedForDate": "2090-09-06"}, 201)
+	require.Len(t, httpJSON(t, r, "GET", "/api/bootstrap?date=2090-09-06", nil, 200)["todayTasks"], 1)
+	require.Equal(t, "planning", httpJSON(t, r, "GET", "/api/workflow?date=2090-09-06", nil, 200)["state"])
 }
 
 func TestConfirmNeverUndoesATaskTickedOffWhileTheDraftWaited(t *testing.T) {
