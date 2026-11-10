@@ -82,7 +82,7 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
   }, [seed, setInput]);
 
   const refresh = () => {
-    for (const key of ['workflow', 'tasks', 'inbox', 'bootstrap', 'chat-sessions']) void queryClient.invalidateQueries({ queryKey: [key] });
+    for (const key of ['workflow', 'tasks', 'inbox', 'bootstrap', 'history']) void queryClient.invalidateQueries({ queryKey: [key] });
   };
   // Confirm's variable says whether this is the Day's first plan, for the toast.
   const confirm = useMutation({

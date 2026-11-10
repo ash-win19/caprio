@@ -82,6 +82,7 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 		api.PATCH("/settings", onboarding.UpdateSettings)
 		api.GET("/workflow", chatH.GetWorkflow)
 		api.GET("/chat/sessions", chatH.Sessions)
+		api.GET("/history", chatH.History)
 		api.POST("/day/plan/confirm", chatH.Confirm)
 		api.POST("/day/plan/discard", chatH.Discard)
 		api.POST("/day/rollover", chatH.Rollover)

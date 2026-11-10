@@ -14,7 +14,8 @@ import Today from "./pages/Today";
 import Conversation from "./pages/Conversation";
 import Capture from "./pages/Capture";
 import Review from "./pages/Review";
-import Momentum from "./pages/Momentum";
+import History from "./pages/History";
+import HistoryDay from "./pages/HistoryDay";
 import SettingsPage from "./pages/Settings";
 import SettingsCategories from "./pages/SettingsCategories";
 import SettingsNotifications from "./pages/SettingsNotifications";
@@ -49,7 +50,9 @@ const App = () => (
               <Route path="/today" element={<Today />} />
               <Route path="/capture" element={<Capture />} />
               <Route path="/review" element={<Review />} />
-              <Route path="/momentum" element={<Momentum />} />
+              <Route path="/history" element={<History />} />
+              <Route path="/history/:date" element={<HistoryDay />} />
+              <Route path="/momentum" element={<Navigate to="/history" replace />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/settings/categories" element={<SettingsCategories />} />
               <Route path="/settings/notifications" element={<SettingsNotifications />} />

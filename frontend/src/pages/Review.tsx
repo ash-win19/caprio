@@ -50,7 +50,7 @@ function DayReview({ date, forceCloseBanner }: { date: string; forceCloseBanner:
     onSuccess: async () => {
       setSaved(true);
       setActions({}); setNotes(''); setEnergy(null); setReflectionOpen(false); setStep(0);
-      await Promise.all(['workflow', 'tasks', 'inbox', 'bootstrap', 'chat-sessions'].map((key) => queryClient.invalidateQueries({ queryKey: [key] })));
+      await Promise.all(['workflow', 'tasks', 'inbox', 'bootstrap', 'history'].map((key) => queryClient.invalidateQueries({ queryKey: [key] })));
     },
     onError: () => { void workflowQuery.refetch(); },
   });

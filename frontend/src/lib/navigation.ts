@@ -2,5 +2,5 @@
 // the keyboard shortcut lead there.
 export const NAV_ITEMS = [
   { label: 'Today', path: '/today' },
-  { label: 'History', path: '/momentum' },
+  { label: 'History', path: '/history' },
 ] as const;

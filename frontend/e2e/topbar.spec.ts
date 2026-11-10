@@ -28,7 +28,7 @@ test('planner drafts survive browser history and page navigation', async ({ page
   await page.goBack();
   await expect(input).toHaveValue('Keep my unsubmitted planning notes');
   await page.getByRole('navigation', { name: 'App' }).getByRole('link', { name: 'History', exact: true }).click();
-  await expect(page).toHaveURL('/momentum');
+  await expect(page).toHaveURL('/history');
   await page.goBack();
   await expect(input).toHaveValue('Keep my unsubmitted planning notes');
   expect(writes).toEqual([]);
@@ -72,7 +72,7 @@ for (const width of [320, 390, 768, 1024]) {
     test.setTimeout(60_000); // This case loads ten routes; each assertion keeps its normal timeout.
     await page.setViewportSize({ width, height: 844 });
     await mockDay(page);
-    for (const route of ['/today', '/conversation', '/capture', '/review?date=2026-09-06', '/momentum', '/settings', '/settings/categories', '/settings/notifications', '/settings/voice', '/missing']) {
+    for (const route of ['/today', '/conversation', '/capture', '/review?date=2026-09-06', '/history', '/settings', '/settings/categories', '/settings/notifications', '/settings/voice', '/missing']) {
       await page.goto(route);
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);

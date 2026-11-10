@@ -1,4 +1,4 @@
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowRight, ArrowUp, CheckCircle2, ChevronDown, Plus } from 'lucide-react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
@@ -14,18 +14,16 @@ import { Page } from '@/components/PageLayout';
 import { TodayTaskRow } from '@/components/TodayTaskRow';
 import { planChangeCount } from '@/components/workflow/PlanCard';
 import { WorkflowError } from '@/components/workflow/WorkflowUI';
-import { dateLabel, selectedDate } from '@/components/workflow/dates';
+import { dateLabel } from '@/components/workflow/dates';
 import type { Task } from '@/lib/types';
 
 const EMPTY_TASKS: Task[] = [];
 
 // The current Day's list: what's left, in priority order. Talking to Caprio
-// happens in the Conversation, which the prompts and the message bar open. A
-// valid `date` shows that day's list read-only, for links from History.
+// happens in the Conversation, which the prompts and the message bar open.
+// Past Days are in History.
 export default function Today() {
-  const [params] = useSearchParams();
-  const today = useLocalDay();
-  const date = selectedDate(params.get('date'), today);
+  const date = useLocalDay();
   const tasksQuery = useTasks(date);
   const workflowQuery = useWorkflow(date);
   const reorder = useReorderTasks();
@@ -36,9 +34,8 @@ export default function Today() {
   const active = tasks.filter(task => !task.completed);
   const completed = tasks.filter(task => task.completed);
   const workflow = workflowQuery.data;
-  const isToday = date === today;
-  const editable = isToday && workflow?.state !== 'closed';
-  const dayInProgress = isToday && workflow?.state === 'active';
+  const editable = workflow?.state !== 'closed';
+  const dayInProgress = workflow?.state === 'active';
   const remainingMinutes = active.reduce((sum, task) => sum + (task.duration || 0), 0);
   const busy = reorder.isPending || toggle.isPending;
   const rowsReadOnly = !editable || busy;
@@ -93,24 +90,23 @@ export default function Today() {
   };
   const allComplete = tasks.length > 0 && active.length === 0;
   const draftChanges = workflow?.plan ? planChangeCount(workflow.plan) : 0;
-  // Unknown while the Day loads, so nothing asks for planning until it is known.
   const unplanned = Boolean(workflow) && !isConfirmed(workflow);
   const loadError = tasksQuery.error || workflowQuery.error;
   const saveError = create.error || reorder.error || toggle.error;
 
   return <Page className="today-page">
-    <header className="today-head">
+    <header className="list-head">
       <div className="min-w-0">
-        <h1>{isToday ? 'Today' : dateLabel(date, true)}</h1>
-        {isToday && <p className="today-date">{dateLabel(date)}</p>}
+        <h1>Today</h1>
+        <p className="list-subtitle">{dateLabel(date)}</p>
       </div>
       {tasksQuery.isSuccess && <p className="today-summary" aria-live="polite" aria-atomic="true"><strong>{active.length} left</strong>{remainingMinutes > 0 && ` · ~${formatMinutes(remainingMinutes)}`}</p>}
     </header>
-    {tasksQuery.isLoading || workflowQuery.isLoading ? <p role="status" className="py-16 text-center text-sm text-muted-foreground">Loading your list…</p> : loadError ? <WorkflowError error={loadError} retry={() => { void tasksQuery.refetch(); void workflowQuery.refetch(); }} /> : <section className="today-work" aria-label={isToday ? 'Today’s list' : 'This day’s list'}>
-      {isToday && workflow?.plan ? <div className="today-prompt today-prompt-drafted">
+    {tasksQuery.isLoading || workflowQuery.isLoading ? <p role="status" className="py-16 text-center text-sm text-muted-foreground">Loading your list…</p> : loadError ? <WorkflowError error={loadError} retry={() => { void tasksQuery.refetch(); void workflowQuery.refetch(); }} /> : <section className="today-work" aria-label="Today’s list">
+      {workflow?.plan ? <div className="today-prompt today-prompt-drafted">
         <p><strong>Your plan is drafted.</strong> {draftChanges === 0 ? 'It’s' : draftChanges === 1 ? '1 change is' : `${draftChanges} changes are`} waiting for you.</p>
         <Button asChild size="sm" className="shrink-0"><Link to="/conversation">Review draft</Link></Button>
-      </div> : isToday && unplanned ? <div className="today-prompt">
+      </div> : unplanned ? <div className="today-prompt">
         <p><strong>You haven’t planned today.</strong> {active.some(task => task.carriedOver) ? 'Caprio has your carried tasks ready.' : 'Tell Caprio what’s on, or add tasks below.'}</p>
         <Button asChild size="sm" variant="outline" className="shrink-0"><Link to="/conversation">Plan with Caprio</Link></Button>
       </div> : null}
@@ -124,7 +120,7 @@ export default function Today() {
         <SortableContext items={active.map(task => task.id)} strategy={verticalListSortingStrategy}>
           <ol aria-label="Remaining tasks" className="today-task-list">{active.map((task, index) => <TodayTaskRow key={task.id} task={task} carriedDays={daysCarried(task, workflow?.carryoverOrigins?.[task.id], date)} readOnly={rowsReadOnly} sortable={editable} onToggle={toggleTask} canMoveUp={index > 0} canMoveDown={index < active.length - 1} onMove={direction => moveTask(index, index + direction, 'actions')} />)}</ol>
         </SortableContext>
-      </DndContext> : <p className="today-empty">{tasks.length ? 'Nothing left for today.' : isToday ? 'Nothing on today’s list yet.' : 'Nothing on this day’s list.'}</p>}
+      </DndContext> : <p className="list-empty">{tasks.length ? 'Nothing left for today.' : 'Nothing on today’s list yet.'}</p>}
       {completed.length > 0 && <details key={date} className="today-done">
         <summary id="today-done-toggle"><ChevronDown size={16} aria-hidden /><span>Done · {completed.length}</span></summary>
         <ol aria-label="Done tasks" className="today-task-list mt-3">{completed.map(task => <TodayTaskRow key={task.id} task={task} readOnly={rowsReadOnly} onToggle={toggleTask} />)}</ol>
@@ -137,8 +133,8 @@ export default function Today() {
         <Button asChild variant={allComplete ? 'default' : 'outline'} className="shrink-0"><Link to={`/review?date=${date}`}>Review day<ArrowRight size={15} className="ml-2" /></Link></Button>
       </section>}
     </section>}
-    {isToday && <div className="today-message-bar">
+    <div className="today-message-bar">
       <Link to="/conversation">{unplanned ? 'Plan your day with Caprio…' : 'Tell Caprio what changed…'}<span aria-hidden><ArrowUp size={15} /></span></Link>
-    </div>}
+    </div>
   </Page>;
 }

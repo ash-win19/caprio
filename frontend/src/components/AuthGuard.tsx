@@ -6,7 +6,6 @@ import { activateAccount } from '@/lib/accountSession';
 import { useAppStore } from '@/lib/store';
 import { bootstrap, rolloverDay, setAccessTokenProvider } from '@/lib/api';
 import { useLocalDay } from '@/lib/useLocalDay';
-import { isValidDate } from '@/lib/date';
 import { hasSkippedDay, isConfirmed, markDaySkipped, opensToday } from '@/lib/dayEntry';
 import { clearDateDrafts } from '@/lib/dateDrafts';
 import { QUERY_KEYS, useWorkflow } from '@/lib/queries';
@@ -70,7 +69,7 @@ export function AuthGuard({ children }: { children: ReactNode }) {
       if (signal.aborted) throw new DOMException('The account session changed.', 'AbortError');
       if (rolledOver) {
         client.setQueryData([...QUERY_KEYS.workflow, rolledOver.date], rolledOver);
-        await Promise.all([QUERY_KEYS.tasks, QUERY_KEYS.sessions].map(queryKey => client.invalidateQueries({ queryKey })));
+        await Promise.all([QUERY_KEYS.tasks, QUERY_KEYS.history].map(queryKey => client.invalidateQueries({ queryKey })));
       }
       return bootstrap(date);
     },
@@ -107,11 +106,8 @@ export function AuthGuard({ children }: { children: ReactNode }) {
 
   if (session.data.onboardingComplete && location.pathname.startsWith('/onboarding')) return <Navigate to="/conversation" replace />;
   const fromPublicRoute = PUBLIC_ROUTES.includes(location.pathname);
-  // Missing or invalid dates open the current day, matching Today's fallback.
-  // Valid explicit dates, including View tasks links, keep their destination.
-  const explicitDate = new URLSearchParams(location.search).get('date');
-  const opensCurrentDay = location.pathname === '/today' && (!explicitDate || !isValidDate(explicitDate));
-  if (fromPublicRoute || opensCurrentDay) return <DayEntry key={`${account}:${date}`} account={account} date={date} fromPublicRoute={fromPublicRoute} openedToday={opensToday(location.state, date)}>{children}</DayEntry>;
+  // Today is always the current Day, so every way into it follows the entry rule.
+  if (fromPublicRoute || location.pathname === '/today') return <DayEntry key={`${account}:${date}`} account={account} date={date} fromPublicRoute={fromPublicRoute} openedToday={opensToday(location.state, date)}>{children}</DayEntry>;
 
   return <>{children}</>;
 }
