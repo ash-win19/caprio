@@ -98,8 +98,8 @@ func TestTaskMutationKeepsCompletionConsistentAndKeepsTheDraft(t *testing.T) {
 	httpJSON(t, r, "PATCH", "/api/tasks/"+id, map[string]any{"completed": false}, 409)
 	httpJSON(t, r, "POST", "/api/tasks", map[string]any{"title": "Late task", "plannedForDate": "2090-09-06"}, 409)
 	captured := httpJSON(t, r, "POST", "/api/tasks", map[string]any{"title": "Inbox task", "status": "backlog", "plannedForDate": "2090-09-06"}, 201)
-	inbox := httpJSON(t, r, "GET", "/api/tasks?status=backlog", nil, 200)
-	require.Len(t, inbox["tasks"], 1)
+	later := httpJSON(t, r, "GET", "/api/tasks?status=later&date=2090-09-06", nil, 200)
+	require.Len(t, later["tasks"], 1)
 	moved := httpJSON(t, r, "PATCH", "/api/tasks/"+captured["id"].(string), map[string]any{"status": "planned", "plannedForDate": "2090-09-07"}, 200)
 	require.Equal(t, "2090-09-07", moved["plannedForDate"])
 }
@@ -171,4 +171,60 @@ func TestHistoryEndpointListsDaysBeforeTheGivenDate(t *testing.T) {
 	require.Empty(t, httpJSON(t, r, "GET", "/api/history?before=2090-09-06", nil, 200)["days"])
 	httpJSON(t, r, "GET", "/api/history", nil, 400)
 	httpJSON(t, r, "GET", "/api/history?before=soon", nil, 400)
+}
+
+func TestLaterListsUndatedAndFutureTasksAndRowsMoveBetweenLaterAndToday(t *testing.T) {
+	r, store, user := setupWorkflowHTTP(t)
+	ctx := context.Background()
+	add := func(title string, fields map[string]any) string {
+		body := map[string]any{"title": title, "plannedForDate": "2090-09-06"}
+		for key, value := range fields {
+			body[key] = value
+		}
+		return httpJSON(t, r, "POST", "/api/tasks", body, 201)["id"].(string)
+	}
+	titles := func(path string) []string {
+		out := []string{}
+		for _, task := range httpJSON(t, r, "GET", path, nil, 200)["tasks"].([]any) {
+			out = append(out, task.(map[string]any)["title"].(string))
+		}
+		return out
+	}
+	onToday := add("On today", nil)
+	add("Friday", map[string]any{"plannedForDate": "2090-09-11"})
+	add("Tomorrow, second", map[string]any{"plannedForDate": "2090-09-07", "sortOrder": 1})
+	add("Tomorrow, first", map[string]any{"plannedForDate": "2090-09-07", "sortOrder": 0})
+	add("Sometime, second", map[string]any{"status": "backlog", "sortOrder": 1})
+	sometime := add("Sometime, first", map[string]any{"status": "backlog", "sortOrder": 0})
+	dropped := add("Dropped", map[string]any{"status": "backlog"})
+	httpJSON(t, r, "PATCH", "/api/tasks/"+dropped, map[string]any{"status": "dropped"}, 200)
+	add("Yesterday", map[string]any{"plannedForDate": "2090-09-05"})
+
+	// Future-dated tasks come first, soonest first; undated ones follow in their own order.
+	const later = "/api/tasks?status=later&date=2090-09-06"
+	require.Equal(t, []string{"Tomorrow, first", "Tomorrow, second", "Friday", "Sometime, first", "Sometime, second"}, titles(later))
+
+	// Move to Later: off today's list, undated. A Carried task starts fresh there.
+	_, err := store.Pool.Exec(ctx, `UPDATE tasks SET defer_count=2,carried_over=true WHERE id=$1`, onToday)
+	require.NoError(t, err)
+	_, err = store.Pool.Exec(ctx, `INSERT INTO task_carryovers(task_id,first_planned_date) VALUES($1,'2090-09-01')`, onToday)
+	require.NoError(t, err)
+	moved := httpJSON(t, r, "PATCH", "/api/tasks/"+onToday, map[string]any{"status": "backlog"}, 200)
+	require.Equal(t, "backlog", moved["status"])
+	require.EqualValues(t, 0, moved["deferCount"])
+	require.Empty(t, titles("/api/tasks?date=2090-09-06"))
+	require.Contains(t, titles(later), "On today")
+	var records int
+	require.NoError(t, store.Pool.QueryRow(ctx, `SELECT count(*) FROM task_carryovers WHERE task_id=$1`, onToday).Scan(&records))
+	require.Zero(t, records)
+	_ = user
+
+	// Move to today: planned for today, below what is already there, and out of Later.
+	httpJSON(t, r, "PATCH", "/api/tasks/"+onToday, map[string]any{"status": "planned", "plannedForDate": "2090-09-06"}, 200)
+	arrived := httpJSON(t, r, "PATCH", "/api/tasks/"+sometime, map[string]any{"status": "planned", "plannedForDate": "2090-09-06"}, 200)
+	require.Equal(t, "2090-09-06", arrived["plannedForDate"])
+	require.Equal(t, []string{"On today", "Sometime, first"}, titles("/api/tasks?date=2090-09-06"))
+	require.NotContains(t, titles(later), "Sometime, first")
+
+	httpJSON(t, r, "GET", "/api/tasks?status=later", nil, 400)
 }

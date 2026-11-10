@@ -10,6 +10,17 @@ WHERE user_id = $1
     AND status IN ('planned', 'completed')
 ORDER BY sort_order ASC;
 
+-- name: ListLaterTasks :many
+-- Later is everything not on today's list: planned tasks dated after today,
+-- soonest first, then undated (backlog) tasks in their own order.
+SELECT * FROM tasks
+WHERE user_id = $1
+    AND (status = 'backlog' OR (status = 'planned' AND planned_for_date > sqlc.arg(today)::date))
+ORDER BY (status = 'backlog'),
+    CASE WHEN status = 'backlog' THEN NULL ELSE planned_for_date END,
+    sort_order ASC,
+    created_at ASC;
+
 -- name: ListBacklogTasks :many
 SELECT * FROM tasks
 WHERE user_id = $1

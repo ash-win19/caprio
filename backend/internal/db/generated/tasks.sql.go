@@ -457,6 +457,64 @@ func (q *Queries) ListCompletedTasksByDate(ctx context.Context, arg ListComplete
 	return items, nil
 }
 
+const listLaterTasks = `-- name: ListLaterTasks :many
+SELECT id, user_id, title, description, category_id, urgency, duration, source, completed, added_today, carried_over, sort_order, due_date, defer_count, created_at, updated_at, planned_for_date, status, priority_reason, completed_at FROM tasks
+WHERE user_id = $1
+    AND (status = 'backlog' OR (status = 'planned' AND planned_for_date > $2::date))
+ORDER BY (status = 'backlog'),
+    CASE WHEN status = 'backlog' THEN NULL ELSE planned_for_date END,
+    sort_order ASC,
+    created_at ASC
+`
+
+type ListLaterTasksParams struct {
+	UserID uuid.UUID   `json:"userId"`
+	Today  pgtype.Date `json:"today"`
+}
+
+// Later is everything not on today's list: planned tasks dated after today,
+// soonest first, then undated (backlog) tasks in their own order.
+func (q *Queries) ListLaterTasks(ctx context.Context, arg ListLaterTasksParams) ([]Task, error) {
+	rows, err := q.db.Query(ctx, listLaterTasks, arg.UserID, arg.Today)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Task{}
+	for rows.Next() {
+		var i Task
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Title,
+			&i.Description,
+			&i.CategoryID,
+			&i.Urgency,
+			&i.Duration,
+			&i.Source,
+			&i.Completed,
+			&i.AddedToday,
+			&i.CarriedOver,
+			&i.SortOrder,
+			&i.DueDate,
+			&i.DeferCount,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.PlannedForDate,
+			&i.Status,
+			&i.PriorityReason,
+			&i.CompletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTasksByUser = `-- name: ListTasksByUser :many
 SELECT id, user_id, title, description, category_id, urgency, duration, source, completed, added_today, carried_over, sort_order, due_date, defer_count, created_at, updated_at, planned_for_date, status, priority_reason, completed_at FROM tasks
 WHERE user_id = $1
