@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-// Inspect the built agent without opening a remote store or calling a model.
-process.env.TURSO_DATABASE_URL = 'file::memory:';
-delete process.env.TURSO_AUTH_TOKEN;
+// Inspect the built agent without opening a database or calling a model. The
+// Mastra instance requires a storage URL, but nothing here touches storage, so
+// this placeholder is never connected to.
+process.env.MASTRA_DATABASE_URL = 'postgres://verify:verify@127.0.0.1:9/verify';
 
 const { m: mastra } = await import('../.mastra/output/mastra.mjs');
 const agent = mastra.getAgent('generalConversationAgent');

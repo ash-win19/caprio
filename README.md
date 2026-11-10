@@ -8,10 +8,12 @@ The repository root contains the Mastra service used to define and manage Caprio
 
 To run Mastra Studio locally:
 
-1. Copy `.env.example` to `.env` and set `GOOGLE_GENERATIVE_AI_API_KEY`.
+1. Copy `.env.example` to `.env`, set `GOOGLE_GENERATIVE_AI_API_KEY`, and set `MASTRA_DATABASE_URL` to the Neon dev database's pooled connection string.
 2. Run `npm install`.
 3. Run `npm run dev`.
 4. Open `http://localhost:4111`.
+
+Mastra keeps its storage in the `mastra` schema of that Postgres database and creates its tables on first start. `npm run check:server` starts the built server against a throwaway database (`CHECK_DATABASE_URL`) and checks its health, its tables, and that it refuses to start without `MASTRA_DATABASE_URL`; CI runs it on every PR.
 
 The Mastra platform deploys `src/mastra` from the repository root. In its GitHub setup screen, mark this repository as a monorepo and use `main` for both the server and Studio branches.
 
