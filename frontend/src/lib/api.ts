@@ -529,8 +529,9 @@ export async function closeDay(input: CloseDayInput): Promise<DayReview & { next
   })).json();
 }
 
-export async function getInboxTasks(): Promise<Task[]> {
-  const data = await (await fetchWithAuth('/api/tasks?status=backlog')).json();
+/** Later: tasks dated after the given day, soonest first, then undated ones. */
+export async function getLaterTasks(today: string): Promise<Task[]> {
+  const data = await (await fetchWithAuth(`/api/tasks?status=later&date=${today}`)).json();
   return (data.tasks || []).map((task: BackendTask) => mapBackendTaskToTask(task));
 }
 

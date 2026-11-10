@@ -27,8 +27,11 @@ export async function mockDay(page: Page, options: {
   firstVisit?: boolean;
   opener?: string;
   history?: HistoryDay[];
+  later?: BackendTask[];
 } = {}) {
   const tasks = options.tasks ?? tasksForDay();
+  // Later: undated (backlog) tasks and tasks dated after the fixture's day.
+  const later = options.later ?? [];
   const writes: Array<{ path: string; body: unknown }> = [];
   await page.clock.setFixedTime(new Date(`${date}T12:00:00`));
   // Unless a test asks for the first open of the day, the morning
@@ -59,9 +62,12 @@ export async function mockDay(page: Page, options: {
         return;
       }
       if (request.method() === 'PATCH') {
-        const task = tasks.find((item) => url.pathname.endsWith(`/${item.id}`));
+        const task = [...tasks, ...later].find((item) => url.pathname.endsWith(`/${item.id}`));
         if (task) {
           Object.assign(task, body);
+          // A move re-files the task between the Day's list and Later, at the end.
+          for (const list of [tasks, later]) if (list.includes(task)) list.splice(list.indexOf(task), 1);
+          (task.status === 'backlog' || task.plannedForDate > date ? later : tasks).push(task);
           await route.fulfill({ json: task });
           return;
         }
@@ -92,7 +98,7 @@ export async function mockDay(page: Page, options: {
         ...(requestedDate === date && options.opener ? { opener: options.opener } : {}),
       } });
     } else if (url.pathname === '/api/tasks') {
-      await route.fulfill({ json: { tasks } });
+      await route.fulfill({ json: { tasks: url.searchParams.get('status') === 'later' ? later : tasks } });
     } else if (url.pathname === '/api/history') {
       await route.fulfill({ json: { days: (options.history ?? []).filter(day => day.date < (url.searchParams.get('before') ?? '')) } });
     } else if (url.pathname === '/api/chat/sessions') {
