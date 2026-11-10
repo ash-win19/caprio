@@ -86,7 +86,10 @@ func (s *Service) History(ctx context.Context, userID uuid.UUID, before pgtype.D
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	wrapUps, err := s.wrapUps(ctx, userID, before)
+	if len(days) == 0 {
+		return days, nil
+	}
+	wrapUps, err := s.wrapUps(ctx, userID, days[len(days)-1].Date, before)
 	if err != nil {
 		return nil, err
 	}
@@ -98,11 +101,12 @@ func (s *Service) History(ctx context.Context, userID uuid.UUID, before pgtype.D
 	return days, nil
 }
 
-// wrapUps maps each Day the person wrapped up to its latest note. A Day that
-// is continued after Wrap up ends a second time through Rollover, which
-// records no note; the person's own Wrap up still stands.
-func (s *Service) wrapUps(ctx context.Context, userID uuid.UUID, before pgtype.Date) (map[string]string, error) {
-	rows, err := s.store.Pool.Query(ctx, `SELECT plan_date::text,review FROM day_reviews WHERE user_id=$1 AND plan_date<$2 ORDER BY created_at,id`, userID, before)
+// wrapUps maps each Day the person wrapped up, from the oldest listed Day up
+// to the given one, to its latest note. A Day that is continued after Wrap up
+// ends a second time through Rollover, which records no note; the person's
+// own Wrap up still stands.
+func (s *Service) wrapUps(ctx context.Context, userID uuid.UUID, oldest string, before pgtype.Date) (map[string]string, error) {
+	rows, err := s.store.Pool.Query(ctx, `SELECT plan_date::text,review FROM day_reviews WHERE user_id=$1 AND plan_date>=$2::date AND plan_date<$3 ORDER BY created_at,id`, userID, oldest, before)
 	if err != nil {
 		return nil, err
 	}
