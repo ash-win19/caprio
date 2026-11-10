@@ -553,7 +553,7 @@ describe('Daily planning workflow', () => {
     expect(card).toHaveTextContent('1 new · 1 moved · 1 carried');
     expect(screen.getByRole('region', { name: 'Today' })).toHaveTextContent(/Finish report.*Ship hotfixNew/);
     expect(screen.getByRole('region', { name: 'Carried forward' })).toHaveTextContent('Fix publishing');
-    expect(screen.getByRole('region', { name: 'Other days' })).toHaveTextContent(`Team meeting${dateLabel(nextDate(today))}Moved`);
+    expect(screen.getByRole('region', { name: 'Later' })).toHaveTextContent(`Team meeting${dateLabel(nextDate(today))}Moved`);
     expect(card).toHaveTextContent('Done · 2');
     expect(screen.getByRole('button', { name: 'Plan updated · Added Ship hotfix · Moved Team meeting' })).toBeInTheDocument();
   });

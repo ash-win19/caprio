@@ -69,8 +69,8 @@ test('a moved task shows under other days with its badge while the rest of the d
   ) });
   await page.goto(`/conversation?date=${date}`);
   const proposal = page.getByRole('region', { name: 'Proposed plan' });
-  await expect(proposal.getByRole('region', { name: 'Other days' })).toContainText(tasks[1].title);
-  await expect(proposal.getByRole('region', { name: 'Other days' })).toContainText('Moved');
+  await expect(proposal.getByRole('region', { name: 'Later' })).toContainText(tasks[1].title);
+  await expect(proposal.getByRole('region', { name: 'Later' })).toContainText('Moved');
   await expect(proposal.getByRole('region', { name: 'Today' }).locator('li')).toHaveCount(2);
   await expect(proposal).not.toContainText('Removed');
   await expect(proposal.getByRole('button', { name: 'Confirm plan' })).toBeVisible();

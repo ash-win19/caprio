@@ -118,10 +118,12 @@ test('enlarged text on a short phone screen leaves the conversation readable', a
   await page.addStyleTag({ content: 'html { font-size: 200%; }' });
   // The opener can be scrolled fully into view without a bar or the composer covering it.
   const message = page.getByText(opener, { exact: true });
-  await message.scrollIntoViewIfNeeded();
-  const box = (await message.boundingBox())!;
-  expect(box.y).toBeGreaterThanOrEqual(0);
-  expect(box.y + box.height).toBeLessThanOrEqual(480);
+  // Retried, because the thread's own scroll to its latest message can land after ours.
+  await expect.poll(async () => {
+    await message.evaluate(element => element.scrollIntoView({ block: 'center' }));
+    const box = (await message.boundingBox())!;
+    return box.y >= 0 && box.y + box.height <= 480;
+  }).toBe(true);
   const uncovered = await message.evaluate(element => {
     const rect = element.getBoundingClientRect();
     return [0.2, 0.5, 0.8].every(at => element.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height * at)));

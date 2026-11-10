@@ -67,7 +67,7 @@ func TestDraftMergesLaterChangesIntoOneEntryPerTask(t *testing.T) {
 	turn := uuid.New()
 	sleep, err := d.AddTask(env, turn, AddTaskInput{Title: "Sleep early"})
 	require.NoError(t, err)
-	_, err = d.EditTask(env, turn, sleep.Ref, map[string]json.RawMessage{"description": raw("Lights out by 10pm")})
+	_, err = d.EditTask(env, turn, sleep.Ref, map[string]json.RawMessage{"duration": raw(20)})
 	require.NoError(t, err)
 	_, err = d.MoveTask(env, turn, sleep.Ref, "2026-09-24", false)
 	require.NoError(t, err)
@@ -75,7 +75,7 @@ func TestDraftMergesLaterChangesIntoOneEntryPerTask(t *testing.T) {
 	require.Len(t, ops, 1)
 	require.Equal(t, "create", ops[0].Kind)
 	require.Equal(t, "2026-09-24", ops[0].Date)
-	require.JSONEq(t, `"Lights out by 10pm"`, string(ops[0].Fields["description"]))
+	require.JSONEq(t, `20`, string(ops[0].Fields["duration"]))
 
 	removed, err := d.RemoveTask(env, turn, sleep.Ref)
 	require.NoError(t, err)

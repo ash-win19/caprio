@@ -1,41 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
-import { mockDay, date, tasksForDay, planView, openPlan } from './fixtures/day';
-import type { PlanView, Workflow } from '../src/lib/api';
-
-// A day whose chat turns return scripted replies and drafts, and whose
-// Confirm and Discard behave like the backend. Writes are recorded.
-async function conversationDay(page: Page, start: Partial<Workflow>, turns: Array<{ text: string; plan?: PlanView | null }>) {
-  const tasks = tasksForDay();
-  await mockDay(page, { state: start.state ?? 'planning', tasks, firstVisit: true });
-  let workflow: Workflow = { date, state: 'planning', version: 1, tasks, messages: [], backlog: [], plan: null, availableMinutes: null, review: null, ...start };
-  const writes: string[] = [];
-  let turn = 0;
-  await page.route('**/api/**', async route => {
-    const path = new URL(route.request().url()).pathname;
-    // Rollover runs on every app open; it isn't a change from the Conversation.
-    if (route.request().method() !== 'GET' && path !== '/api/day/rollover') writes.push(path);
-    if (path === '/api/workflow') return route.fulfill({ json: workflow });
-    if (path === '/api/tasks') return route.fulfill({ json: { tasks: workflow.tasks } });
-    if (path === '/api/day/plan/confirm') {
-      const added = (workflow.plan?.today ?? []).filter(item => item.badge === 'new').map((item, index) => ({ ...tasks[0], id: `added-${index}`, title: item.title }));
-      workflow = { ...workflow, state: 'active', version: workflow.version + 1, plan: null, tasks: [...workflow.tasks, ...added] };
-      return route.fulfill({ json: workflow });
-    }
-    if (path === '/api/day/plan/discard') {
-      workflow = { ...workflow, version: workflow.version + 1, plan: null, messages: [...workflow.messages, { id: `discarded-${workflow.version}`, role: 'event', eventType: 'discarded', content: 'Proposal discarded' }] };
-      return route.fulfill({ json: workflow });
-    }
-    if (path === '/api/chat/stream') {
-      const { content } = route.request().postDataJSON();
-      const reply = turns[turn++];
-      workflow = { ...workflow, version: workflow.version + 1, plan: reply.plan === undefined ? workflow.plan : reply.plan,
-        messages: [...workflow.messages, { id: `u${turn}`, role: 'user', content }, { id: `a${turn}`, role: 'assistant', content: reply.text }] };
-      return route.fulfill({ contentType: 'text/event-stream', body: `event: done\ndata: ${JSON.stringify({ text: reply.text, workflow })}\n\n` });
-    }
-    return route.fallback();
-  });
-  return writes;
-}
+import { conversationDay, date, tasksForDay, planView, openPlan } from './fixtures/day';
+import type { Workflow } from '../src/lib/api';
 
 async function send(page: Page, text: string, reply: string) {
   await page.getByRole('textbox', { name: 'Message about your day' }).fill(text);
@@ -131,4 +96,16 @@ test('the Draft footer stays hidden when nothing has an Estimate', async ({ page
   const panel = page.getByRole('complementary', { name: 'Today’s plan' });
   await expect(panel.getByRole('button', { name: 'Confirm plan' })).toBeVisible();
   await expect(panel.getByText(/^Planned/)).toHaveCount(0);
+});
+
+test('the time stated in the Conversation appears in the Draft footer', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await conversationDay(page, { tasks: [] }, [{
+    text: 'That fits in your 4 hours.',
+    plan: planView([{ ref: 'new:1', title: 'Stats problem set (due 5pm)', badge: 'new', date, duration: 120 }]),
+    availableMinutes: 240,
+  }]);
+  await page.goto(`/conversation?date=${date}`);
+  await send(page, 'Stats problem set is due at 5, about two hours. I have 4 hours.', 'That fits in your 4 hours.');
+  await expect(page.getByRole('complementary', { name: 'Today’s plan' }).getByText('Planned ~2h for your 4h', { exact: true })).toBeVisible();
 });

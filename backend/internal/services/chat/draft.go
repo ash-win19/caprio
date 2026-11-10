@@ -42,7 +42,6 @@ type draftEnv struct {
 	Date       pgtype.Date
 	Today      string // the person's current day; a closed today can still receive new work
 	Owned      []generated.Task
-	Categories []generated.Category
 	ClosedDays map[string]bool
 	Writable   func(pgtype.Date) error
 }
@@ -70,16 +69,40 @@ func (e draftEnv) arrivable(day string) error {
 	return nil
 }
 
+// AddTaskInput is what the planner may set on a new task: a title, an
+// Estimate, and a Day or Later.
 type AddTaskInput struct {
-	Title         string     `json:"title"`
-	Description   *string    `json:"description"`
-	Duration      *int32     `json:"duration"`
-	Urgency       string     `json:"urgency"`
-	CategoryID    *uuid.UUID `json:"categoryId"`
-	DueDate       *string    `json:"dueDate"`
-	Date          string     `json:"date"`
-	Inbox         bool       `json:"inbox"`
-	NewOccurrence bool       `json:"newOccurrence"`
+	Title         string `json:"title"`
+	Duration      *int32 `json:"duration"`
+	Date          string `json:"date"`
+	Inbox         bool   `json:"inbox"`
+	NewOccurrence bool   `json:"newOccurrence"`
+}
+
+// checkNewTaskKeys rejects any add_task input a task does not have. It goes by
+// key, as edit_task does, so nothing the planner sends is dropped silently and
+// a null still counts as naming the field.
+func checkNewTaskKeys(input json.RawMessage) error {
+	var keys map[string]json.RawMessage
+	if json.Unmarshal(input, &keys) != nil {
+		return nil // the tool's decoder reports malformed input
+	}
+	for key := range keys {
+		switch key {
+		case "title", "duration", "date", "inbox", "newOccurrence":
+		case "description", "dueDate", "categoryId", "urgency":
+			return errUnsupportedField()
+		default:
+			return invalid("unsupported task field %s", key)
+		}
+	}
+	return nil
+}
+
+// errUnsupportedField tells the planner what a task is made of, so it stops
+// trying to set anything else.
+func errUnsupportedField() error {
+	return invalidCode("unsupported_field", "A task has only a title, an estimate, and a day or Later. Put a detail that matters, such as a deadline, in the title.")
 }
 
 // DraftResult tells the agent what a change did. "exists" means nothing was
@@ -257,23 +280,14 @@ func effective(saved *generated.Task, entry *DraftEntry, env draftEnv) (generate
 func (e draftEnv) checkFields(base generated.Task, fields map[string]json.RawMessage) error {
 	for key := range fields {
 		switch key {
-		case "title", "description", "categoryId", "urgency", "duration", "dueDate":
+		case "title", "duration":
+		case "description", "dueDate", "categoryId", "urgency":
+			return errUnsupportedField()
 		default:
 			return invalid("unsupported task field %s", key)
 		}
 	}
-	if err := patchTask(&base, fields); err != nil {
-		return err
-	}
-	if base.CategoryID != nil {
-		for _, c := range e.Categories {
-			if c.ID == *base.CategoryID {
-				return nil
-			}
-		}
-		return invalidCode("unknown_category", "That category does not exist.")
-	}
-	return nil
+	return patchTask(&base, fields)
 }
 
 func (e draftEnv) destination(date string, inbox bool) (string, error) {
@@ -315,20 +329,8 @@ func (d *Draft) uniqueNewTitle(env draftEnv, ref string, title string) error {
 func (d *Draft) AddTask(env draftEnv, turn uuid.UUID, in AddTaskInput) (DraftResult, error) {
 	title := strings.TrimSpace(in.Title)
 	fields := map[string]json.RawMessage{"title": mustJSON(title)}
-	if in.Description != nil {
-		fields["description"] = mustJSON(*in.Description)
-	}
 	if in.Duration != nil {
 		fields["duration"] = mustJSON(*in.Duration)
-	}
-	if in.Urgency != "" {
-		fields["urgency"] = mustJSON(in.Urgency)
-	}
-	if in.CategoryID != nil {
-		fields["categoryId"] = mustJSON(*in.CategoryID)
-	}
-	if in.DueDate != nil {
-		fields["dueDate"] = mustJSON(*in.DueDate)
 	}
 	if err := env.checkFields(generated.Task{Urgency: generated.UrgencyLevelMedium}, fields); err != nil {
 		return DraftResult{}, err

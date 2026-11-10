@@ -208,8 +208,8 @@ func TestTurnsBuildOneDraftForTheDayUntilConfirm(t *testing.T) {
 	sleepRef := second.Workflow.Plan.Today[2].Ref
 	require.Equal(t, "Sleep early", second.Workflow.Plan.Today[2].Title)
 	a.ops, a.script = nil, func(_ context.Context, _ mastra.Call, tool toolFunc) (string, error) {
-		tool("edit_task", map[string]any{"ref": sleepRef, "fields": map[string]any{"description": "Lights out by 10pm"}})
-		return "Sleep early now says lights out by 10pm.", nil
+		tool("edit_task", map[string]any{"ref": sleepRef, "fields": map[string]any{"duration": 45}})
+		return "Sleep early is down for 45 minutes.", nil
 	}
 	third := send("make sleep early 10pm")
 	require.Equal(t, "Plan updated · Edited Sleep early", events(third.Workflow, "plan_update")[2].Content)
@@ -230,7 +230,7 @@ func TestTurnsBuildOneDraftForTheDayUntilConfirm(t *testing.T) {
 	require.ElementsMatch(t, []string{"Ship Phenyx", "Ship slides and prepare for demo", "Sleep early"}, titles)
 	for _, task := range confirmed.Tasks {
 		if task.Title == "Sleep early" {
-			require.Equal(t, "Lights out by 10pm", *task.Description)
+			require.EqualValues(t, 45, *task.Duration)
 		}
 		if task.Title == "Ship Phenyx" {
 			require.Equal(t, phenyx.ID, task.ID)
@@ -254,6 +254,156 @@ func TestTheAgentSeesTheDraftAndReceivesATurnToken(t *testing.T) {
 	require.NotEmpty(t, a.lastCall.RequestContext["turnToken"])
 	propose(t, s, a, user, date)
 	require.Contains(t, a.last[0].Content, w.Plan.Today[0].Ref, "the next turn sees the draft's refs")
+}
+
+// carry makes a saved task a Carried task first planned on origin.
+func carry(t *testing.T, s *Service, task generated.Task, origin string) {
+	t.Helper()
+	ctx := context.Background()
+	_, err := s.store.Pool.Exec(ctx, `UPDATE tasks SET defer_count=1,carried_over=true WHERE id=$1`, task.ID)
+	require.NoError(t, err)
+	_, err = s.store.Pool.Exec(ctx, `INSERT INTO task_carryovers(task_id,first_planned_date) VALUES($1,$2)`, task.ID, origin)
+	require.NoError(t, err)
+}
+
+func TestThePlannerSeesEachCarriedTasksAgeAndTheOpenerNamesThem(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	stale := createTask(t, s, user, date, "Update résumé")
+	recent := createTask(t, s, user, date, "Read chapter 7")
+	createTask(t, s, user, date, "New today")
+	friday, err := ParseDate("2026-09-11")
+	require.NoError(t, err)
+	redated := createTask(t, s, user, friday, "Planned for Friday")
+	carry(t, s, stale, "2026-09-02")
+	carry(t, s, recent, "2026-09-05")
+	carry(t, s, redated, "2026-09-01")
+	opened, err := s.Get(ctx, user, date)
+	require.NoError(t, err)
+	require.Equal(t, "Afternoon. 2 tasks carried over: Update résumé and Read chapter 7. Update résumé has carried over for 4 days. What's on today?", *opened.Opener)
+	a.ops = nil
+	_, err = s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "what's waiting?", RequestID: uuid.New()})
+	require.NoError(t, err)
+	var trusted struct {
+		OwnedTasks []struct {
+			Title       string `json:"title"`
+			CarriedDays int    `json:"carriedDays"`
+			Stale       bool   `json:"stale"`
+		} `json:"ownedTasks"`
+	}
+	raw := a.last[0].Content
+	raw = raw[strings.Index(raw, "{"):]
+	require.NoError(t, json.NewDecoder(strings.NewReader(raw)).Decode(&trusted))
+	ages := map[string][2]any{}
+	for _, task := range trusted.OwnedTasks {
+		ages[task.Title] = [2]any{task.CarriedDays, task.Stale}
+	}
+	require.Equal(t, map[string][2]any{"Update résumé": {4, true}, "Read chapter 7": {1, false}, "New today": {0, false}, "Planned for Friday": {0, false}}, ages, "only the conversation day's carried tasks have an age")
+}
+
+func TestReplanningATaskInTheDraftEndsItsCarryHistory(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	parked := createTask(t, s, user, date, "Update résumé")
+	redated := createTask(t, s, user, date, "File taxes")
+	carry(t, s, parked, "2026-09-01")
+	carry(t, s, redated, "2026-09-01")
+	a.ops = []TaskOperation{{Kind: "move", TaskID: &parked.ID, Inbox: true}, {Kind: "move", TaskID: &redated.ID, Date: "2026-09-08"}}
+	r, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "résumé sometime, taxes on Tuesday", RequestID: uuid.New()})
+	require.NoError(t, err)
+	_, err = s.Confirm(ctx, user, date, r.Workflow.Plan.DraftID, r.Workflow.Version)
+	require.NoError(t, err)
+	for _, id := range []uuid.UUID{parked.ID, redated.ID} {
+		saved, err := s.store.Queries.GetTaskByID(ctx, generated.GetTaskByIDParams{ID: id, UserID: user})
+		require.NoError(t, err)
+		require.Zero(t, saved.DeferCount, saved.Title)
+		var records int
+		require.NoError(t, s.store.Pool.QueryRow(ctx, `SELECT count(*) FROM task_carryovers WHERE task_id=$1`, id).Scan(&records))
+		require.Zero(t, records, "a task the person re-planned is no longer a Carried task")
+	}
+}
+
+func TestAddTaskRejectsEveryFieldATaskDoesNotHave(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	a.script = func(_ context.Context, _ mastra.Call, tool toolFunc) (string, error) {
+		tool("add_task", map[string]any{"title": "Slides", "notes": "bring the clicker"})
+		tool("add_task", map[string]any{"title": "Slides", "priority": 1})
+		tool("add_task", map[string]any{"title": "Slides", "urgency": nil})
+		tool("add_task", map[string]any{"title": "Slides", "duration": 45, "date": "2026-09-07", "inbox": false, "newOccurrence": false})
+		return "Slides is in for tomorrow.", nil
+	}
+	r, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "add slides tomorrow", RequestID: uuid.New()})
+	require.NoError(t, err)
+	require.Len(t, a.results, 4)
+	for _, rejected := range a.results[:2] {
+		require.False(t, rejected.OK, "an unknown field is never dropped silently")
+		require.Contains(t, rejected.Error.Message, "unsupported task field")
+	}
+	require.False(t, a.results[2].OK, "a null still names a field a task does not have")
+	require.Equal(t, "unsupported_field", a.results[2].Error.Code)
+	require.True(t, a.results[3].OK, "%+v", a.results[3].Error)
+	require.Equal(t, []string{"Slides"}, []string{r.Workflow.Plan.OtherDays[0].Title})
+}
+
+func TestThePlannerRecordsTheTimeThePersonHas(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	say := func(content string, calls ...map[string]any) *ProcessResponse {
+		a.results = nil
+		a.script = func(_ context.Context, _ mastra.Call, tool toolFunc) (string, error) {
+			for _, input := range calls {
+				tool("set_available_time", input)
+			}
+			return "Noted.", nil
+		}
+		r, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: content, RequestID: uuid.New()})
+		require.NoError(t, err)
+		return r
+	}
+	r := say("I have about four hours", map[string]any{"minutes": 240})
+	require.True(t, a.results[0].OK)
+	require.EqualValues(t, 240, *r.Workflow.AvailableMinutes)
+	require.Nil(t, r.Workflow.Plan, "stating time alone drafts nothing")
+
+	say("what does that leave me?")
+	require.Contains(t, a.last[0].Content, `"availableMinutes":240`, "the next turn's context has the stated time")
+
+	for _, bad := range []map[string]any{{"minutes": 0}, {"minutes": 2000}, {}} {
+		r = say("never mind", bad)
+		require.False(t, a.results[0].OK)
+		require.Equal(t, "invalid_input", a.results[0].Error.Code)
+		require.EqualValues(t, 240, *r.Workflow.AvailableMinutes)
+	}
+	r = say("forget the time limit", map[string]any{"minutes": nil})
+	require.True(t, a.results[0].OK)
+	require.Nil(t, r.Workflow.AvailableMinutes)
+}
+
+func TestPlannerToolsAcceptOnlyATitleAnEstimateAndADayOrLater(t *testing.T) {
+	s, a, user, date := testService(t)
+	ctx := context.Background()
+	task := createTask(t, s, user, date, "Report")
+	extras := map[string]any{"urgency": "high", "categoryId": uuid.NewString(), "description": "Lights out by 10pm", "dueDate": "2026-09-08"}
+	a.script = func(_ context.Context, _ mastra.Call, tool toolFunc) (string, error) {
+		for field, value := range extras {
+			tool("add_task", map[string]any{"title": "Slides", field: value})
+			tool("edit_task", map[string]any{"ref": task.ID.String(), "fields": map[string]any{field: value}})
+		}
+		tool("add_task", map[string]any{"title": "Slides", "duration": 45})
+		tool("add_task", map[string]any{"title": "Renew passport", "inbox": true})
+		return "Slides is in, and the passport is in Later.", nil
+	}
+	r, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "add slides, high priority, in Work", RequestID: uuid.New()})
+	require.NoError(t, err)
+	require.Len(t, a.results, 2*len(extras)+2)
+	for _, rejected := range a.results[:2*len(extras)] {
+		require.False(t, rejected.OK)
+		require.Equal(t, "unsupported_field", rejected.Error.Code)
+	}
+	require.True(t, a.results[2*len(extras)].OK, "title and Estimate are accepted")
+	require.True(t, a.results[2*len(extras)+1].OK, "Later is accepted")
+	require.Equal(t, []string{"Slides", "Renew passport"}, []string{r.Workflow.Plan.Today[len(r.Workflow.Plan.Today)-1].Title, r.Workflow.Plan.OtherDays[0].Title})
 }
 
 func TestConcurrentRetriesOfOneMessageShareOneTurn(t *testing.T) {

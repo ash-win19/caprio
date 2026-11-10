@@ -140,7 +140,7 @@ test('proposal keeps the conversation visible beside its decisions and the model
   await expect(page.getByRole('region', { name: 'Proposed plan' })).toBeVisible();
   await expect(page.getByText('Previous planning conversation')).toBeVisible();
   await expect(page.getByRole('region', { name: 'Today' })).toContainText('Prepare a handoff');
-  await expect(page.getByRole('region', { name: 'Other days' }).getByText('Inbox')).toHaveCount(2);
+  await expect(page.getByRole('region', { name: 'Later' }).locator('li')).toHaveCount(2);
   const composer = page.locator('.conversation-composer form');
   await expect(composer.getByRole('button', { name: 'GPT-OSS 120B' })).toBeVisible();
   await composer.getByRole('button', { name: 'GPT-OSS 120B' }).click();
