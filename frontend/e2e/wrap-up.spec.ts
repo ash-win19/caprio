@@ -144,7 +144,7 @@ test('a list that changed elsewhere is refreshed, not failed with a raw error', 
     // Another device finished a task since this list loaded.
     stale = false;
     tasks[2] = { ...tasks[2], completed: true, status: 'completed' };
-    await route.fulfill({ status: 400, json: { error: 'completed tasks must keep the done outcome', code: 'validation' } });
+    await route.fulfill({ status: 400, json: { error: 'completed tasks must keep the done outcome', code: 'list_changed' } });
   });
   await page.goto('/today');
   await prompt(page).getByRole('button', { name: 'Wrap up' }).click();
@@ -158,4 +158,14 @@ test('a list that changed elsewhere is refreshed, not failed with a raw error', 
   expect(closes(writes)).toEqual([{ date, taskActions: [
     { taskId: 'task-0', action: 'tomorrow' }, { taskId: 'task-1', action: 'tomorrow' }, { taskId: 'task-2', action: 'done' },
   ] }]);
+});
+
+test('any other refusal says what the server said', async ({ page }) => {
+  await mockDay(page);
+  await page.route('**/api/day/close', route => route.fulfill({ status: 400, json: { error: 'the next day is already wrapped up', code: 'validation' } }));
+  await page.goto('/today');
+  await prompt(page).getByRole('button', { name: 'Wrap up' }).click();
+  await sheet(page).getByRole('button', { name: 'Finish' }).click();
+  await expect(sheet(page).getByRole('alert')).toContainText('The next day is already wrapped up, so tasks can’t carry there.');
+  await expect(sheet(page).getByRole('group')).toHaveCount(3);
 });

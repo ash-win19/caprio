@@ -307,6 +307,16 @@ func TestWrapUpNeedsNoEnergyLevelAndNewWorkContinuesTheDay(t *testing.T) {
 		return httpJSON(t, r, "POST", "/api/day/close", body, 200)
 	}
 	report, reading, errand := add("Report", nil), add("Reading", map[string]any{"sortOrder": 1}), add("Errand", map[string]any{"sortOrder": 2})
+	// A list that no longer matches the Day's tasks is refused with its own
+	// code, so the sheet can refresh instead of showing a raw error.
+	for name, actions := range map[string][]any{
+		"a task is missing":       {map[string]any{"taskId": report, "action": "tomorrow"}},
+		"a task is not this Day's": {map[string]any{"taskId": uuid.NewString(), "action": "tomorrow"}},
+	} {
+		refused := httpJSON(t, r, "POST", "/api/day/close", map[string]any{"date": today, "taskActions": actions}, 400)
+		require.Equal(t, "list_changed", refused["code"], name)
+	}
+	require.Equal(t, "validation", httpJSON(t, r, "POST", "/api/day/close", map[string]any{"date": today, "taskActions": []any{map[string]any{"taskId": report, "action": "later"}}}, 400)["code"])
 	someday := add("Someday", map[string]any{"status": "backlog"})
 	httpJSON(t, r, "PATCH", "/api/tasks/"+report, map[string]any{"completed": true}, 200)
 

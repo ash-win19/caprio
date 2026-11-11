@@ -27,6 +27,10 @@ type CloseResult struct {
 	Workflow *Workflow `json:"workflow"`
 }
 
+// listChanged marks a request built from a task list that no longer matches
+// the Day's, so the client can refresh its list instead of showing the error.
+const listChanged = "list_changed"
+
 func validateClose(req CloseRequest, tasks []generated.Task) error {
 	if req.TaskActions == nil {
 		return invalid("taskActions is required")
@@ -48,18 +52,18 @@ func validateClose(req CloseRequest, tasks []generated.Task) error {
 		}
 		task, ok := candidates[a.TaskID]
 		if !ok {
-			return invalid("task %s not found for date", a.TaskID)
+			return invalidCode(listChanged, "task %s not found for date", a.TaskID)
 		}
 		if seen[a.TaskID] {
 			return invalid("duplicate task action")
 		}
 		if (task.Completed || task.Status == generated.TaskStatusCompleted) && a.Action != "done" {
-			return invalid("completed tasks must keep the done outcome")
+			return invalidCode(listChanged, "completed tasks must keep the done outcome")
 		}
 		seen[a.TaskID] = true
 	}
 	if len(seen) != len(candidates) {
-		return invalid("choose Keep or Drop for every task before wrapping up")
+		return invalidCode(listChanged, "choose Keep or Drop for every task before wrapping up")
 	}
 	return nil
 }

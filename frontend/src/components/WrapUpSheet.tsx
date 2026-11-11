@@ -37,7 +37,7 @@ function WrapUpForm({ date, tasks, onDone }: { date: string; tasks: Task[]; onDo
     // The server refuses a list that no longer matches its own, so show the current one.
     onError: () => invalidatePlanningQueries(queryClient),
   });
-  const listChanged = wrapUp.error instanceof api.ApiError && wrapUp.error.status === 400;
+  const listChanged = wrapUp.error instanceof api.ApiError && wrapUp.error.code === 'list_changed';
   const choose = (id: string, drop: boolean) => setDropped(current => {
     const next = new Set(current);
     if (drop) next.add(id); else next.delete(id);
