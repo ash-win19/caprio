@@ -17,13 +17,6 @@ type Config struct {
 	Auth0Domain   string
 	Auth0Audience string
 
-	// Groq (Speech-to-Text)
-	GroqAPIKey string
-
-	// OpenAI (task reprioritization)
-	OpenAIAPIKey string
-	OpenAIModel  string
-
 	// Mastra Agent Server
 	MastraURL string
 	// PlannerToolSecret is shared with the planner agent. Its tools send it when
@@ -47,13 +40,6 @@ func Load() Config {
 		// Auth0
 		Auth0Domain:   os.Getenv("AUTH0_DOMAIN"),
 		Auth0Audience: os.Getenv("AUTH0_AUDIENCE"),
-
-		// Groq
-		GroqAPIKey: os.Getenv("GROQ_API_KEY"),
-
-		// OpenAI
-		OpenAIAPIKey: os.Getenv("OPENAI_API_KEY"),
-		OpenAIModel:  getEnv("OPENAI_MODEL", "gpt-4o-mini"),
 
 		// Mastra
 		MastraURL:         os.Getenv("MASTRA_URL"),

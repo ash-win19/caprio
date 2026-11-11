@@ -28,20 +28,11 @@ func command(t *testing.T, s *Service, a *fakeAgent, user uuid.UUID, date pgtype
 	a.ops, a.script = ops, nil
 	draft, err := s.Process(context.Background(), ProcessRequest{UserID: user, SessionDate: date, Content: "Do this", RequestID: uuid.New()})
 	require.NoError(t, err)
-	require.Nil(t, draft.AppliedChange)
 	require.NotNil(t, draft.Workflow.Plan)
 	proposalID := draft.Workflow.Plan.DraftID
 	confirmed, err := s.Confirm(context.Background(), user, date, proposalID, draft.Workflow.Version)
 	require.NoError(t, err)
-	result := &ProcessResponse{Text: draft.Text, Workflow: confirmed}
-	for i := range confirmed.ChangeReceipts {
-		if confirmed.ChangeReceipts[i].RequestID == proposalID && !confirmed.ChangeReceipts[i].Undone {
-			result.AppliedChange = &confirmed.ChangeReceipts[i]
-			break
-		}
-	}
-	require.NotNil(t, result.AppliedChange)
-	return result
+	return &ProcessResponse{Text: draft.Text, Workflow: confirmed}
 }
 
 func TestChatActionsBecomeDraftUntilConfirm(t *testing.T) {
@@ -50,7 +41,6 @@ func TestChatActionsBecomeDraftUntilConfirm(t *testing.T) {
 	a.ops = []TaskOperation{add("Draft report")}
 	draft, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "Draft report", RequestID: uuid.New()})
 	require.NoError(t, err)
-	require.Nil(t, draft.AppliedChange)
 	require.NotNil(t, draft.Workflow.Plan)
 	require.Empty(t, draft.Workflow.Tasks)
 	require.Equal(t, "planning", draft.Workflow.State)
@@ -87,7 +77,6 @@ func TestCommandsReuseFiveTasksBeyondCapacityAndAppend(t *testing.T) {
 	r := command(t, s, a, user, date, ops...)
 	require.Len(t, r.Workflow.Tasks, 6)
 	require.Empty(t, r.Workflow.Backlog)
-	require.NotNil(t, r.AppliedChange)
 	require.Nil(t, r.Workflow.Plan)
 	require.EqualValues(t, 120, *r.Workflow.AvailableMinutes)
 	for _, task := range r.Workflow.Tasks {
@@ -99,19 +88,6 @@ func TestCommandsReuseFiveTasksBeyondCapacityAndAppend(t *testing.T) {
 	}
 	next := command(t, s, a, user, date, add("Test workflow"), add("Polish demo"))
 	require.Len(t, next.Workflow.Tasks, 8)
-	reloaded, err := s.Get(ctx, user, date)
-	require.NoError(t, err)
-	require.Len(t, reloaded.ChangeReceipts, 2)
-	undone, err := s.Undo(ctx, user, next.AppliedChange.ID)
-	require.NoError(t, err)
-	require.Len(t, undone.Tasks, 6)
-	again, err := s.Undo(ctx, user, next.AppliedChange.ID)
-	require.NoError(t, err)
-	require.Equal(t, undone.Tasks, again.Tasks)
-	restored, err := s.Undo(ctx, user, r.AppliedChange.ID)
-	require.NoError(t, err)
-	require.Len(t, restored.Backlog, 4)
-	require.Len(t, restored.Tasks, 2)
 }
 
 func TestCommandRetryIsAtomicAndReturnsSameDraft(t *testing.T) {
@@ -130,22 +106,17 @@ func TestCommandRetryIsAtomicAndReturnsSameDraft(t *testing.T) {
 	require.NoError(t, errs[0])
 	require.NoError(t, errs[1])
 	require.Equal(t, 1, a.calls)
-	require.Nil(t, out[0].AppliedChange)
 	require.NotNil(t, out[0].Workflow.Plan)
 	require.Equal(t, out[0].Workflow.Plan.DraftID, out[1].Workflow.Plan.DraftID)
 	require.Empty(t, out[0].Workflow.Tasks)
 	confirmed, err := s.Confirm(ctx, user, date, out[0].Workflow.Plan.DraftID, out[0].Workflow.Version)
 	require.NoError(t, err)
 	require.Len(t, confirmed.Tasks, 1)
-	require.NotEmpty(t, confirmed.ChangeReceipts)
-	receipt := confirmed.ChangeReceipts[0]
-	require.True(t, receipt.CanUndo, "JSON roundtrip must preserve a comparable task snapshot")
-	_, err = s.Undo(ctx, user, receipt.ID)
-	require.NoError(t, err)
+	// Sending the same request again after Confirm replays the saved reply.
 	replay, err := s.Process(ctx, req)
 	require.NoError(t, err)
-	require.Nil(t, replay.AppliedChange)
-	require.Empty(t, replay.Workflow.Tasks)
+	require.Equal(t, 1, a.calls)
+	require.Len(t, replay.Workflow.Tasks, 1)
 }
 
 func TestOperationsValidateOwnershipQuoteAndFieldPresence(t *testing.T) {
@@ -155,9 +126,6 @@ func TestOperationsValidateOwnershipQuoteAndFieldPresence(t *testing.T) {
 	op := TaskOperation{Kind: "update", TaskID: &task.ID, Fields: fields(map[string]any{"duration": nil})}
 	r := command(t, s, a, user, date, op)
 	require.Nil(t, r.Workflow.Tasks[0].Duration)
-	undone, err := s.Undo(ctx, user, r.AppliedChange.ID)
-	require.NoError(t, err)
-	require.Equal(t, task.Duration, undone.Tasks[0].Duration)
 	// Invalid changes are rejected at the tool, so the model can correct them;
 	// nothing reaches the draft.
 	for code, bad := range map[string]TaskOperation{
@@ -174,32 +142,12 @@ func TestOperationsValidateOwnershipQuoteAndFieldPresence(t *testing.T) {
 		require.Equal(t, code, result.Error.Code)
 	}
 	a.ops = []TaskOperation{{Kind: "update", TaskID: &task.ID, Fields: fields(map[string]any{"title": nil})}}
-	_, err = s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "Do this", RequestID: uuid.New()})
+	_, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: date, Content: "Do this", RequestID: uuid.New()})
 	require.NoError(t, err)
 	require.False(t, a.results[len(a.results)-1].OK)
 	w, err := s.Get(ctx, user, date)
 	require.NoError(t, err)
 	require.Len(t, w.Tasks, 1)
-}
-
-func TestUndoDoesNotOverwriteLaterEditsOrReviews(t *testing.T) {
-	s, a, user, date := testService(t)
-	ctx := context.Background()
-	r := command(t, s, a, user, date, add("Report"))
-	id := r.Workflow.Tasks[0].ID
-	_, err := s.store.Pool.Exec(ctx, `UPDATE tasks SET completed=true,status='completed',completed_at=clock_timestamp(),updated_at=clock_timestamp() WHERE id=$1`, id)
-	require.NoError(t, err)
-	_, err = s.Undo(ctx, user, r.AppliedChange.ID)
-	require.Error(t, err)
-	w, err := s.Get(ctx, user, date)
-	require.NoError(t, err)
-	require.True(t, w.Tasks[0].Completed)
-	require.False(t, w.ChangeReceipts[0].CanUndo)
-	other := command(t, s, a, user, date, add("Another task"))
-	_, err = s.Close(ctx, user, CloseRequest{Date: w.Date, TaskActions: []TaskAction{{id, "done"}, {other.AppliedChange.Changes[0].TaskID, "tomorrow"}}})
-	require.NoError(t, err)
-	_, err = s.Undo(ctx, user, other.AppliedChange.ID)
-	require.Error(t, err)
 }
 
 func TestCurrentDayCanReopenAndCloseWithImmutableReviews(t *testing.T) {
@@ -225,19 +173,17 @@ func TestCurrentDayCanReopenAndCloseWithImmutableReviews(t *testing.T) {
 			require.True(t, task.Completed)
 		}
 	}
-	undone, err := s.Undo(ctx, user, r.AppliedChange.ID)
-	require.NoError(t, err)
-	require.Equal(t, "closed", undone.State)
-	require.Len(t, undone.ReviewHistory, 1)
 	second := command(t, s, a, user, date, add("Evening task"))
-	newID := second.AppliedChange.Changes[0].TaskID
-	closedAgain, err := s.Close(ctx, user, CloseRequest{Date: dateText, Notes: ptr("Second review"), TaskActions: []TaskAction{{done.ID, "done"}, {newID, "done"}}})
+	added := map[string]uuid.UUID{}
+	for _, task := range second.Workflow.Tasks {
+		added[task.Title] = task.ID
+	}
+	closedAgain, err := s.Close(ctx, user, CloseRequest{Date: dateText, Notes: ptr("Second review"), TaskActions: []TaskAction{{done.ID, "done"}, {added["Late addition"], "drop"}, {added["Evening task"], "done"}}})
 	require.NoError(t, err)
 	require.Len(t, closedAgain.Workflow.ReviewHistory, 2)
 	require.Equal(t, "First review", closedAgain.Workflow.ReviewHistory[0].Review.Notes)
 	require.EqualValues(t, 2, closedAgain.CompletedCount)
 	require.EqualValues(t, 1, closedAgain.CarriedToTomorrowCount)
-	// The undone addition was dropped from this Day, so the Day's record has it too.
 	require.EqualValues(t, 1, closedAgain.DroppedCount)
 	require.Len(t, closedAgain.Workflow.Tasks, 4)
 	require.Equal(t, closed.Session.ID, closedAgain.Session.ID)
@@ -257,15 +203,11 @@ func TestSuggestionsWaitAndDatesUseTheServerClock(t *testing.T) {
 	op.Date = future.Time.Format("2006-01-02")
 	r := command(t, s, a, user, today, op)
 	require.Empty(t, r.Workflow.Tasks)
-	require.Equal(t, []string{op.Date}, r.AppliedChange.AffectedDates)
-	_, err := s.Undo(ctx, user, r.AppliedChange.ID)
-	require.NoError(t, err)
 	task := createTask(t, s, user, today, "Keep until approved")
 	a.ops, a.response = []TaskOperation{{Kind: "remove", TaskID: &task.ID}}, "I suggest removing this task."
 	draft, err := s.Process(ctx, ProcessRequest{UserID: user, SessionDate: today, Content: "What can I cut?", RequestID: uuid.New()})
 	require.NoError(t, err)
 	require.Len(t, draft.Workflow.Tasks, 1)
-	require.Nil(t, draft.AppliedChange)
 	w := draft.Workflow
 	require.Equal(t, []string{"Keep until approved|removed"}, planTitles(w))
 	confirmed, err := s.Confirm(ctx, user, today, w.Plan.DraftID, w.Version)
@@ -307,14 +249,5 @@ func TestCompletedDuplicateNeedsAnExplicitNewOccurrence(t *testing.T) {
 		if item.ID == task.ID {
 			require.True(t, item.Completed)
 		}
-	}
-}
-
-// Batches saved before the Inbox became Later still carry the old action.
-func TestAReceiptForAMoveOutOfLaterSaysLaterEvenWhenSavedAsInbox(t *testing.T) {
-	for _, action := range []string{"Moved from Later", "Moved from Inbox"} {
-		r, err := receipt(context.Background(), nil, uuid.New(), changeBatch{Undone: true, Changes: []TaskChange{{Action: action}, {Action: action}}})
-		require.NoError(t, err)
-		require.Equal(t, "Moved 2 tasks from Later", r.Summary, action)
 	}
 }

@@ -1,12 +1,8 @@
 package chat
 
 import (
-	"bytes"
-	"crypto/sha256"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 	"time"
 
 	generated "github.com/ashwinshanmugam/caprio/backend/internal/db/generated"
@@ -49,7 +45,6 @@ type ReviewRecord struct {
 }
 
 type Workflow struct {
-	ChangeReceipts       []ChangeReceipt         `json:"changeReceipts"`
 	ReviewHistory        []ReviewRecord          `json:"reviewHistory"`
 	CarryoverOrigins     map[string]string       `json:"carryoverOrigins"`
 	Date                 string                  `json:"date"`
@@ -73,11 +68,4 @@ func ParseDate(value string) (pgtype.Date, error) {
 		return pgtype.Date{}, invalid("invalid date format, expected YYYY-MM-DD")
 	}
 	return pgtype.Date{Time: t, Valid: true}, nil
-}
-
-func snapshot(tasks, backlog []generated.Task) string {
-	combined := append(append([]generated.Task{}, tasks...), backlog...)
-	sort.Slice(combined, func(i, j int) bool { return bytes.Compare(combined[i].ID[:], combined[j].ID[:]) < 0 })
-	b, _ := json.Marshal(combined)
-	return fmt.Sprintf("%x", sha256.Sum256(b))
 }

@@ -45,11 +45,3 @@ RETURNING *;
 INSERT INTO chat_messages (user_id, session_date, role, event_type, content, metadata, created_at)
 VALUES ($1, $2, 'event', $3, $4, $5, clock_timestamp())
 RETURNING *;
-
--- name: CountChatMessagesByUserAndDate :one
-SELECT COUNT(*) FROM chat_messages
-WHERE user_id = $1 AND session_date = $2;
-
--- name: DeleteChatMessagesByUserAndDate :exec
-DELETE FROM chat_messages
-WHERE user_id = $1 AND session_date = $2;

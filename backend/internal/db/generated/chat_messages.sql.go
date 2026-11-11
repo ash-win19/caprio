@@ -13,23 +13,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const countChatMessagesByUserAndDate = `-- name: CountChatMessagesByUserAndDate :one
-SELECT COUNT(*) FROM chat_messages
-WHERE user_id = $1 AND session_date = $2
-`
-
-type CountChatMessagesByUserAndDateParams struct {
-	UserID      uuid.UUID   `json:"userId"`
-	SessionDate pgtype.Date `json:"sessionDate"`
-}
-
-func (q *Queries) CountChatMessagesByUserAndDate(ctx context.Context, arg CountChatMessagesByUserAndDateParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countChatMessagesByUserAndDate, arg.UserID, arg.SessionDate)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const createChatEvent = `-- name: CreateChatEvent :one
 INSERT INTO chat_messages (user_id, session_date, role, event_type, content, metadata, created_at)
 VALUES ($1, $2, 'event', $3, $4, $5, clock_timestamp())
@@ -98,21 +81,6 @@ func (q *Queries) CreateChatMessage(ctx context.Context, arg CreateChatMessagePa
 		&i.Metadata,
 	)
 	return i, err
-}
-
-const deleteChatMessagesByUserAndDate = `-- name: DeleteChatMessagesByUserAndDate :exec
-DELETE FROM chat_messages
-WHERE user_id = $1 AND session_date = $2
-`
-
-type DeleteChatMessagesByUserAndDateParams struct {
-	UserID      uuid.UUID   `json:"userId"`
-	SessionDate pgtype.Date `json:"sessionDate"`
-}
-
-func (q *Queries) DeleteChatMessagesByUserAndDate(ctx context.Context, arg DeleteChatMessagesByUserAndDateParams) error {
-	_, err := q.db.Exec(ctx, deleteChatMessagesByUserAndDate, arg.UserID, arg.SessionDate)
-	return err
 }
 
 const listChatMessagesByUserAndDate = `-- name: ListChatMessagesByUserAndDate :many

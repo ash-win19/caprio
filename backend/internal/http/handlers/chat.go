@@ -119,19 +119,6 @@ func (h *ChatHandler) GetWorkflow(c *gin.Context) {
 	}
 	c.JSON(200, result)
 }
-func (h *ChatHandler) Sessions(c *gin.Context) {
-	userID, ok := middleware.GetUserID(c)
-	if !ok {
-		c.JSON(401, gin.H{"error": "unauthorized"})
-		return
-	}
-	sessions, err := h.store.Queries.ListChatSessionsByUser(c.Request.Context(), userID)
-	if err != nil {
-		workflowError(c, err)
-		return
-	}
-	c.JSON(200, gin.H{"sessions": sessions})
-}
 
 // History lists the past Days before the client's local date.
 func (h *ChatHandler) History(c *gin.Context) {
@@ -186,23 +173,10 @@ func (h *ChatHandler) bindMessage(c *gin.Context) (chat.ProcessRequest, bool) {
 	return chat.ProcessRequest{TaskID: req.TaskID, UserID: userID, SessionDate: date, Content: req.Content, RequestID: req.RequestID, Model: req.Model}, true
 }
 
-func (h *ChatHandler) SendMessage(c *gin.Context) {
-	req, ok := h.bindMessage(c)
-	if !ok {
-		return
-	}
-	result, err := h.chatService.Process(c.Request.Context(), req)
-	if err != nil {
-		workflowError(c, err)
-		return
-	}
-	c.JSON(200, result)
-}
-
 // StreamMessage answers with server-sent events. "delta" events carry reply
 // text as it is generated, "done" carries the committed reply and workflow,
 // and "error" reports a failure after streaming began. Failures before the
-// first delta use the same JSON status codes as SendMessage.
+// first delta are plain JSON with an HTTP status code.
 func (h *ChatHandler) StreamMessage(c *gin.Context) {
 	req, ok := h.bindMessage(c)
 	if !ok {

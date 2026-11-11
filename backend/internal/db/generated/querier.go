@@ -11,35 +11,22 @@ import (
 )
 
 type Querier interface {
-	BatchUpdateCategoryOrder(ctx context.Context, arg BatchUpdateCategoryOrderParams) error
-	CarryOverTasks(ctx context.Context, arg CarryOverTasksParams) error
 	CloseTaskDone(ctx context.Context, arg CloseTaskDoneParams) error
 	CloseTaskDrop(ctx context.Context, arg CloseTaskDropParams) error
 	CloseTaskTomorrow(ctx context.Context, arg CloseTaskTomorrowParams) error
-	CountChatMessagesByUserAndDate(ctx context.Context, arg CountChatMessagesByUserAndDateParams) (int64, error)
 	CreateCategory(ctx context.Context, arg CreateCategoryParams) (Category, error)
 	CreateChatEvent(ctx context.Context, arg CreateChatEventParams) (ChatMessage, error)
 	CreateChatMessage(ctx context.Context, arg CreateChatMessageParams) (ChatMessage, error)
-	CreateStandupSession(ctx context.Context, arg CreateStandupSessionParams) (StandupSession, error)
 	CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
-	CreateVoiceEntry(ctx context.Context, arg CreateVoiceEntryParams) (VoiceEntry, error)
-	DeferTask(ctx context.Context, arg DeferTaskParams) (Task, error)
-	DeleteCategory(ctx context.Context, arg DeleteCategoryParams) error
-	DeleteChatMessagesByUserAndDate(ctx context.Context, arg DeleteChatMessagesByUserAndDateParams) error
-	DeleteTask(ctx context.Context, arg DeleteTaskParams) error
 	GetStandupByUserAndDate(ctx context.Context, arg GetStandupByUserAndDateParams) (StandupSession, error)
 	GetTaskByID(ctx context.Context, arg GetTaskByIDParams) (Task, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
-	GetVoiceEntryByID(ctx context.Context, arg GetVoiceEntryByIDParams) (VoiceEntry, error)
-	ListAllTasksByUserAndDate(ctx context.Context, arg ListAllTasksByUserAndDateParams) ([]Task, error)
 	ListBacklogTasks(ctx context.Context, userID uuid.UUID) ([]Task, error)
-	ListCarriedOverTasks(ctx context.Context, userID uuid.UUID) ([]Task, error)
 	ListCategoriesByUser(ctx context.Context, userID uuid.UUID) ([]Category, error)
 	ListChatMessagesByUserAndDate(ctx context.Context, arg ListChatMessagesByUserAndDateParams) ([]ChatMessage, error)
 	ListChatSessionsByUser(ctx context.Context, userID uuid.UUID) ([]ListChatSessionsByUserRow, error)
-	ListCompletedTasksByDate(ctx context.Context, arg ListCompletedTasksByDateParams) ([]Task, error)
 	// Tasks dropped on a Day: from its list or from Later by a row menu, or
 	// from its list through a Draft.
 	ListDroppedTasksForDay(ctx context.Context, arg ListDroppedTasksForDayParams) ([]Task, error)
@@ -48,17 +35,8 @@ type Querier interface {
 	ListLaterTasks(ctx context.Context, arg ListLaterTasksParams) ([]Task, error)
 	ListTasksByUser(ctx context.Context, userID uuid.UUID) ([]Task, error)
 	ListTodayTasksByUser(ctx context.Context, arg ListTodayTasksByUserParams) ([]Task, error)
-	ListVoiceEntriesByUser(ctx context.Context, arg ListVoiceEntriesByUserParams) ([]VoiceEntry, error)
-	ListYesterdayLeftovers(ctx context.Context, arg ListYesterdayLeftoversParams) ([]Task, error)
-	MarkTaskAsLeftover(ctx context.Context, arg MarkTaskAsLeftoverParams) error
-	ToggleTaskComplete(ctx context.Context, arg ToggleTaskCompleteParams) (Task, error)
-	UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (Category, error)
-	UpdateLastStandupDate(ctx context.Context, arg UpdateLastStandupDateParams) error
-	UpdateStandupSession(ctx context.Context, arg UpdateStandupSessionParams) (StandupSession, error)
-	UpdateStreak(ctx context.Context, arg UpdateStreakParams) error
 	UpdateTask(ctx context.Context, arg UpdateTaskParams) (Task, error)
 	UpdateTaskSortOrder(ctx context.Context, arg UpdateTaskSortOrderParams) error
-	UpdateUserPrefs(ctx context.Context, arg UpdateUserPrefsParams) (User, error)
 }
 
 var _ Querier = (*Queries)(nil)

@@ -50,9 +50,8 @@ type ProcessRequest struct {
 	TaskID      *uuid.UUID
 }
 type ProcessResponse struct {
-	AppliedChange *ChangeReceipt `json:"appliedChange,omitempty"`
-	Text          string         `json:"text"`
-	Workflow      *Workflow      `json:"workflow"`
+	Text     string    `json:"text"`
+	Workflow *Workflow `json:"workflow"`
 }
 
 func ensureDay(ctx context.Context, tx pgx.Tx, userID uuid.UUID, date pgtype.Date) error {
@@ -123,18 +122,6 @@ func load(ctx context.Context, conn generated.DBTX, userID uuid.UUID, date pgtyp
 			return nil, err
 		}
 		w.Plan = buildPlanView(draftEnv{Date: date, Owned: owned}, w.draft.rebase(owned), w.CarryoverOrigins)
-	}
-	w.ChangeReceipts = []ChangeReceipt{}
-	batches, err := readBatches(ctx, conn, userID, date)
-	if err != nil {
-		return nil, err
-	}
-	for _, batch := range batches {
-		r, err := receipt(ctx, conn, userID, batch)
-		if err != nil {
-			return nil, err
-		}
-		w.ChangeReceipts = append(w.ChangeReceipts, r)
 	}
 	w.ReviewHistory = []ReviewRecord{}
 	reviews, err := conn.Query(ctx, `SELECT id,created_at,review,closed_tasks FROM day_reviews WHERE user_id=$1 AND plan_date=$2 ORDER BY created_at,id`, userID, date)
