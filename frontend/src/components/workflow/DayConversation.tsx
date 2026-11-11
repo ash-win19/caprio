@@ -236,7 +236,7 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
         {!messages.length && !pending && !plan && !opener && workflow?.state !== 'closed' && <div className="flex min-h-[38vh] flex-col items-center justify-center text-center">
           <ListChecks className="mb-5 h-7 w-7 text-primary" />
           <h2 className="text-3xl font-medium">{past ? 'No conversation for this day' : showInterruptChips ? 'What changed?' : 'What needs your attention?'}</h2>
-          <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">{past ? 'Your saved plan and review are available from View tasks.' : showInterruptChips ? 'Tell Caprio what shifted: less time, new work, or something to drop. Review the draft, then confirm to update your list.' : 'Tell me what you need to do. Review the draft plan, then confirm to save your tasks.'}</p>
+          <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">{past ? 'What you did that day is in History.' : showInterruptChips ? 'Tell Caprio what shifted: less time, new work, or something to drop. Review the draft, then confirm to update your list.' : 'Tell me what you need to do. Review the draft plan, then confirm to save your tasks.'}</p>
         </div>}
         {showOpener && <MessageBubble role="assistant">{opener}</MessageBubble>}
         {messages.map(message => <ThreadEntry key={message.id} message={message} onShowUpdate={plan ? showUpdate : undefined} />)}
@@ -249,11 +249,11 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
         </>}
         {/* The latest message, not the draft card below it, is what a new turn scrolls to. */}
         <div ref={messagesEndRef} />
-        {workflow?.state === 'closed' && !past && <p className="text-sm text-muted-foreground">Your review is saved. Add new work to continue this day; completed tasks and earlier reviews stay recorded.</p>}
+        {workflow?.state === 'closed' && !past && <p className="text-sm text-muted-foreground">This day is wrapped up. Add new work to continue it; what you finished stays recorded.</p>}
       </>}
     </div></div>
     <div className="conversation-composer bg-background px-4 pb-4 pt-2 md:px-8"><div className="mx-auto max-w-2xl">
-      {readOnly ? <div className="flex items-center justify-between gap-3 rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground"><span>{past ? 'Past conversations are read-only.' : 'This day is closed.'}</span><Link to="/conversation" className="shrink-0 text-primary hover:underline">Open today’s Conversation</Link></div> : <>
+      {readOnly ? <div className="flex items-center justify-between gap-3 rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground"><span>Past conversations are read-only.</span><Link to="/conversation" className="shrink-0 text-primary hover:underline">Open today’s Conversation</Link></div> : <>
         {showInterruptChips && !pending && !input && !plan && <div className="mb-3 flex flex-wrap gap-2" aria-label="Quick interruption prompts">
           {INTERRUPT_CHIPS.map((chip) => (
             <button

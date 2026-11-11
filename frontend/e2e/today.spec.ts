@@ -154,10 +154,11 @@ for (const width of [390, 1440]) {
   });
 }
 
-test('a wrapped-up day shows its list without the closed-day summary', async ({ page }) => {
+test('a wrapped-up day shows its list and how it ended, without a summary page', async ({ page }) => {
   await mockDay(page, { state: 'closed' });
   await page.goto('/today');
   await expect(rows(page)).toHaveCount(3);
   await expect(page.getByText(/closed/i)).toHaveCount(0);
-  await expect(page.getByRole('textbox', { name: 'Add a task to today' })).toHaveCount(0);
+  await expect(page.getByText('Wrapped up · 1 task carries to Tuesday', { exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Add a task to today' })).toBeVisible();
 });

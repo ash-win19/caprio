@@ -27,6 +27,10 @@ type CloseResult struct {
 	Workflow *Workflow `json:"workflow"`
 }
 
+// listChanged marks a request built from a task list that no longer matches
+// the Day's, so the client can refresh its list instead of showing the error.
+const listChanged = "list_changed"
+
 func validateClose(req CloseRequest, tasks []generated.Task) error {
 	if req.TaskActions == nil {
 		return invalid("taskActions is required")
@@ -48,18 +52,18 @@ func validateClose(req CloseRequest, tasks []generated.Task) error {
 		}
 		task, ok := candidates[a.TaskID]
 		if !ok {
-			return invalid("task %s not found for date", a.TaskID)
+			return invalidCode(listChanged, "task %s not found for date", a.TaskID)
 		}
 		if seen[a.TaskID] {
 			return invalid("duplicate task action")
 		}
 		if (task.Completed || task.Status == generated.TaskStatusCompleted) && a.Action != "done" {
-			return invalid("completed tasks must keep the done outcome")
+			return invalidCode(listChanged, "completed tasks must keep the done outcome")
 		}
 		seen[a.TaskID] = true
 	}
 	if len(seen) != len(candidates) {
-		return invalid("choose an outcome for every task before closing the day")
+		return invalidCode(listChanged, "choose Keep or Drop for every task before wrapping up")
 	}
 	return nil
 }
@@ -127,11 +131,11 @@ func (s *Service) close(ctx context.Context, userID uuid.UUID, req CloseRequest,
 				_, err = tx.Exec(ctx, `UPDATE tasks SET completed=true,status='completed',completed_at=COALESCE(completed_at,clock_timestamp()),updated_at=clock_timestamp() WHERE id=$1 AND user_id=$2`, a.TaskID, userID)
 				result.CompletedCount++
 			case "tomorrow":
-				// Do not silently add carryovers to an already closed next day.
+				// Do not silently add carried tasks to a next day that is already wrapped up.
 				var closed bool
 				err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM daily_plans WHERE user_id=$1 AND plan_date=$2 AND state='closed')`, userID, nextDate).Scan(&closed)
 				if err == nil && closed {
-					return invalid("tomorrow is already closed")
+					return invalid("the next day is already wrapped up")
 				}
 				if err == nil {
 					_, err = tx.Exec(ctx, `INSERT INTO task_carryovers(task_id,first_planned_date) SELECT id,planned_for_date FROM tasks WHERE id=$1 AND user_id=$2 ON CONFLICT DO NOTHING`, a.TaskID, userID)
@@ -193,8 +197,22 @@ func (s *Service) close(ctx context.Context, userID uuid.UUID, req CloseRequest,
 				combined = append(combined, task)
 			}
 		}
+		// A task an earlier Wrap up carried may have left since: brought back
+		// and moved to Later, or dropped. Its old record no longer says how
+		// the Day ended, so only tasks that still carry are kept as carried.
+		var stillCarried []uuid.UUID
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(array_agg(id),'{}') FROM tasks WHERE user_id=$1 AND status='planned' AND planned_for_date>$2`, userID, date).Scan(&stillCarried); err != nil {
+			return err
+		}
+		carries := map[uuid.UUID]bool{}
+		for _, id := range stillCarried {
+			carries[id] = true
+		}
 		for _, entry := range w.ReviewHistory {
 			for _, task := range entry.Tasks {
+				if task.Status == generated.TaskStatusPlanned && !task.Completed && !carries[task.ID] {
+					continue
+				}
 				put(task)
 			}
 		}

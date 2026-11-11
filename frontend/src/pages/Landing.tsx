@@ -120,15 +120,15 @@ function TodayListCard() {
   );
 }
 
-const reviewRows = [
-  { title: 'Stats problem set', choice: 'Done' },
-  { title: 'Groceries', choice: 'Tomorrow' },
+// Wrap up: each unchecked task is kept for the next Day or dropped.
+const wrapUpRows = [
+  { title: 'Groceries', choice: 'Keep' },
+  { title: 'Read chapter 4', choice: 'Keep' },
   { title: '1 LeetCode', choice: 'Drop' },
 ];
 
-const reviewOutcomes = [
-  { label: 'Done', icon: Check },
-  { label: 'Tomorrow', icon: ArrowRight },
+const wrapUpChoices = [
+  { label: 'Keep', icon: ArrowRight },
   { label: 'Drop', icon: X },
 ];
 
@@ -283,17 +283,17 @@ export default function Landing() {
               <Reveal delay={0.08} className="overflow-hidden rounded-[26px] border border-white/[0.09] bg-[#151515] p-6 md:p-8">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-[10px] font-semibold tracking-[0.16em] text-[#D6D6D2]">CLOSE THE DAY</p>
-                    <h3 className="mt-3 text-2xl font-medium tracking-[-0.045em]">Done, tomorrow, or drop.</h3>
+                    <p className="text-[10px] font-semibold tracking-[0.16em] text-[#D6D6D2]">WRAP UP</p>
+                    <h3 className="mt-3 text-2xl font-medium tracking-[-0.045em]">Keep it or drop it.</h3>
                   </div>
                   <Moon size={19} className="text-[#F5F5F3]" />
                 </div>
                 <div className="mt-10 space-y-2.5">
-                  {reviewRows.map((row) => (
+                  {wrapUpRows.map((row) => (
                     <div key={row.title} className="rounded-xl border border-white/[0.08] bg-[#0D0D0D] p-3">
                       <p className="text-[12px] font-medium text-white/75">{row.title}</p>
                       <div className="mt-2 flex flex-wrap gap-1.5">
-                        {reviewOutcomes.map(({ label, icon: Icon }) => (
+                        {wrapUpChoices.map(({ label, icon: Icon }) => (
                           <span key={label} className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] ${row.choice === label ? 'border-[#F5F5F3]/40 bg-[#F5F5F3]/10 text-[#F5F5F3]' : 'border-white/[0.08] text-white/35'}`}>
                             <Icon size={11} />{label}
                           </span>

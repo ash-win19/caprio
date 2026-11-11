@@ -33,6 +33,11 @@ export async function mockDay(page: Page, options: {
   // Later: undated (backlog) tasks and tasks dated after the fixture's day.
   const later = options.later ?? [];
   const writes: Array<{ path: string; body: unknown }> = [];
+  // The Day's state moves as the real one does: Wrap up ends it, new work continues it.
+  const nextDay = '2026-09-15';
+  let state = options.state ?? 'active';
+  let review: Workflow['review'] = state === 'closed'
+    ? { completedCount: 1, carriedToTomorrowCount: 1, droppedCount: 1, notes: null, energyLevel: null, carriedToDate: nextDay } : null;
   await page.clock.setFixedTime(new Date(`${date}T12:00:00`));
   // Unless a test asks for the first open of the day, the morning
   // Conversation was already skipped on this device.
@@ -58,7 +63,21 @@ export async function mockDay(page: Page, options: {
           plannedForDate: body.plannedForDate ?? date, status: body.status ?? 'planned', priorityReason: undefined,
         };
         tasks.push(task);
+        if (task.plannedForDate === date && state === 'closed') state = 'active';
         await route.fulfill({ status: 201, json: task });
+        return;
+      }
+      // Wrap up: kept tasks move to the next Day, dropped ones leave the list.
+      if (url.pathname === '/api/day/close') {
+        const actions: Array<{ taskId: string; action: string }> = body.taskActions;
+        const outcome = (action: string) => actions.filter(item => item.action === action).map(item => tasks.find(task => task.id === item.taskId)!);
+        const [done, kept, dropped] = [outcome('done'), outcome('tomorrow'), outcome('drop')];
+        later.push(...kept.map(task => ({ ...task, plannedForDate: nextDay })));
+        review = { completedCount: done.length, carriedToTomorrowCount: kept.length, droppedCount: dropped.length,
+          notes: body.notes ?? null, energyLevel: null, ...(kept.length ? { carriedToDate: nextDay } : {}) };
+        tasks.splice(0, tasks.length, ...done);
+        state = 'closed';
+        await route.fulfill({ json: { ...review, nextDate: nextDay } });
         return;
       }
       if (request.method() === 'PATCH') {
@@ -68,6 +87,7 @@ export async function mockDay(page: Page, options: {
           // A move re-files the task between the Day's list and Later, at the end.
           for (const list of [tasks, later]) if (list.includes(task)) list.splice(list.indexOf(task), 1);
           (task.status === 'backlog' || task.plannedForDate > date ? later : tasks).push(task);
+          if (tasks.includes(task) && state === 'closed') state = 'active';
           await route.fulfill({ json: task });
           return;
         }
@@ -90,10 +110,9 @@ export async function mockDay(page: Page, options: {
     } else if (url.pathname === '/api/workflow') {
       const requestedDate = url.searchParams.get('date');
       await route.fulfill({ json: {
-        date: requestedDate, oldestUnclosedDate: options.oldestUnclosedDate ?? null, state: requestedDate === date ? options.state ?? 'active' : 'planning',
+        date: requestedDate, oldestUnclosedDate: options.oldestUnclosedDate ?? null, state: requestedDate === date ? state : 'planning',
         version: 1, messages: options.messages ?? [], plan: options.plan ?? null, availableMinutes: 220,
-        tasks, backlog: [], review: options.state === 'closed'
-          ? { completedCount: 1, carriedToTomorrowCount: 1, droppedCount: 1, notes: null, energyLevel: null } : null,
+        tasks, backlog: [], review: state === 'closed' ? review : null,
         carryoverOrigins: options.carryoverOrigins ?? {},
         ...(requestedDate === date && options.opener ? { opener: options.opener } : {}),
       } });

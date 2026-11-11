@@ -56,7 +56,7 @@ func (e draftEnv) canChange(saved *generated.Task) error {
 		return err
 	}
 	if e.ClosedDays[saved.PlannedForDate.Time.Format("2006-01-02")] {
-		return invalidCode("closed_day", "That task is on a closed day, so it can't change.")
+		return invalidCode("closed_day", "That task is on a wrapped-up day, so it can't change.")
 	}
 	return nil
 }
@@ -64,7 +64,7 @@ func (e draftEnv) canChange(saved *generated.Task) error {
 // arrivable rejects destinations Confirm could not apply.
 func (e draftEnv) arrivable(day string) error {
 	if e.ClosedDays[day] && day != e.Today {
-		return invalidCode("closed_day", "That day is closed. Choose another day.")
+		return invalidCode("closed_day", "That day is wrapped up. Choose another day.")
 	}
 	return nil
 }

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -36,6 +37,18 @@ func dayIsOpen(ctx context.Context, tx pgx.Tx, userID uuid.UUID, date pgtype.Dat
 		return chat.ErrClosed
 	}
 	return nil
+}
+
+// continueDayForArrival is dayIsOpen for a task arriving on a Day, except that
+// new work on a wrapped-up today sets the Day going again, as it does when a
+// Draft adds it.
+func continueDayForArrival(ctx context.Context, tx pgx.Tx, userID uuid.UUID, date pgtype.Date) error {
+	err := dayIsOpen(ctx, tx, userID, date)
+	if !errors.Is(err, chat.ErrClosed) || !date.Time.Equal(chat.CurrentDate(ctx).Time) {
+		return err
+	}
+	_, err = tx.Exec(ctx, `UPDATE daily_plans SET state='active',version=version+1,updated_at=clock_timestamp() WHERE user_id=$1 AND plan_date=$2`, userID, date)
+	return err
 }
 func categoryOwned(ctx context.Context, tx pgx.Tx, userID uuid.UUID, id *uuid.UUID) error {
 	if id == nil {
@@ -149,7 +162,12 @@ func (h *TaskHandler) Create(c *gin.Context) {
 	var task generated.Task
 	err = h.mutate(ctx, userID, func(tx pgx.Tx, q *generated.Queries) error {
 		if req.Status != "backlog" {
-			if err := dayIsOpen(ctx, tx, userID, date); err != nil {
+			// Only work still to do continues a wrapped-up Day.
+			open := dayIsOpen
+			if req.Status == "planned" {
+				open = continueDayForArrival
+			}
+			if err := open(ctx, tx, userID, date); err != nil {
 				return err
 			}
 		}
@@ -259,11 +277,6 @@ func (h *TaskHandler) Update(c *gin.Context) {
 				return err
 			}
 		}
-		if status != "backlog" {
-			if err := dayIsOpen(ctx, tx, userID, date); err != nil {
-				return err
-			}
-		}
 		if req.DueDate != nil {
 			due, err = chat.ParseDate(*req.DueDate)
 			if err != nil {
@@ -276,9 +289,18 @@ func (h *TaskHandler) Update(c *gin.Context) {
 		toLater, wasLater := status == "backlog", current.Status == generated.TaskStatusBacklog
 		dropped := status == "dropped" || current.Status == generated.TaskStatusDropped
 		moved := !dropped && (toLater != wasLater || (!toLater && !date.Time.Equal(current.PlannedForDate.Time)))
+		if !toLater {
+			open := dayIsOpen
+			if moved && status == "planned" {
+				open = continueDayForArrival
+			}
+			if err := open(ctx, tx, userID, date); err != nil {
+				return err
+			}
+		}
 		if moved && req.SortOrder == nil {
 			var next int32
-			if err := tx.QueryRow(ctx, `SELECT COALESCE(max(sort_order),-1)+1 FROM tasks WHERE user_id=$1 AND id<>$2 AND status=$3 AND ($3='backlog' OR planned_for_date=$4)`, userID, id, status, date).Scan(&next); err != nil {
+			if err := tx.QueryRow(ctx, `SELECT COALESCE(max(sort_order),-1)+1 FROM tasks WHERE user_id=$1 AND id<>$2 AND CASE WHEN $3 THEN status='backlog' ELSE status<>'backlog' AND planned_for_date=$4 END`, userID, id, toLater, date).Scan(&next); err != nil {
 				return err
 			}
 			req.SortOrder = &next

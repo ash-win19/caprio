@@ -374,7 +374,7 @@ func undoConflict(ctx context.Context, conn generated.DBTX, user uuid.UUID, b ch
 			return err
 		}
 		if closed {
-			return invalidCode("conflict", "This day has since been reviewed. Its saved review cannot be undone here.")
+			return invalidCode("conflict", "This day has since been wrapped up, so this change can't be undone here.")
 		}
 	}
 	return nil
