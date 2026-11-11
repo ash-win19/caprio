@@ -1,16 +1,12 @@
 import { test, expect } from '@playwright/test';
-import { date, mockDay, titles } from './fixtures/day';
+import { date, mockDay } from './fixtures/day';
 
-test('login opens today with no recovery notice, and a historical review can return without a redirect or mutation', async ({ page }) => {
+test('login opens today with no recovery notice, and an old review link lands on Today without a mutation', async ({ page }) => {
   const writes = await mockDay(page, { oldestUnclosedDate: '2026-09-06' });
   await page.goto('/');
   await expect(page).toHaveURL(/\/today$/);
   await expect(page.getByRole('link', { name: 'Review unfinished day' })).toHaveCount(0);
   await page.goto('/review?date=2026-09-06&reopen=1');
-  await page.getByRole('button', { name: 'Today', exact: true }).click();
-  await expect(page).toHaveURL(`/review?date=${date}`);
-  await expect(page.getByRole('button', { name: 'Next day' })).toBeDisabled();
-  await page.getByRole('link', { name: 'View day', exact: true }).click();
   await expect(page).toHaveURL('/today');
   await expect(page.getByRole('heading', { name: 'Today', exact: true })).toBeVisible();
   expect(writes).toEqual([]);
@@ -34,45 +30,12 @@ test('planner drafts survive browser history and page navigation', async ({ page
   expect(writes).toEqual([]);
 });
 
-test('review outcomes and notes stay with their selected date until explicitly closed', async ({ page }) => {
-  const writes = await mockDay(page);
-  await page.goto(`/review?date=${date}`);
-  for (const title of titles) await page.getByRole('button', { name: `Done: ${title}`, exact: true }).click();
-  await page.getByRole('button', { name: 'Continue', exact: true }).click();
-  await page.locator('summary').filter({ hasText: 'Add a reflection' }).click();
-  await page.getByRole('textbox', { name: /Notes for tomorrow/ }).fill('Keep these notes for this day');
-  await page.getByRole('button', { name: 'Previous day' }).click();
-  await expect(page.getByRole('button', { name: 'Continue', exact: true })).toBeEnabled();
-  await page.getByRole('button', { name: 'Next day' }).click();
-  await expect(page.getByRole('textbox', { name: /Notes for tomorrow/ })).toHaveValue('Keep these notes for this day');
-  await page.getByRole('link', { name: 'View day', exact: true }).click();
-  await page.goBack();
-  await expect(page.getByRole('textbox', { name: /Notes for tomorrow/ })).toHaveValue('Keep these notes for this day');
-  expect(writes).toEqual([]);
-});
-
-test('date picker clears one-time context, rejects a future review, and restores focus', async ({ page }) => {
-  const writes = await mockDay(page);
-  await page.goto('/review?date=2026-09-06&reopen=1');
-  await page.getByRole('button', { name: /^Choose day,/ }).click();
-  const picker = page.getByLabel('Choose a day', { exact: true });
-  await picker.fill('2026-09-15');
-  await expect(page.getByRole('dialog').getByRole('button', { name: 'View day' })).toBeDisabled();
-  await picker.fill('2026-09-13');
-  await page.getByRole('dialog').getByRole('button', { name: 'View day' }).click();
-  await expect(page).toHaveURL('/review?date=2026-09-13');
-  await page.getByRole('button', { name: /^Choose day,/ }).click();
-  await picker.press('Escape');
-  await expect(page.getByRole('button', { name: /^Choose day,/ })).toBeFocused();
-  expect(writes).toEqual([]);
-});
-
 for (const width of [320, 390, 768, 1024]) {
   test(`the app bar and page header fit every workspace route at ${width}px`, async ({ page }, info) => {
     test.setTimeout(60_000); // This case loads several routes; each assertion keeps its normal timeout.
     await page.setViewportSize({ width, height: 844 });
     await mockDay(page);
-    for (const route of ['/today', '/conversation', '/review?date=2026-09-06', '/history', '/missing']) {
+    for (const route of ['/today', '/conversation', '/history', '/missing']) {
       await page.goto(route);
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
@@ -91,13 +54,16 @@ for (const width of [320, 390, 768, 1024]) {
   });
 }
 
-test('large text and a reduced mobile viewport keep date controls and the composer reachable', async ({ page }) => {
+test('large text and a reduced mobile viewport keep Wrap up and the composer reachable', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await mockDay(page);
-  await page.goto('/review?date=2025-12-31');
+  await page.goto('/today');
   await page.addStyleTag({ content: 'html { font-size: 200%; }' });
-  await expect(page.getByRole('button', { name: /^Choose day,/ })).toContainText('2025');
+  await page.getByRole('region', { name: 'Wrap up' }).getByRole('button', { name: 'Wrap up' }).click();
+  const finish = page.getByRole('dialog', { name: 'Wrap up' }).getByRole('button', { name: 'Finish' });
+  await finish.scrollIntoViewIfNeeded();
+  await expect(finish).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.goto('/conversation');
   await page.setViewportSize({ width: 390, height: 480 });

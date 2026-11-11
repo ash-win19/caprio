@@ -30,16 +30,16 @@ test('the task list dominates Today', async ({ page }, info) => {
   await expect(page.getByRole('link', { name: 'Tell Caprio what changed…' })).toHaveCount(1);
   await expect(page.getByRole('link', { name: /Something changed/ })).toHaveCount(0);
   await expect(page.getByRole('link', { name: /Open inbox/ })).toHaveCount(0);
-  const review = await box(page.locator('.today-review-entry'));
+  const wrapUp = await box(page.locator('.today-wrap-up'));
   const tasks = await box(list);
-  expect(review.y).toBeGreaterThan(tasks.y + tasks.height);
+  expect(wrapUp.y).toBeGreaterThan(tasks.y + tasks.height);
   await noOverflow(page);
   expect(writes).toEqual([]);
   await page.screenshot({ path: info.outputPath('today-desktop.png'), fullPage: true, animations: 'disabled' });
 });
 
 for (const width of [320, 390, 768]) {
-  test(`Today keeps tasks first and Review reachable at ${width}px`, async ({ page }, info) => {
+  test(`Today keeps tasks first and Wrap up reachable at ${width}px`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 844 });
     const tasks = tasksForDay();
     tasks[1].title = `Research ${'a'.repeat(120)}`;
@@ -55,34 +55,19 @@ for (const width of [320, 390, 768]) {
     expect(Math.round(target.height)).toBeGreaterThanOrEqual(44);
     await noOverflow(page);
     await page.screenshot({ path: info.outputPath(`today-${width}.png`), fullPage: true, animations: 'disabled' });
-    const review = page.getByRole('link', { name: 'Review day', exact: true });
-    await review.scrollIntoViewIfNeeded();
-    await review.focus();
-    await expect(review).toBeFocused();
-    await review.press('Enter');
-    await expect(page).toHaveURL(`/review?date=${date}`);
+    const wrapUp = page.getByRole('button', { name: 'Wrap up', exact: true });
+    await wrapUp.scrollIntoViewIfNeeded();
+    await wrapUp.focus();
+    await expect(wrapUp).toBeFocused();
+    await wrapUp.press('Enter');
+    const sheet = page.getByRole('dialog', { name: 'Wrap up' });
+    await expect(sheet.getByRole('button', { name: 'Finish' })).toBeVisible();
+    // Long titles wrap inside the sheet, and each choice is a full-size target.
+    await noOverflow(page);
+    const choice = await box(sheet.getByRole('radio', { name: 'Drop' }).first());
+    expect(Math.round(choice.height)).toBeGreaterThanOrEqual(40);
+    await page.screenshot({ path: info.outputPath(`wrap-up-sheet-${width}.png`), animations: 'disabled' });
     expect(writes).toEqual([]);
-  });
-}
-
-for (const width of [320, 1440]) {
-  test(`list and form routes retain shared header edges at ${width}px`, async ({ page }) => {
-    await page.setViewportSize({ width, height: 1000 });
-    await mockDay(page);
-    let left: number | undefined;
-    let bodyLeft: number | undefined;
-    for (const route of ['/review']) {
-      await page.goto(route);
-      await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-      const heading = await box(page.locator('.topbar-page'));
-      left ??= heading.x;
-      expect(heading.x, route).toBeCloseTo(left, 0);
-      const body = await box(page.locator('.page-body'));
-      bodyLeft ??= body.x;
-      expect(body.x, route).toBeCloseTo(bodyLeft, 0);
-      expect(body.width).toBeLessThanOrEqual(760);
-      await noOverflow(page);
-    }
   });
 }
 
@@ -93,14 +78,14 @@ for (const state of ['planning', 'active', 'closed'] as const) {
     await page.goto('/today');
     await expect(page.getByText('Nothing on today’s list yet.', { exact: true })).toBeVisible();
     await expect(page.locator('.today-prompt')).toHaveCount(state === 'planning' ? 1 : 0);
-    await expect(page.getByRole('textbox', { name: 'Add a task to today' })).toHaveCount(state === 'closed' ? 0 : 1);
+    await expect(page.getByRole('textbox', { name: 'Add a task to today' })).toHaveCount(1);
     await expect(page.locator('.today-message-bar').getByRole('link')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Plan my day' })).toHaveCount(0);
     await noOverflow(page);
   });
 }
 
-test('completing and restoring a task preserves focus, the count and explicit review', async ({ page }, info) => {
+test('completing and restoring a task preserves focus and the count, and Wrap up stays optional', async ({ page }, info) => {
   const writes = await mockDay(page);
   await page.goto('/today');
   const first = page.getByRole('checkbox', { name: `Mark ${titles[0]} complete` });
@@ -114,12 +99,11 @@ test('completing and restoring a task preserves focus, the count and explicit re
   await page.getByRole('checkbox', { name: `Mark ${titles[0]} incomplete` }).click();
   await expect(page.getByRole('checkbox', { name: `Mark ${titles[0]} complete` })).toBeFocused();
   for (const title of titles) await page.getByRole('checkbox', { name: `Mark ${title} complete` }).click();
-  await expect(page.getByRole('heading', { name: 'Your tasks are complete' })).toBeVisible();
   await expect(page.locator('.today-done > summary')).toBeFocused();
   await expect(page.locator('.today-summary')).toHaveText('0 left');
   await expect(page.getByText('Nothing left for today.', { exact: true })).toBeVisible();
   await expect(page).toHaveURL('/today');
-  await expect(page.locator('.today-review-ready').getByRole('link', { name: 'Review day' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Wrap up' }).getByRole('button', { name: 'Wrap up' })).toBeVisible();
   expect(writes).toHaveLength(5);
   expect(writes.every(write => write.path.startsWith('/api/tasks/task-'))).toBe(true);
   await page.screenshot({ path: info.outputPath('today-complete.png'), fullPage: true, animations: 'disabled' });
@@ -163,11 +147,11 @@ test('failed completion restores the task and keeps the failure visible', async 
   await expect(page.locator('.today-summary')).toHaveText('3 left · ~3h 40m');
 });
 
-test('a waiting Draft and the daily review footer stay distinct, with no recovery notice', async ({ page }) => {
+test('a waiting Draft and the Wrap up prompt stay distinct, with no recovery notice', async ({ page }) => {
   const writes = await mockDay(page, { oldestUnclosedDate: '2026-09-06', plan: planView([{ ref: 'new:1', title: 'Adjusted work', badge: 'new', date }]) });
   await page.goto('/today');
   await expect(page.locator('.today-prompt').getByRole('link', { name: 'Review draft' })).toHaveAttribute('href', '/conversation');
-  await expect(page.getByRole('link', { name: 'Review day', exact: true })).toHaveAttribute('href', `/review?date=${date}`);
+  await expect(page.getByRole('region', { name: 'Wrap up' }).getByRole('button', { name: 'Wrap up' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Review unfinished day' })).toHaveCount(0);
   expect(writes).toEqual([]);
 });
