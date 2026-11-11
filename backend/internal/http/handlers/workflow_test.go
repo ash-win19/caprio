@@ -379,3 +379,87 @@ func TestWrappingUpAgainCountsOnlyWhatStillCarries(t *testing.T) {
 	require.EqualValues(t, 0, again["carriedToTomorrowCount"])
 	require.Nil(t, again["carriedToDate"])
 }
+
+// Drop from a row menu is only a status change, so the Day's archive has to
+// pick the task up for it to stay findable in History.
+func TestADirectlyDroppedTaskIsUnderDroppedInHistoryAfterWrapUp(t *testing.T) {
+	r, _, _ := setupWorkflowHTTP(t)
+	now := time.Now().UTC()
+	today, tomorrow := now.Format("2006-01-02"), now.AddDate(0, 0, 1).Format("2006-01-02")
+	add := func(title string, fields map[string]any) string {
+		body := map[string]any{"title": title, "plannedForDate": today}
+		for key, value := range fields {
+			body[key] = value
+		}
+		return httpJSON(t, r, "POST", "/api/tasks", body, 201)["id"].(string)
+	}
+	titles := func(path string) []string {
+		out := []string{}
+		for _, task := range httpJSON(t, r, "GET", path, nil, 200)["tasks"].([]any) {
+			out = append(out, task.(map[string]any)["title"].(string))
+		}
+		return out
+	}
+	errand := add("Errand", nil)
+	reading := add("Reading", map[string]any{"sortOrder": 1})
+	// A Later task parked long ago: its stored date is not a Day it belongs to.
+	someday := add("Someday", map[string]any{"status": "backlog", "plannedForDate": "2020-01-01"})
+
+	httpJSON(t, r, "PATCH", "/api/tasks/"+errand, map[string]any{"status": "dropped"}, 200)
+	require.Equal(t, []string{"Reading"}, titles("/api/tasks?date="+today))
+	// Undo restores the previous status, and the task is back where it was.
+	httpJSON(t, r, "PATCH", "/api/tasks/"+errand, map[string]any{"status": "planned"}, 200)
+	require.Equal(t, []string{"Errand", "Reading"}, titles("/api/tasks?date="+today))
+
+	httpJSON(t, r, "PATCH", "/api/tasks/"+errand, map[string]any{"status": "dropped"}, 200)
+	httpJSON(t, r, "PATCH", "/api/tasks/"+someday, map[string]any{"status": "dropped"}, 200)
+	require.Empty(t, titles("/api/tasks?status=later&date="+today))
+
+	wrapped := httpJSON(t, r, "POST", "/api/day/close", map[string]any{"date": today, "taskActions": []any{map[string]any{"taskId": reading, "action": "tomorrow"}}}, 200)
+	require.EqualValues(t, 2, wrapped["droppedCount"])
+	days := httpJSON(t, r, "GET", "/api/history?before="+tomorrow, nil, 200)["days"].([]any)
+	require.Len(t, days, 1)
+	day := days[0].(map[string]any)
+	require.Equal(t, today, day["date"])
+	require.ElementsMatch(t, []any{"Errand", "Someday"}, day["dropped"])
+	require.Equal(t, []any{"Reading"}, day["carried"])
+	require.EqualValues(t, 2, day["droppedCount"])
+
+	// The Day's own read-only view lists it too.
+	statuses := map[string]string{}
+	for _, task := range httpJSON(t, r, "GET", "/api/workflow?date="+today, nil, 200)["tasks"].([]any) {
+		statuses[task.(map[string]any)["title"].(string)] = task.(map[string]any)["status"].(string)
+	}
+	require.Equal(t, map[string]string{"Errand": "dropped", "Someday": "dropped", "Reading": "planned"}, statuses)
+}
+
+func TestADirectlyDroppedTaskIsUnderDroppedInHistoryAfterRollover(t *testing.T) {
+	r, store, user := setupWorkflowHTTP(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	day := func(offset int) string { return now.AddDate(0, 0, offset).Format("2006-01-02") }
+	// Past Days can't be written through the API, so they are seeded as they
+	// would have been left: a task dropped from the list, another never ticked.
+	seed := func(title, date string, status generated.TaskStatus) {
+		planned, err := chat.ParseDate(date)
+		require.NoError(t, err)
+		_, err = store.Queries.CreateTask(ctx, generated.CreateTaskParams{UserID: user, Title: title, Urgency: generated.UrgencyLevelMedium, Source: generated.TaskSourceManual, PlannedForDate: planned, Status: status})
+		require.NoError(t, err)
+	}
+	seed("Old errand", day(-1), generated.TaskStatusDropped)
+	seed("Old reading", day(-1), generated.TaskStatusPlanned)
+	// A Day where the only task was dropped still ends, so the drop is on record.
+	seed("Gave up", day(-2), generated.TaskStatusDropped)
+
+	httpJSON(t, r, "POST", "/api/day/rollover", map[string]any{"timezone": "UTC"}, 200)
+	days := httpJSON(t, r, "GET", "/api/history?before="+day(0), nil, 200)["days"].([]any)
+	require.Len(t, days, 2)
+	yesterday, before := days[0].(map[string]any), days[1].(map[string]any)
+	require.Equal(t, day(-1), yesterday["date"])
+	require.Equal(t, []any{"Old errand"}, yesterday["dropped"])
+	require.Equal(t, []any{"Old reading"}, yesterday["carried"])
+	require.Equal(t, false, yesterday["wrappedUp"])
+	require.Equal(t, day(-2), before["date"])
+	require.Equal(t, []any{"Gave up"}, before["dropped"])
+	require.EqualValues(t, 1, before["droppedCount"])
+}

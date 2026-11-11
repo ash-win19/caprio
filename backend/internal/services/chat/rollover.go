@@ -35,7 +35,7 @@ func (s *Service) Rollover(ctx context.Context, userID uuid.UUID, today pgtype.D
 		WITH candidates AS (
 			SELECT plan_date AS day FROM daily_plans WHERE user_id=$1 AND plan_date<$2 AND state='active'
 			UNION
-			SELECT planned_for_date FROM tasks WHERE user_id=$1 AND planned_for_date<$2 AND status IN ('planned','completed')
+			SELECT planned_for_date FROM tasks WHERE user_id=$1 AND planned_for_date<$2 AND status IN ('planned','completed','dropped')
 		)
 		SELECT c.day::text FROM candidates c LEFT JOIN daily_plans p ON p.user_id=$1 AND p.plan_date=c.day
 		WHERE p.state IS DISTINCT FROM 'closed' ORDER BY c.day`, userID, today)

@@ -179,6 +179,14 @@ func (s *Service) close(ctx context.Context, userID uuid.UUID, req CloseRequest,
 				w.Tasks[i].Status = generated.TaskStatusDropped
 			}
 		}
+		// A task dropped from the Day's list before it ended belongs in its
+		// archive too, or it would be findable nowhere.
+		dropped, err := q.ListDroppedTasksForDay(ctx, generated.ListDroppedTasksForDayParams{UserID: userID, PlannedForDate: date})
+		if err != nil {
+			return err
+		}
+		w.Tasks = append(w.Tasks, dropped...)
+		result.DroppedCount += int32(len(dropped))
 		// Every close has an immutable review, even when today was reopened.
 		review, _ := json.Marshal(result.Review)
 		archived, _ := json.Marshal(w.Tasks)

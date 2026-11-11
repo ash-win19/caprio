@@ -289,7 +289,11 @@ func (h *TaskHandler) Update(c *gin.Context) {
 		toLater, wasLater := status == "backlog", current.Status == generated.TaskStatusBacklog
 		dropped := status == "dropped" || current.Status == generated.TaskStatusDropped
 		moved := !dropped && (toLater != wasLater || (!toLater && !date.Time.Equal(current.PlannedForDate.Time)))
-		if !toLater {
+		if wasLater && status == "dropped" {
+			// A Later task has no Day of its own. It is dropped on today, so
+			// today's archive is where History will show it.
+			date = chat.CurrentDate(ctx)
+		} else if !toLater {
 			open := dayIsOpen
 			if moved && status == "planned" {
 				open = continueDayForArrival

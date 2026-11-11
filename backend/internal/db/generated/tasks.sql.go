@@ -457,6 +457,61 @@ func (q *Queries) ListCompletedTasksByDate(ctx context.Context, arg ListComplete
 	return items, nil
 }
 
+const listDroppedTasksForDay = `-- name: ListDroppedTasksForDay :many
+SELECT id, user_id, title, description, category_id, urgency, duration, source, completed, added_today, carried_over, sort_order, due_date, defer_count, created_at, updated_at, planned_for_date, status, priority_reason, completed_at FROM tasks
+WHERE user_id = $1
+    AND planned_for_date = $2
+    AND status = 'dropped'
+ORDER BY sort_order ASC, created_at ASC
+`
+
+type ListDroppedTasksForDayParams struct {
+	UserID         uuid.UUID   `json:"userId"`
+	PlannedForDate pgtype.Date `json:"plannedForDate"`
+}
+
+// Tasks dropped from a Day's list, from a row menu or through a Draft.
+func (q *Queries) ListDroppedTasksForDay(ctx context.Context, arg ListDroppedTasksForDayParams) ([]Task, error) {
+	rows, err := q.db.Query(ctx, listDroppedTasksForDay, arg.UserID, arg.PlannedForDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Task{}
+	for rows.Next() {
+		var i Task
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Title,
+			&i.Description,
+			&i.CategoryID,
+			&i.Urgency,
+			&i.Duration,
+			&i.Source,
+			&i.Completed,
+			&i.AddedToday,
+			&i.CarriedOver,
+			&i.SortOrder,
+			&i.DueDate,
+			&i.DeferCount,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.PlannedForDate,
+			&i.Status,
+			&i.PriorityReason,
+			&i.CompletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLaterTasks = `-- name: ListLaterTasks :many
 SELECT id, user_id, title, description, category_id, urgency, duration, source, completed, added_today, carried_over, sort_order, due_date, defer_count, created_at, updated_at, planned_for_date, status, priority_reason, completed_at FROM tasks
 WHERE user_id = $1
