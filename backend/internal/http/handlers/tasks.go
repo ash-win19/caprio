@@ -341,36 +341,6 @@ func (h *TaskHandler) Update(c *gin.Context) {
 	}
 	c.JSON(200, task)
 }
-func (h *TaskHandler) Delete(c *gin.Context) {
-	userID, ok := middleware.GetUserID(c)
-	if !ok {
-		c.JSON(401, gin.H{"error": "unauthorized"})
-		return
-	}
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(400, gin.H{"error": "invalid task id"})
-		return
-	}
-	ctx := c.Request.Context()
-	err = h.mutate(ctx, userID, func(tx pgx.Tx, q *generated.Queries) error {
-		task, err := q.GetTaskByID(ctx, generated.GetTaskByIDParams{ID: id, UserID: userID})
-		if err != nil {
-			return err
-		}
-		if task.Status != generated.TaskStatusBacklog {
-			if err := dayIsOpen(ctx, tx, userID, task.PlannedForDate); err != nil {
-				return err
-			}
-		}
-		return q.DeleteTask(ctx, generated.DeleteTaskParams{ID: id, UserID: userID})
-	})
-	if err != nil {
-		workflowError(c, err)
-		return
-	}
-	c.JSON(200, gin.H{"deleted": true})
-}
 
 type reorderRequest struct {
 	Tasks []reorderItem `json:"tasks" binding:"required"`
@@ -419,43 +389,6 @@ func (h *TaskHandler) Reorder(c *gin.Context) {
 		return
 	}
 	c.JSON(200, gin.H{"reordered": true})
-}
-func (h *TaskHandler) Defer(c *gin.Context) {
-	userID, ok := middleware.GetUserID(c)
-	if !ok {
-		c.JSON(401, gin.H{"error": "unauthorized"})
-		return
-	}
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(400, gin.H{"error": "invalid task id"})
-		return
-	}
-	ctx := c.Request.Context()
-	var task generated.Task
-	err = h.mutate(ctx, userID, func(tx pgx.Tx, q *generated.Queries) error {
-		var err error
-		task, err = q.GetTaskByID(ctx, generated.GetTaskByIDParams{ID: id, UserID: userID})
-		if err != nil {
-			return err
-		}
-		if task.Status == generated.TaskStatusBacklog {
-			return nil
-		}
-		if task.Completed {
-			return badTask("completed tasks cannot be deferred")
-		}
-		if err := dayIsOpen(ctx, tx, userID, task.PlannedForDate); err != nil {
-			return err
-		}
-		task, err = q.DeferTask(ctx, generated.DeferTaskParams{ID: id, UserID: userID})
-		return err
-	})
-	if err != nil {
-		workflowError(c, err)
-		return
-	}
-	c.JSON(200, task)
 }
 
 // A direct task edit saves right away and leaves any Draft waiting: Confirm

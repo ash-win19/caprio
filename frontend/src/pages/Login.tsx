@@ -8,7 +8,7 @@ import { useAppStore } from '@/lib/store';
 export default function Login() {
   const navigate = useNavigate();
   const { loginWithRedirect, error, isLoading } = useAuth0();
-  const { setUser, initializeMockData } = useAppStore();
+  const setUser = useAppStore((state) => state.setUser);
   const demoEnabled = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO === 'true';
 
   const signIn = (connection?: string) => {
@@ -24,7 +24,6 @@ export default function Login() {
     localStorage.setItem('caprio_session', 'demo');
     localStorage.setItem('demo_user', 'true');
     setUser({ name: 'Demo User', email: 'demo@caprio.app', categories: ['Work', 'Gym', 'Personal Growth', 'Finance'] });
-    initializeMockData();
     navigate('/today');
   };
 

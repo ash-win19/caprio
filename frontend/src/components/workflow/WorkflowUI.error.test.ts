@@ -11,8 +11,8 @@ describe('workflowErrorMessage', () => {
     expect(workflowErrorMessage(new ApiError(409, 'still replying to your last message', 'turn_in_progress'))).toBe('Still replying to your last message.');
   });
   it('maps capacity, validation, auth, and generic failures', () => {
-    expect(workflowErrorCategory(new ApiError(503, 'the planning model is overloaded or timed out; try again or switch models'))).toBe('capacity');
-    expect(workflowErrorMessage(new ApiError(503, 'the planning model is overloaded or timed out; try again or switch models'))).toMatch(/busy or timed out/i);
+    expect(workflowErrorCategory(new ApiError(503, 'the planning model is overloaded or timed out; try again in a moment'))).toBe('capacity');
+    expect(workflowErrorMessage(new ApiError(503, 'the planning model is overloaded or timed out; try again in a moment'))).toMatch(/busy or timed out/i);
 
     expect(workflowErrorCategory(new ApiError(400, 'proposal omitted an unfinished task'))).toBe('validation');
     expect(workflowErrorMessage(new ApiError(400, 'proposal omitted an unfinished task'))).toMatch(/couldn’t be validated/i);

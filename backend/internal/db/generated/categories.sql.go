@@ -11,70 +11,6 @@ import (
 	"github.com/google/uuid"
 )
 
-const batchUpdateCategoryOrder = `-- name: BatchUpdateCategoryOrder :exec
-UPDATE categories SET sort_order = $3 WHERE id = $1 AND user_id = $2
-`
-
-type BatchUpdateCategoryOrderParams struct {
-	ID        uuid.UUID `json:"id"`
-	UserID    uuid.UUID `json:"userId"`
-	SortOrder int32     `json:"sortOrder"`
-}
-
-func (q *Queries) BatchUpdateCategoryOrder(ctx context.Context, arg BatchUpdateCategoryOrderParams) error {
-	_, err := q.db.Exec(ctx, batchUpdateCategoryOrder, arg.ID, arg.UserID, arg.SortOrder)
-	return err
-}
-
-const createCategory = `-- name: CreateCategory :one
-INSERT INTO categories (user_id, name, color, hours_per_week, sort_order)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, user_id, name, color, hours_per_week, sort_order, created_at
-`
-
-type CreateCategoryParams struct {
-	UserID       uuid.UUID `json:"userId"`
-	Name         string    `json:"name"`
-	Color        string    `json:"color"`
-	HoursPerWeek *float64  `json:"hoursPerWeek"`
-	SortOrder    int32     `json:"sortOrder"`
-}
-
-func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) (Category, error) {
-	row := q.db.QueryRow(ctx, createCategory,
-		arg.UserID,
-		arg.Name,
-		arg.Color,
-		arg.HoursPerWeek,
-		arg.SortOrder,
-	)
-	var i Category
-	err := row.Scan(
-		&i.ID,
-		&i.UserID,
-		&i.Name,
-		&i.Color,
-		&i.HoursPerWeek,
-		&i.SortOrder,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
-const deleteCategory = `-- name: DeleteCategory :exec
-DELETE FROM categories WHERE id = $1 AND user_id = $2
-`
-
-type DeleteCategoryParams struct {
-	ID     uuid.UUID `json:"id"`
-	UserID uuid.UUID `json:"userId"`
-}
-
-func (q *Queries) DeleteCategory(ctx context.Context, arg DeleteCategoryParams) error {
-	_, err := q.db.Exec(ctx, deleteCategory, arg.ID, arg.UserID)
-	return err
-}
-
 const listCategoriesByUser = `-- name: ListCategoriesByUser :many
 SELECT id, user_id, name, color, hours_per_week, sort_order, created_at FROM categories WHERE user_id = $1 ORDER BY sort_order ASC
 `
@@ -105,45 +41,4 @@ func (q *Queries) ListCategoriesByUser(ctx context.Context, userID uuid.UUID) ([
 		return nil, err
 	}
 	return items, nil
-}
-
-const updateCategory = `-- name: UpdateCategory :one
-UPDATE categories SET
-    name = COALESCE($1, name),
-    color = COALESCE($2, color),
-    hours_per_week = COALESCE($3, hours_per_week),
-    sort_order = COALESCE($4, sort_order)
-WHERE id = $5 AND user_id = $6
-RETURNING id, user_id, name, color, hours_per_week, sort_order, created_at
-`
-
-type UpdateCategoryParams struct {
-	Name         *string   `json:"name"`
-	Color        *string   `json:"color"`
-	HoursPerWeek *float64  `json:"hoursPerWeek"`
-	SortOrder    *int32    `json:"sortOrder"`
-	ID           uuid.UUID `json:"id"`
-	UserID       uuid.UUID `json:"userId"`
-}
-
-func (q *Queries) UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (Category, error) {
-	row := q.db.QueryRow(ctx, updateCategory,
-		arg.Name,
-		arg.Color,
-		arg.HoursPerWeek,
-		arg.SortOrder,
-		arg.ID,
-		arg.UserID,
-	)
-	var i Category
-	err := row.Scan(
-		&i.ID,
-		&i.UserID,
-		&i.Name,
-		&i.Color,
-		&i.HoursPerWeek,
-		&i.SortOrder,
-		&i.CreatedAt,
-	)
-	return i, err
 }

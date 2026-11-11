@@ -78,14 +78,6 @@ export function AuthGuard({ children }: { children: ReactNode }) {
     staleTime: 60_000,
   });
 
-
-  useEffect(() => {
-    if (!session.data || !account || preparedAccount !== account) return;
-    const { categories, preferences } = session.data;
-    useAppStore.getState().setCategories(categories);
-    useAppStore.getState().setPrefs(preferences);
-  }, [account, preparedAccount, session.data]);
-
   if (isLoading && !isDemo) return <SessionStatus>Loading your account...</SessionStatus>;
   if (!account) return PUBLIC_ROUTES.includes(location.pathname) ? <>{children}</> : <Navigate to="/login" replace />;
   if (preparedAccount !== account || session.isPending) return <SessionStatus>Loading your day...</SessionStatus>;
@@ -124,7 +116,7 @@ function DayEntry({ account, date, fromPublicRoute, openedToday, children }: { a
     <p role="alert">{workflow.error.message || 'Unable to load your day.'}</p>
     <button className="mt-4 underline" onClick={() => void workflow.refetch()}>Try again</button>
   </SessionStatus>;
-  if (!showsToday) return <Navigate to="/conversation" state={{ planningDay: date }} replace />;
+  if (!showsToday) return <Navigate to="/conversation" replace />;
   if (fromPublicRoute) return <Navigate to="/today" replace />;
   return <>{children}</>;
 }

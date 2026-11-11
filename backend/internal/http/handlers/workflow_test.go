@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -40,7 +41,6 @@ func setupWorkflowHTTP(t *testing.T) (*gin.Engine, *db.Store, uuid.UUID) {
 	r.GET("/api/tasks", tasks.List)
 	r.POST("/api/tasks", tasks.Create)
 	r.PATCH("/api/tasks/:id", tasks.Update)
-	r.DELETE("/api/tasks/:id", tasks.Delete)
 	workflow := handlers.NewChatHandler(store, chat.NewService(store, nil))
 	r.GET("/api/workflow", workflow.GetWorkflow)
 	r.POST("/api/day/plan/confirm", workflow.Confirm)
@@ -68,6 +68,25 @@ func httpJSON(t *testing.T, r http.Handler, method, path string, body any, statu
 	var decoded map[string]any
 	require.NoError(t, json.Unmarshal(result.Body.Bytes(), &decoded))
 	return decoded
+}
+
+// streamedReply posts a chat message and returns the committed reply: the
+// payload of the stream's "done" event.
+func streamedReply(t *testing.T, r http.Handler, path string, body any) map[string]any {
+	t.Helper()
+	data, err := json.Marshal(body)
+	require.NoError(t, err)
+	req := httptest.NewRequest("POST", path, bytes.NewReader(data))
+	req.Header.Set("Content-Type", "application/json")
+	result := httptest.NewRecorder()
+	r.ServeHTTP(result, req)
+	require.Equal(t, 200, result.Code, result.Body.String())
+	_, done, found := strings.Cut(result.Body.String(), "event: done\ndata: ")
+	require.True(t, found, result.Body.String())
+	done, _, _ = strings.Cut(done, "\n")
+	var reply map[string]any
+	require.NoError(t, json.Unmarshal([]byte(done), &reply))
+	return reply
 }
 
 func TestTaskMutationKeepsCompletionConsistentAndKeepsTheDraft(t *testing.T) {

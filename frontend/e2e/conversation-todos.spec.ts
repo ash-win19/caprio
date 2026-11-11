@@ -7,7 +7,7 @@ for (const width of [390, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
     await mockDay(page);
     const original = tasksForDay().slice(0, 1);
-    let workflow: Workflow = { date, state: 'active', version: 1, messages: [], tasks: original, backlog: [], plan: null, availableMinutes: 30, review: null, changeReceipts: [] };
+    let workflow: Workflow = { date, state: 'active', version: 1, messages: [], tasks: original, backlog: [], plan: null, availableMinutes: 30, review: null };
     const writes: Array<{ path: string; body: Record<string, unknown> }> = [];
     await page.route('**/api/**', async route => {
       const path = new URL(route.request().url()).pathname;
@@ -34,7 +34,7 @@ for (const width of [390, 1440]) {
       }
       return route.fallback();
     });
-    await page.goto(`/conversation?date=${date}&taskId=referenced-inbox-task`);
+    await page.goto('/conversation');
     await expect(page.getByRole('link', { name: 'Back to Today', exact: true })).toBeVisible();
     await page.getByRole('textbox', { name: 'Message about your day' }).fill('I have to fix Headlines publishing and prepare tomorrow’s demo. Two hours each.');
     await page.getByRole('button', { name: 'Send prompt', exact: true }).click();
@@ -43,8 +43,8 @@ for (const width of [390, 1440]) {
     await expect(proposal).toBeVisible();
     await expect(proposal.getByRole('button', { name: 'Confirm plan' })).toBeVisible();
     await expect(proposal.getByRole('region', { name: 'Today' }).locator('li')).toHaveCount(3);
-    await expect(page.getByRole('region', { name: 'Saved task changes' })).toHaveCount(0);
-    expect(writes[0].body).toMatchObject({ date, taskId: 'referenced-inbox-task' });
+    expect(writes[0].body).toMatchObject({ date });
+    expect(writes[0].body).not.toHaveProperty('taskId');
     expect(writes[0].body).not.toHaveProperty('contractVersion');
     await proposal.getByRole('button', { name: 'Confirm plan' }).click();
     // Confirm opens bare /today for local today (fixture clock = date) so overnight tabs are not pinned.
@@ -74,7 +74,6 @@ test('a moved task shows under other days with its badge while the rest of the d
   await expect(proposal.getByRole('region', { name: 'Today' }).locator('li')).toHaveCount(2);
   await expect(proposal).not.toContainText('Removed');
   await expect(proposal.getByRole('button', { name: 'Confirm plan' })).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Saved task changes' })).toHaveCount(0);
 });
 
 for (const width of [390, 1440]) {

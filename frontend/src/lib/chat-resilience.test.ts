@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '@/lib/api';
 import { FALLBACK_CHAT_MODEL } from '@/lib/chat-models';
-import { isModelCapacityError, shouldFallbackToGroq } from '@/lib/chat-resilience';
+import { isModelCapacityError, shouldUseFallbackModel } from '@/lib/chat-resilience';
 
 describe('chat resilience', () => {
   it('never retries validation, capacity, authentication, or conflict errors on another provider', () => {
     for (const code of ['plan_incomplete', 'over_capacity', 'validation', 'auth', 'conflict']) {
-      expect(shouldFallbackToGroq(new ApiError(400, 'capacity unavailable', code), 'google/gemini-3.7-flash')).toBe(false);
+      expect(shouldUseFallbackModel(new ApiError(400, 'capacity unavailable', code), 'google/gemini-3.7-flash')).toBe(false);
     }
   });
   it('detects capacity-like API failures', () => {
-    expect(isModelCapacityError(new ApiError(503, 'the planning model is overloaded or timed out; try again or switch models'))).toBe(true);
+    expect(isModelCapacityError(new ApiError(503, 'the planning model is overloaded or timed out; try again in a moment'))).toBe(true);
     expect(isModelCapacityError(new ApiError(502, 'bad gateway'))).toBe(true);
     expect(isModelCapacityError(new ApiError(500, 'model overload please retry'))).toBe(true);
     expect(isModelCapacityError(new ApiError(500, 'Internal server error'))).toBe(false);
@@ -19,9 +19,9 @@ describe('chat resilience', () => {
   });
 
   it('only falls back when the user is not already on Groq 20B', () => {
-    const err = new ApiError(503, 'the planning model is overloaded or timed out; try again or switch models');
-    expect(shouldFallbackToGroq(err, 'google/gemini-3.7-flash')).toBe(true);
-    expect(shouldFallbackToGroq(err, FALLBACK_CHAT_MODEL)).toBe(false);
-    expect(shouldFallbackToGroq(new ApiError(400, 'bad request'), 'google/gemini-3.7-flash')).toBe(false);
+    const err = new ApiError(503, 'the planning model is overloaded or timed out; try again in a moment');
+    expect(shouldUseFallbackModel(err, 'google/gemini-3.7-flash')).toBe(true);
+    expect(shouldUseFallbackModel(err, FALLBACK_CHAT_MODEL)).toBe(false);
+    expect(shouldUseFallbackModel(new ApiError(400, 'bad request'), 'google/gemini-3.7-flash')).toBe(false);
   });
 });

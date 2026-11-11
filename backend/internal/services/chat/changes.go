@@ -3,10 +3,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"reflect"
-	"sort"
 	"strings"
 	"unicode"
 
@@ -36,29 +33,12 @@ type dayState struct {
 	State        string `json:"state"`
 	AfterVersion int32  `json:"afterVersion"`
 }
-type ChangeItem struct {
-	TaskID uuid.UUID `json:"taskId"`
-	Title  string    `json:"title"`
-	Action string    `json:"action"`
-	Date   string    `json:"date"`
-}
-type ChangeReceipt struct {
-	ID            uuid.UUID    `json:"id"`
-	RequestID     uuid.UUID    `json:"requestId"`
-	Summary       string       `json:"summary"`
-	Changes       []ChangeItem `json:"changes"`
-	AffectedDates []string     `json:"affectedDates"`
-	Undone        bool         `json:"undone"`
-	CanUndo       bool         `json:"canUndo"`
-	UndoReason    string       `json:"undoReason,omitempty"`
-}
 type changeBatch struct {
 	ID        uuid.UUID
 	RequestID uuid.UUID
 	Date      pgtype.Date
 	Changes   []TaskChange
 	Days      map[string]dayState
-	Undone    bool
 }
 
 func titleKey(s string) string {
@@ -305,7 +285,7 @@ func applyOperations(ctx context.Context, tx pgx.Tx, user uuid.UUID, date pgtype
 	if len(batch.Changes) == 0 {
 		return nil, nil
 	}
-	// Inbox changes can invalidate a suggestion on any day. Versions advance for
+	// Later changes can invalidate a suggestion on any day. Versions advance for
 	// touched days; unrelated days advance only when their suggestion is cleared.
 	if _, err := tx.Exec(ctx, `UPDATE daily_plans SET proposal=NULL,proposal_snapshot=NULL,draft=NULL,version=version+1,updated_at=clock_timestamp() WHERE user_id=$1 AND (proposal IS NOT NULL OR draft IS NOT NULL)`, user); err != nil {
 		return nil, err
@@ -322,165 +302,4 @@ func applyOperations(ctx context.Context, tx pgx.Tx, user uuid.UUID, date pgtype
 	days, _ := json.Marshal(batch.Days)
 	_, err := tx.Exec(ctx, `INSERT INTO task_change_batches(id,user_id,request_id,conversation_date,changes,day_states) VALUES($1,$2,$3,$4,$5,$6)`, batch.ID, user, requestID, date, changes, days)
 	return batch, err
-}
-
-func readBatches(ctx context.Context, conn generated.DBTX, user uuid.UUID, date pgtype.Date) ([]changeBatch, error) {
-	rows, err := conn.Query(ctx, `SELECT id,request_id,conversation_date,changes,day_states,undone_at IS NOT NULL FROM task_change_batches WHERE user_id=$1 AND conversation_date=$2 ORDER BY created_at`, user, date)
-	if err != nil {
-		return nil, err
-	}
-	var batches []changeBatch
-	for rows.Next() {
-		var b changeBatch
-		var changes, days []byte
-		if err := rows.Scan(&b.ID, &b.RequestID, &b.Date, &changes, &days, &b.Undone); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		if err := json.Unmarshal(changes, &b.Changes); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		if err := json.Unmarshal(days, &b.Days); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		batches = append(batches, b)
-	}
-	rows.Close()
-	return batches, rows.Err()
-}
-
-func undoConflict(ctx context.Context, conn generated.DBTX, user uuid.UUID, b changeBatch) error {
-	if err := WritableDate(ctx, b.Date); err != nil {
-		return err
-	}
-	q := generated.New(conn)
-	for _, change := range b.Changes {
-		now, err := q.GetTaskByID(ctx, generated.GetTaskByIDParams{ID: change.After.ID, UserID: user})
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return invalidCode("conflict", "This task was removed after the change. Undo cannot replace later work.")
-			}
-			return err
-		}
-		if snapshot([]generated.Task{now}, nil) != snapshot([]generated.Task{change.After}, nil) {
-			return invalidCode("conflict", "A task changed after this save. Undo cannot replace later work.")
-		}
-	}
-	for day := range b.Days {
-		date, _ := ParseDate(day)
-		if err := WritableDate(ctx, date); err != nil {
-			return err
-		}
-		var closed bool
-		if err := conn.QueryRow(ctx, `SELECT state='closed' FROM daily_plans WHERE user_id=$1 AND plan_date=$2`, user, day).Scan(&closed); err != nil {
-			return err
-		}
-		if closed {
-			return invalidCode("conflict", "This day has since been wrapped up, so this change can't be undone here.")
-		}
-	}
-	return nil
-}
-
-func receipt(ctx context.Context, conn generated.DBTX, user uuid.UUID, b changeBatch) (ChangeReceipt, error) {
-	r := ChangeReceipt{ID: b.ID, RequestID: b.RequestID, Undone: b.Undone, Changes: []ChangeItem{}, AffectedDates: []string{}}
-	for _, change := range b.Changes {
-		r.Changes = append(r.Changes, ChangeItem{TaskID: change.After.ID, Title: change.After.Title, Action: change.Action, Date: change.After.PlannedForDate.Time.Format("2006-01-02")})
-	}
-	for day := range b.Days {
-		r.AffectedDates = append(r.AffectedDates, day)
-	}
-	sort.Strings(r.AffectedDates)
-	r.Summary = fmt.Sprintf("Saved %d task changes", len(r.Changes))
-	if len(r.Changes) > 0 {
-		action := r.Changes[0].Action
-		same := true
-		for _, c := range r.Changes {
-			same = same && c.Action == action
-		}
-		if same {
-			noun := "tasks"
-			if len(r.Changes) == 1 {
-				noun = "task"
-			}
-			r.Summary = fmt.Sprintf("%s %d %s", action, len(r.Changes), noun)
-			// Batches saved before the Inbox became Later carry the old action.
-			if action == "Moved from Later" || action == "Moved from Inbox" {
-				r.Summary = fmt.Sprintf("Moved %d %s from Later", len(r.Changes), noun)
-			}
-		}
-	}
-	if b.Undone {
-		r.UndoReason = "Undone"
-		return r, nil
-	}
-	if err := undoConflict(ctx, conn, user, b); err != nil {
-		var validation *ValidationError
-		if !errors.As(err, &validation) {
-			return r, err
-		}
-		r.UndoReason = validation.Message
-		return r, nil
-	}
-	r.CanUndo = true
-	return r, nil
-}
-
-func (s *Service) Undo(ctx context.Context, user uuid.UUID, id uuid.UUID) (*Workflow, error) {
-	ctx = withClock(ctx, s.now)
-	var result *Workflow
-	err := s.store.WithUserTx(ctx, user, func(tx pgx.Tx, q *generated.Queries) error {
-		var date pgtype.Date
-		if err := tx.QueryRow(ctx, `SELECT conversation_date FROM task_change_batches WHERE id=$1 AND user_id=$2`, id, user).Scan(&date); err != nil {
-			return err
-		}
-		batches, err := readBatches(ctx, tx, user, date)
-		if err != nil {
-			return err
-		}
-		var batch *changeBatch
-		for i := range batches {
-			if batches[i].ID == id {
-				batch = &batches[i]
-				break
-			}
-		}
-		if batch == nil {
-			return pgx.ErrNoRows
-		}
-		if batch.Undone {
-			result, err = load(ctx, tx, user, date)
-			return err
-		}
-		if err := undoConflict(ctx, tx, user, *batch); err != nil {
-			return err
-		}
-		for _, change := range batch.Changes {
-			if change.Before == nil {
-				if _, err := tx.Exec(ctx, `UPDATE tasks SET status='dropped',updated_at=clock_timestamp() WHERE id=$1 AND user_id=$2`, change.After.ID, user); err != nil {
-					return err
-				}
-			} else {
-				if err := writeTask(ctx, tx, *change.Before); err != nil {
-					return err
-				}
-			}
-		}
-		for day, prior := range batch.Days {
-			if _, err := tx.Exec(ctx, `UPDATE daily_plans SET state=CASE WHEN version=$3 THEN $4 ELSE state END,version=version+1,proposal=NULL,proposal_snapshot=NULL,draft=NULL,updated_at=clock_timestamp() WHERE user_id=$1 AND plan_date=$2`, user, day, prior.AfterVersion, prior.State); err != nil {
-				return err
-			}
-		}
-		if _, err := tx.Exec(ctx, `UPDATE daily_plans SET proposal=NULL,proposal_snapshot=NULL,draft=NULL,version=version+1,updated_at=clock_timestamp() WHERE user_id=$1 AND (proposal IS NOT NULL OR draft IS NOT NULL)`, user); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, `UPDATE task_change_batches SET undone_at=clock_timestamp() WHERE id=$1 AND user_id=$2`, id, user); err != nil {
-			return err
-		}
-		result, err = load(ctx, tx, user, date)
-		return err
-	})
-	return result, err
 }

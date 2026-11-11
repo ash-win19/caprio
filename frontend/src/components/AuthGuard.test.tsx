@@ -26,14 +26,9 @@ vi.mock('@/lib/store', () => ({
       const store = {
         user: null,
         setUser: vi.fn(),
-        setCategories: vi.fn(),
-        setPrefs: vi.fn(),
-        initializeMockData: vi.fn(),
         getState: () => ({
           user: null,
           setUser: vi.fn(),
-          setCategories: vi.fn(),
-          setPrefs: vi.fn(),
         }),
       };
       return selector ? selector(store) : store;
@@ -42,8 +37,6 @@ vi.mock('@/lib/store', () => ({
       getState: () => ({
         user: null,
         setUser: vi.fn(),
-        setCategories: vi.fn(),
-        setPrefs: vi.fn(),
       }),
     },
   ),

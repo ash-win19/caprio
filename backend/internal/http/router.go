@@ -71,14 +71,11 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 	// Handlers
 	bootstrap := handlers.NewBootstrapHandler(store)
 	tasks := handlers.NewTaskHandler(store)
-	voiceEntries := handlers.NewVoiceEntryHandler(store)
 	dayClose := handlers.NewDayCloseHandler(store)
-	dayH := handlers.NewDayHandler(store)
 
 	{
 		api.GET("/bootstrap", bootstrap.Get)
 		api.GET("/workflow", chatH.GetWorkflow)
-		api.GET("/chat/sessions", chatH.Sessions)
 		api.GET("/history", chatH.History)
 		api.POST("/day/plan/confirm", chatH.Confirm)
 		api.POST("/day/plan/discard", chatH.Discard)
@@ -87,20 +84,10 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 		api.GET("/tasks", tasks.List)
 		api.POST("/tasks", tasks.Create)
 		api.PATCH("/tasks/:id", tasks.Update)
-		api.DELETE("/tasks/:id", tasks.Delete)
 		api.POST("/tasks/reorder", tasks.Reorder)
-		api.POST("/tasks/:id/defer", tasks.Defer)
-
-		api.POST("/voice-entries", voiceEntries.Create)
-		api.POST("/tasks/reprioritize", func(c *gin.Context) {
-			c.JSON(409, gin.H{"error": "Review and confirm plan changes in the planning conversation."})
-		})
 
 		api.POST("/day/close", dayClose.Close)
-		api.GET("/day/:date/status", dayH.GetStatus)
-		api.GET("/day/leftovers", dayH.GetLeftovers)
 
-		api.POST("/chat", chatH.SendMessage)
 		api.POST("/chat/stream", chatH.StreamMessage)
 	}
 
