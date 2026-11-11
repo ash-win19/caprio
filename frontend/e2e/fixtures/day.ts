@@ -32,6 +32,8 @@ export async function mockDay(page: Page, options: {
   const tasks = options.tasks ?? tasksForDay();
   // Later: undated (backlog) tasks and tasks dated after the fixture's day.
   const later = options.later ?? [];
+  // Dropped tasks leave both lists but can be restored.
+  const dropped: BackendTask[] = [];
   const writes: Array<{ path: string; body: unknown }> = [];
   // The Day's state moves as the real one does: Wrap up ends it, new work continues it.
   const nextDay = '2026-09-15';
@@ -81,12 +83,16 @@ export async function mockDay(page: Page, options: {
         return;
       }
       if (request.method() === 'PATCH') {
-        const task = [...tasks, ...later].find((item) => url.pathname.endsWith(`/${item.id}`));
+        const task = [...tasks, ...later, ...dropped].find((item) => url.pathname.endsWith(`/${item.id}`));
         if (task) {
           Object.assign(task, body);
-          // A move re-files the task between the Day's list and Later, at the end.
-          for (const list of [tasks, later]) if (list.includes(task)) list.splice(list.indexOf(task), 1);
-          (task.status === 'backlog' || task.plannedForDate > date ? later : tasks).push(task);
+          const wasDropped = dropped.includes(task);
+          for (const list of [tasks, later, dropped]) if (list.includes(task)) list.splice(list.indexOf(task), 1);
+          const home = task.status === 'backlog' || task.plannedForDate > date ? later : tasks;
+          if (task.status === 'dropped') dropped.push(task);
+          // A restored task goes back where it was; a moved one goes to the end.
+          else if (wasDropped) home.splice(home.filter(item => item.sortOrder < task.sortOrder).length, 0, task);
+          else home.push(task);
           if (tasks.includes(task) && state === 'closed') state = 'active';
           await route.fulfill({ json: task });
           return;

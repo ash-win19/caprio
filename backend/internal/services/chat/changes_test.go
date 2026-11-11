@@ -237,7 +237,9 @@ func TestCurrentDayCanReopenAndCloseWithImmutableReviews(t *testing.T) {
 	require.Equal(t, "First review", closedAgain.Workflow.ReviewHistory[0].Review.Notes)
 	require.EqualValues(t, 2, closedAgain.CompletedCount)
 	require.EqualValues(t, 1, closedAgain.CarriedToTomorrowCount)
-	require.Len(t, closedAgain.Workflow.Tasks, 3)
+	// The undone addition was dropped from this Day, so the Day's record has it too.
+	require.EqualValues(t, 1, closedAgain.DroppedCount)
+	require.Len(t, closedAgain.Workflow.Tasks, 4)
 	require.Equal(t, closed.Session.ID, closedAgain.Session.ID)
 	next, _ := ParseDate(closed.NextDate)
 	tomorrow, err := s.Get(ctx, user, next)

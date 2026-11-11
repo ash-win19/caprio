@@ -158,7 +158,10 @@ func TestEmptyConfirmedDayRemainsActive(t *testing.T) {
 	closed, err := s.Close(context.Background(), user, CloseRequest{Date: w.Date, TaskActions: []TaskAction{}})
 	require.NoError(t, err)
 	require.True(t, closed.Workflow.TaskDetailsAvailable)
-	require.Empty(t, closed.Workflow.Tasks)
+	// The task dropped through the Draft is on the Day's record.
+	require.Len(t, closed.Workflow.Tasks, 1)
+	require.EqualValues(t, "dropped", closed.Workflow.Tasks[0].Status)
+	require.EqualValues(t, 1, closed.DroppedCount)
 }
 
 func TestCarryPreservesActiveDestination(t *testing.T) {

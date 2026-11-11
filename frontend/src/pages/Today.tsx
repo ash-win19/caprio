@@ -3,7 +3,7 @@ import { useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowUp, ChevronDown, Plus } from 'lucide-react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
-import { useCreateTask, useLaterTasks, useTasks, useToggleTask, useReorderTasks, useUpdateTask, useWorkflow } from '@/lib/queries';
+import { useCreateTask, useLaterTasks, useTasks, useToggleTask, useReorderTasks, useTaskUpdatesPending, useUpdateTask, useWorkflow } from '@/lib/queries';
 import { useLocalDay } from '@/lib/useLocalDay';
 import { useNavigationLock } from '@/lib/dateDrafts';
 import { daysCarried } from '@/lib/carried';
@@ -11,6 +11,8 @@ import { isConfirmed } from '@/lib/dayEntry';
 import { laterLabel, nextDate, weekday } from '@/lib/date';
 import { formatMinutes } from '@/lib/duration';
 import { Button } from '@/components/ui/button';
+import { ToastAction } from '@/components/ui/toast';
+import { toast } from '@/hooks/use-toast';
 import { Page } from '@/components/PageLayout';
 import { LaterTaskRow, TodayTaskRow } from '@/components/TodayTaskRow';
 import { WrapUpSheet } from '@/components/WrapUpSheet';
@@ -37,7 +39,7 @@ export default function Today() {
   const reorder = useReorderTasks();
   const toggle = useToggleTask();
   const create = useCreateTask();
-  const move = useUpdateTask();
+  const update = useUpdateTask();
   const laterQuery = useLaterTasks(date);
   const later = laterQuery.data ?? EMPTY_TASKS;
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
@@ -48,7 +50,8 @@ export default function Today() {
   // A wrapped-up Day keeps its finished work as it was; new work continues it.
   const wrappedUp = workflow?.state === 'closed';
   const remainingMinutes = active.reduce((sum, task) => sum + (task.duration || 0), 0);
-  const busy = reorder.isPending || toggle.isPending || move.isPending;
+  const updating = useTaskUpdatesPending();
+  const busy = reorder.isPending || toggle.isPending || updating;
   const rowsReadOnly = wrappedUp || busy;
   const [wrappingUp, setWrappingUp] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -103,11 +106,24 @@ export default function Today() {
   const draftChanges = workflow?.plan ? planChangeCount(workflow.plan) : 0;
   const unplanned = Boolean(workflow) && !isConfirmed(workflow);
   const loadError = tasksQuery.error || workflowQuery.error;
-  const saveError = create.error || reorder.error || toggle.error || move.error;
+  const saveError = create.error || reorder.error || toggle.error || update.error;
   // Moves save at once, like every edit made on the list. Later is undated;
   // today is planned for the current Day. The backend places the task last.
-  const moveToLater = (task: Task) => move.mutate({ id: task.id, updates: { status: 'backlog' } });
-  const moveToToday = (task: Task) => move.mutate({ id: task.id, updates: { status: 'planned', plannedForDate: date } });
+  const moveToLater = (task: Task) => update.mutate({ id: task.id, updates: { status: 'backlog' } });
+  const moveToToday = (task: Task) => update.mutate({ id: task.id, updates: { status: 'planned', plannedForDate: date } });
+  // Drop is quick and reversible: Undo gives the task back the status it had.
+  // A wrapped-up Day's record is settled, so nothing is dropped onto it.
+  // The toast hangs off this drop's own promise: a per-call callback is lost
+  // when another update starts before this one finishes.
+  const dropTask = (task: Task) => {
+    void update.mutateAsync({ id: task.id, updates: { status: 'dropped' } }).then(() => {
+      const dropped = toast({
+        title: 'Dropped',
+        description: task.title,
+        action: <ToastAction altText={`Undo dropping ${task.title}`} onClick={() => { dropped.dismiss(); update.mutate({ id: task.id, updates: { status: task.status } }); }}>Undo</ToastAction>,
+      });
+    }, () => { /* the failure shows through the mutation's error */ });
+  };
 
   return <Page className="today-page">
     <header className="list-head">
@@ -133,14 +149,14 @@ export default function Today() {
       {saveError && <WorkflowError error={saveError} />}
       {active.length > 0 ? <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={active.map(task => task.id)} strategy={verticalListSortingStrategy}>
-          <ol aria-label="Remaining tasks" className="today-task-list">{active.map((task, index) => <TodayTaskRow key={task.id} task={task} carriedDays={daysCarried(task, workflow?.carryoverOrigins?.[task.id], date)} readOnly={rowsReadOnly} sortable={!wrappedUp} onToggle={toggleTask} canMoveUp={index > 0} canMoveDown={index < active.length - 1} onMove={direction => moveTask(index, index + direction, 'actions')} onMoveToLater={() => moveToLater(task)} />)}</ol>
+          <ol aria-label="Remaining tasks" className="today-task-list">{active.map((task, index) => <TodayTaskRow key={task.id} task={task} carriedDays={daysCarried(task, workflow?.carryoverOrigins?.[task.id], date)} readOnly={rowsReadOnly} sortable={!wrappedUp} onToggle={toggleTask} canMoveUp={index > 0} canMoveDown={index < active.length - 1} onMove={direction => moveTask(index, index + direction, 'actions')} onMoveToLater={() => moveToLater(task)} onDrop={() => dropTask(task)} />)}</ol>
         </SortableContext>
       </DndContext> : <p className="list-empty">{tasks.length ? 'Nothing left for today.' : 'Nothing on today’s list yet.'}</p>}
       <details className="today-later">
         <summary><ChevronDown size={16} aria-hidden /><span>Later{laterQuery.isSuccess && ` · ${later.length}`}</span><span className="today-later-hint">No date, or a future day</span></summary>
         {laterQuery.error ? <WorkflowError error={laterQuery.error} retry={() => { void laterQuery.refetch(); }} />
           : !laterQuery.isSuccess ? <p role="status" className="list-empty">Loading…</p>
-          : later.length > 0 ? <ol aria-label="Later tasks" className="today-task-list mt-3">{later.map(task => <LaterTaskRow key={task.id} task={task} when={task.status === 'planned' && task.plannedForDate ? laterLabel(task.plannedForDate, date) : undefined} disabled={busy} onMoveToToday={() => moveToToday(task)} />)}</ol>
+          : later.length > 0 ? <ol aria-label="Later tasks" className="today-task-list mt-3">{later.map(task => <LaterTaskRow key={task.id} task={task} when={task.status === 'planned' && task.plannedForDate ? laterLabel(task.plannedForDate, date) : undefined} disabled={busy} onMoveToToday={() => moveToToday(task)} onDrop={wrappedUp ? undefined : () => dropTask(task)} />)}</ol>
           : <p className="list-empty">Nothing waiting.</p>}
       </details>
       {completed.length > 0 && <details key={date} className="today-done">

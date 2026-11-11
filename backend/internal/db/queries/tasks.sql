@@ -10,6 +10,15 @@ WHERE user_id = $1
     AND status IN ('planned', 'completed')
 ORDER BY sort_order ASC, created_at ASC;
 
+-- name: ListDroppedTasksForDay :many
+-- Tasks dropped on a Day: from its list or from Later by a row menu, or
+-- from its list through a Draft.
+SELECT * FROM tasks
+WHERE user_id = $1
+    AND planned_for_date = $2
+    AND status = 'dropped'
+ORDER BY sort_order ASC, created_at ASC;
+
 -- name: ListLaterTasks :many
 -- Later is everything not on today's list: planned tasks dated after today,
 -- soonest first, then undated (backlog) tasks in their own order.
