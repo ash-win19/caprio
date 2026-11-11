@@ -71,10 +71,10 @@ export async function mockDay(page: Page, options: {
       if (url.pathname === '/api/day/close') {
         const actions: Array<{ taskId: string; action: string }> = body.taskActions;
         const outcome = (action: string) => actions.filter(item => item.action === action).map(item => tasks.find(task => task.id === item.taskId)!);
-        for (const task of outcome('tomorrow')) later.push({ ...task, plannedForDate: nextDay });
-        review = { completedCount: outcome('done').length, carriedToTomorrowCount: outcome('tomorrow').length, droppedCount: outcome('drop').length,
-          notes: body.notes ?? null, energyLevel: null, ...(outcome('tomorrow').length ? { carriedToDate: nextDay } : {}) };
-        const done = outcome('done');
+        const [done, kept, dropped] = [outcome('done'), outcome('tomorrow'), outcome('drop')];
+        later.push(...kept.map(task => ({ ...task, plannedForDate: nextDay })));
+        review = { completedCount: done.length, carriedToTomorrowCount: kept.length, droppedCount: dropped.length,
+          notes: body.notes ?? null, energyLevel: null, ...(kept.length ? { carriedToDate: nextDay } : {}) };
         tasks.splice(0, tasks.length, ...done);
         state = 'closed';
         await route.fulfill({ json: { ...review, nextDate: nextDay } });

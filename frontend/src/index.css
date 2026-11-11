@@ -203,11 +203,6 @@
   .today-message-bar { position: fixed; inset-inline: 0; bottom: 0; z-index: 20; padding: 1.5rem 1rem max(1rem, env(safe-area-inset-bottom)); background: linear-gradient(to bottom, transparent, hsl(var(--background)) 45%); pointer-events: none; }
   .today-message-bar a { @apply rounded-2xl border border-border bg-card text-sm text-muted-foreground shadow-lg transition-colors hover:border-muted-foreground/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary; pointer-events: auto; display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; max-width: 40rem; min-height: 3rem; margin-inline: auto; padding: 0.5rem 0.625rem 0.5rem 1rem; cursor: text; }
   .today-message-bar a span { @apply grid h-7 w-7 shrink-0 place-items-center rounded-full bg-accent text-muted-foreground; }
-  .workspace-details > summary { display: flex; min-height: 2.75rem; align-items: center; flex-wrap: wrap; gap: 0.5rem; cursor: pointer; list-style: none; font-size: 0.8125rem; color: hsl(var(--muted-foreground)); }
-  .workspace-details > summary::-webkit-details-marker { display: none; }
-  .workspace-details > summary:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 3px; border-radius: 0.25rem; }
-  .workspace-details[open] > summary > svg { transform: rotate(180deg); }
-  .workspace-details-compact > summary { min-height: 2rem; font-size: 0.75rem; }
   .today-work { min-width: 0; }
   .today-task-list { @apply overflow-hidden rounded-xl border border-border bg-card; }
   .today-task-row { min-width: 0; overflow-wrap: anywhere; background: hsl(var(--card)); }
@@ -230,10 +225,10 @@
   .today-later-dot::before { content: ""; width: 0.375rem; height: 0.375rem; border-radius: 9999px; background: hsl(var(--muted-foreground)); }
   .today-done > summary, .today-later > summary { @apply text-sm text-muted-foreground hover:text-foreground; display: flex; min-height: 2.75rem; align-items: center; gap: 0.5rem; cursor: pointer; list-style: none; }
   .today-task-note > summary:focus-visible, .today-done > summary:focus-visible, .today-later > summary:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 3px; border-radius: 0.25rem; }
-  .today-wrap-up { @apply text-sm text-muted-foreground; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.625rem 1rem; margin-top: 1.5rem; padding-block: 1.25rem; border-top: 1px solid hsl(var(--border)); }
+  .today-wrap-up, .today-wrapped { @apply text-sm text-muted-foreground; margin-top: 1.5rem; padding-block: 1.25rem; border-top: 1px solid hsl(var(--border)); }
+  .today-wrap-up { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.625rem 1rem; }
   .today-wrap-up p { flex: 1 1 16rem; min-width: 0; }
   .today-wrap-up strong { @apply font-medium text-foreground; }
-  .today-wrapped { @apply text-sm text-muted-foreground; margin-top: 1.5rem; padding-block: 1.25rem; border-top: 1px solid hsl(var(--border)); }
   .wrap-up-sheet { max-height: 85vh; overflow-y: auto; }
   @media (min-width: 768px) { .wrap-up-sheet { max-height: none; width: 28rem; max-width: 90vw; } }
   .wrap-up-form { display: flex; flex-direction: column; gap: 1rem; }

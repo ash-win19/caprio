@@ -7,8 +7,8 @@ const choice = (page: Page, title: string, option: 'Keep' | 'Drop') => sheet(pag
 const remaining = (page: Page) => page.getByRole('list', { name: 'Remaining tasks' }).locator(':scope > li');
 const closes = (writes: Array<{ path: string; body: unknown }>) => writes.filter(write => write.path === '/api/day/close').map(write => write.body);
 
-for (const state of ['planning', 'active', 'closed'] as const) {
-  test(`the Wrap up prompt ${state === 'active' ? 'ends' : 'is not on'} Today on a ${state} Day`, async ({ page }) => {
+for (const [state, day] of [['planning', 'an unconfirmed'], ['active', 'a confirmed'], ['closed', 'a wrapped-up']] as const) {
+  test(`the Wrap up prompt ${state === 'active' ? 'ends' : 'is not on'} Today on ${day} Day`, async ({ page }) => {
     await mockDay(page, { state });
     await page.goto('/today');
     await expect(page.getByRole('heading', { level: 1, name: 'Today' })).toBeVisible();
@@ -35,6 +35,7 @@ for (const width of [390, 1440]) {
     }
     await expect(sheet(page)).not.toContainText(titles[0]);
     await expect(sheet(page).getByRole('textbox', { name: 'Note for tomorrow' })).toHaveValue('');
+    await expect(sheet(page).getByText(/closed/i)).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: info.outputPath(`wrap-up-${width}.png`), animations: 'disabled' });
 
@@ -115,13 +116,13 @@ test('after Wrap up, quick add and the Conversation continue the Day', async ({ 
 
 test('a wrapped-up Day never says "closed", on Today or in the Conversation', async ({ page }) => {
   await mockDay(page, { state: 'closed' });
-  for (const route of ['/today', '/conversation']) {
+  for (const route of ['/history', '/today', '/conversation']) {
     await page.goto(route);
     await expect(page.getByRole('navigation', { name: 'App' })).toBeVisible();
     await expect(page.getByText(/closed/i)).toHaveCount(0);
   }
   await expect(page.getByRole('textbox', { name: 'Message about your day' })).toBeEnabled();
-  await expect(page.getByText('This Day is wrapped up. Add new work to continue it; what you finished stays recorded.', { exact: true })).toBeVisible();
+  await expect(page.getByText('This day is wrapped up. Add new work to continue it; what you finished stays recorded.', { exact: true })).toBeVisible();
 });
 
 test('the old Review route redirects to Today', async ({ page }) => {
@@ -132,4 +133,29 @@ test('the old Review route redirects to Today', async ({ page }) => {
     await expect(page.getByRole('heading', { level: 1, name: 'Today' })).toBeVisible();
   }
   await expect(page.getByRole('link', { name: /review day/i })).toHaveCount(0);
+});
+
+test('a list that changed elsewhere is refreshed, not failed with a raw error', async ({ page }) => {
+  const tasks = tasksForDay();
+  const writes = await mockDay(page, { tasks });
+  let stale = true;
+  await page.route('**/api/day/close', async route => {
+    if (!stale) return route.fallback();
+    // Another device finished a task since this list loaded.
+    stale = false;
+    tasks[2] = { ...tasks[2], completed: true, status: 'completed' };
+    await route.fulfill({ status: 400, json: { error: 'completed tasks must keep the done outcome', code: 'validation' } });
+  });
+  await page.goto('/today');
+  await prompt(page).getByRole('button', { name: 'Wrap up' }).click();
+  await expect(sheet(page).getByRole('group')).toHaveCount(3);
+  await sheet(page).getByRole('button', { name: 'Finish' }).click();
+  await expect(sheet(page).getByRole('alert')).toHaveText('Your list changed since you opened this. It’s up to date now, so check it and finish again.');
+  await expect(sheet(page).getByRole('group')).toHaveCount(2);
+
+  await sheet(page).getByRole('button', { name: 'Finish' }).click();
+  await expect(page.getByText('Wrapped up · 2 tasks carry to Tuesday', { exact: true })).toBeVisible();
+  expect(closes(writes)).toEqual([{ date, taskActions: [
+    { taskId: 'task-0', action: 'tomorrow' }, { taskId: 'task-1', action: 'tomorrow' }, { taskId: 'task-2', action: 'done' },
+  ] }]);
 });

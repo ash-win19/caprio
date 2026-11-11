@@ -147,7 +147,8 @@ export default function Today() {
         <summary id="today-done-toggle"><ChevronDown size={16} aria-hidden /><span>Done · {completed.length}</span></summary>
         <ol aria-label="Done tasks" className="today-task-list mt-3">{completed.map(task => <TodayTaskRow key={task.id} task={task} readOnly={rowsReadOnly} onToggle={toggleTask} />)}</ol>
       </details>}
-      {workflow?.state === 'active' && <section aria-label="Wrap up" className="today-wrap-up">
+      {/* Wrapping up discards a waiting Draft, so the Draft is settled first. */}
+      {workflow?.state === 'active' && !workflow.plan && <section aria-label="Wrap up" className="today-wrap-up">
         <p><strong>Done for the day?</strong> Wrap up is optional. Unchecked tasks carry over on their own.</p>
         <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => setWrappingUp(true)}>Wrap up</Button>
       </section>}

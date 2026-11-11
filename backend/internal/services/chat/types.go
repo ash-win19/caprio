@@ -14,8 +14,8 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-var ErrConflict = errors.New("the plan changed; reload and review a new proposal")
-var ErrClosed = errors.New("this day is wrapped up; start the next day's plan")
+var ErrConflict = errors.New("the plan changed; reload and check the new draft")
+var ErrClosed = errors.New("this day is wrapped up; add a task to continue it")
 var ErrUnavailable = errors.New("the planning assistant is not configured")
 var ErrModelCapacity = errors.New("the planning model is overloaded or timed out; try again or switch models")
 var ErrTurnInProgress = errors.New("still replying to your last message")

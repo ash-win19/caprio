@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 
 const KNOWN_ERRORS: Record<string, string> = {
-  'the next day is already wrapped up': 'The next day is already wrapped up, so tasks can’t carry there. Drop them, or leave this Day as it is.',
+  'the next day is already wrapped up': 'The next day is already wrapped up, so tasks can’t carry there. Drop them, or leave this day as it is.',
   'Internal server error': 'Something went wrong on our end. Please try again.',
   'the planning assistant is not configured': 'Planning isn’t available right now. Please try again in a moment.',
   'the planning model is overloaded or timed out; try again or switch models': 'The planning model is busy or timed out. Try again, or switch to Groq in the model picker.',
@@ -60,7 +60,7 @@ export function workflowErrorMessage(error: unknown): string {
       return 'The proposed plan wasn’t complete enough to save. Tell Caprio what to include or drop, then try again.';
     }
     if (/proposal omitted|exceed the available time|invalid proposal|unknown, completed, or repeated task/i.test(error.message)) {
-      return 'That plan couldn’t be validated. Adjust the tasks or available time, then ask for another proposal.';
+      return 'That plan couldn’t be validated. Adjust the tasks or available time, then ask for another draft.';
     }
   }
   if (category === 'model') {

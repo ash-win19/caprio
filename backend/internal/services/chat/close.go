@@ -193,8 +193,22 @@ func (s *Service) close(ctx context.Context, userID uuid.UUID, req CloseRequest,
 				combined = append(combined, task)
 			}
 		}
+		// A task an earlier Wrap up carried may have left since: brought back
+		// and moved to Later, or dropped. Its old record no longer says how
+		// the Day ended, so only tasks that still carry are kept as carried.
+		var stillCarried []uuid.UUID
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(array_agg(id),'{}') FROM tasks WHERE user_id=$1 AND status='planned' AND planned_for_date>$2`, userID, date).Scan(&stillCarried); err != nil {
+			return err
+		}
+		carries := map[uuid.UUID]bool{}
+		for _, id := range stillCarried {
+			carries[id] = true
+		}
 		for _, entry := range w.ReviewHistory {
 			for _, task := range entry.Tasks {
+				if task.Status == generated.TaskStatusPlanned && !task.Completed && !carries[task.ID] {
+					continue
+				}
 				put(task)
 			}
 		}

@@ -1,13 +1,11 @@
 import { test, expect } from '@playwright/test';
 import { date, mockDay } from './fixtures/day';
 
-test('login opens today with no recovery notice, and an old review link lands on Today without a mutation', async ({ page }) => {
+test('login opens today with no recovery notice or mutation', async ({ page }) => {
   const writes = await mockDay(page, { oldestUnclosedDate: '2026-09-06' });
   await page.goto('/');
   await expect(page).toHaveURL(/\/today$/);
   await expect(page.getByRole('link', { name: 'Review unfinished day' })).toHaveCount(0);
-  await page.goto('/review?date=2026-09-06&reopen=1');
-  await expect(page).toHaveURL('/today');
   await expect(page.getByRole('heading', { name: 'Today', exact: true })).toBeVisible();
   expect(writes).toEqual([]);
 });

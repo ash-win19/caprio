@@ -9,11 +9,9 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { WorkflowError } from '@/components/workflow/WorkflowUI';
 import type { Task } from '@/lib/types';
 
-type Props = { date: string; tasks: Task[]; onDone: () => void };
-
 // Wrap up: the optional end of a Day. Each unchecked task is kept for the
 // next Day unless it is dropped, and one line can be left for tomorrow.
-export function WrapUpSheet({ open, onOpenChange, date, tasks }: Omit<Props, 'onDone'> & { open: boolean; onOpenChange: (open: boolean) => void }) {
+export function WrapUpSheet({ open, onOpenChange, date, tasks }: { open: boolean; onOpenChange: (open: boolean) => void; date: string; tasks: Task[] }) {
   const wide = useMediaQuery('(min-width: 768px)');
   return <Sheet open={open} onOpenChange={onOpenChange}>
     <SheetContent side={wide ? 'right' : 'bottom'} className="wrap-up-sheet">
@@ -23,7 +21,7 @@ export function WrapUpSheet({ open, onOpenChange, date, tasks }: Omit<Props, 'on
   </Sheet>;
 }
 
-function WrapUpForm({ date, tasks, onDone }: Props) {
+function WrapUpForm({ date, tasks, onDone }: { date: string; tasks: Task[]; onDone: () => void }) {
   const queryClient = useQueryClient();
   const [dropped, setDropped] = useState<ReadonlySet<string>>(new Set());
   const [note, setNote] = useState('');
@@ -36,7 +34,10 @@ function WrapUpForm({ date, tasks, onDone }: Props) {
       notes: note.trim() || undefined,
     }),
     onSuccess: async () => { await invalidatePlanningQueries(queryClient); onDone(); },
+    // The server refuses a list that no longer matches its own, so show the current one.
+    onError: () => invalidatePlanningQueries(queryClient),
   });
+  const listChanged = wrapUp.error instanceof api.ApiError && wrapUp.error.status === 400;
   const choose = (id: string, drop: boolean) => setDropped(current => {
     const next = new Set(current);
     if (drop) next.add(id); else next.delete(id);
@@ -67,7 +68,8 @@ function WrapUpForm({ date, tasks, onDone }: Props) {
       </div></li>;
     })}</ul>}
     <input className="wrap-up-note" value={note} onChange={event => setNote(event.target.value)} aria-label="Note for tomorrow" placeholder="A note for tomorrow (optional)" maxLength={280} autoComplete="off" enterKeyHint="done" disabled={wrapUp.isPending} />
-    {wrapUp.error && <WorkflowError error={wrapUp.error} />}
+    {listChanged ? <p role="alert" className="text-sm text-destructive">Your list changed since you opened this. It’s up to date now, so check it and finish again.</p>
+      : wrapUp.error && <WorkflowError error={wrapUp.error} />}
     <div className="wrap-up-actions">
       <Button type="button" variant="ghost" onClick={onDone} disabled={wrapUp.isPending}>Not now</Button>
       <Button type="submit" disabled={wrapUp.isPending}>{wrapUp.isPending ? 'Finishing…' : 'Finish'}</Button>

@@ -147,11 +147,12 @@ test('failed completion restores the task and keeps the failure visible', async 
   await expect(page.locator('.today-summary')).toHaveText('3 left · ~3h 40m');
 });
 
-test('a waiting Draft and the Wrap up prompt stay distinct, with no recovery notice', async ({ page }) => {
+test('a waiting Draft comes before Wrap up, with no recovery notice', async ({ page }) => {
   const writes = await mockDay(page, { oldestUnclosedDate: '2026-09-06', plan: planView([{ ref: 'new:1', title: 'Adjusted work', badge: 'new', date }]) });
   await page.goto('/today');
   await expect(page.locator('.today-prompt').getByRole('link', { name: 'Review draft' })).toHaveAttribute('href', '/conversation');
-  await expect(page.getByRole('region', { name: 'Wrap up' }).getByRole('button', { name: 'Wrap up' })).toBeVisible();
+  // Wrapping up would discard the Draft, so it isn't offered until the Draft is settled.
+  await expect(page.getByRole('region', { name: 'Wrap up' })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Review unfinished day' })).toHaveCount(0);
   expect(writes).toEqual([]);
 });

@@ -39,9 +39,10 @@ func dayIsOpen(ctx context.Context, tx pgx.Tx, userID uuid.UUID, date pgtype.Dat
 	return nil
 }
 
-// dayAcceptsArrival is dayIsOpen for a task arriving on a Day. New work on a
-// wrapped-up today continues the Day, as it does when a Draft adds it.
-func dayAcceptsArrival(ctx context.Context, tx pgx.Tx, userID uuid.UUID, date pgtype.Date) error {
+// continueDayForArrival is dayIsOpen for a task arriving on a Day, except that
+// new work on a wrapped-up today sets the Day going again, as it does when a
+// Draft adds it.
+func continueDayForArrival(ctx context.Context, tx pgx.Tx, userID uuid.UUID, date pgtype.Date) error {
 	err := dayIsOpen(ctx, tx, userID, date)
 	if !errors.Is(err, chat.ErrClosed) || !date.Time.Equal(chat.CurrentDate(ctx).Time) {
 		return err
@@ -161,7 +162,12 @@ func (h *TaskHandler) Create(c *gin.Context) {
 	var task generated.Task
 	err = h.mutate(ctx, userID, func(tx pgx.Tx, q *generated.Queries) error {
 		if req.Status != "backlog" {
-			if err := dayAcceptsArrival(ctx, tx, userID, date); err != nil {
+			// Only work still to do continues a wrapped-up Day.
+			open := dayIsOpen
+			if req.Status == "planned" {
+				open = continueDayForArrival
+			}
+			if err := open(ctx, tx, userID, date); err != nil {
 				return err
 			}
 		}
@@ -285,8 +291,8 @@ func (h *TaskHandler) Update(c *gin.Context) {
 		moved := !dropped && (toLater != wasLater || (!toLater && !date.Time.Equal(current.PlannedForDate.Time)))
 		if !toLater {
 			open := dayIsOpen
-			if moved {
-				open = dayAcceptsArrival
+			if moved && status == "planned" {
+				open = continueDayForArrival
 			}
 			if err := open(ctx, tx, userID, date); err != nil {
 				return err

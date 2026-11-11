@@ -343,4 +343,29 @@ func TestWrapUpNeedsNoEnergyLevelAndNewWorkContinuesTheDay(t *testing.T) {
 		map[string]any{"taskId": someday, "action": "drop"},
 	}})
 	httpJSON(t, r, "PATCH", "/api/tasks/"+report, map[string]any{"completed": false}, 409)
+	// Only work still to do continues the Day; a finished record does not.
+	httpJSON(t, r, "POST", "/api/tasks", map[string]any{"title": "Already done", "plannedForDate": today, "status": "completed"}, 409)
+	require.Equal(t, "closed", state())
+}
+
+// The wrapped line reads this count, so it must be what carries now, not
+// what an earlier Wrap up of the same Day carried.
+func TestWrappingUpAgainCountsOnlyWhatStillCarries(t *testing.T) {
+	r, _, _ := setupWorkflowHTTP(t)
+	today := time.Now().UTC().Format("2006-01-02")
+	wrapUp := func(actions ...any) map[string]any {
+		if actions == nil {
+			actions = []any{}
+		}
+		return httpJSON(t, r, "POST", "/api/day/close", map[string]any{"date": today, "taskActions": actions}, 200)
+	}
+	reading := httpJSON(t, r, "POST", "/api/tasks", map[string]any{"title": "Reading", "plannedForDate": today}, 201)["id"].(string)
+	require.EqualValues(t, 1, wrapUp(map[string]any{"taskId": reading, "action": "tomorrow"})["carriedToTomorrowCount"])
+
+	// Brought back to today, then parked in Later: it no longer carries anywhere.
+	httpJSON(t, r, "PATCH", "/api/tasks/"+reading, map[string]any{"status": "planned", "plannedForDate": today}, 200)
+	httpJSON(t, r, "PATCH", "/api/tasks/"+reading, map[string]any{"status": "backlog"}, 200)
+	again := wrapUp()
+	require.EqualValues(t, 0, again["carriedToTomorrowCount"])
+	require.Nil(t, again["carriedToDate"])
 }
