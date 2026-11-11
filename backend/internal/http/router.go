@@ -70,7 +70,6 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 
 	// Handlers
 	bootstrap := handlers.NewBootstrapHandler(store)
-	onboarding := handlers.NewOnboardingHandler(store)
 	tasks := handlers.NewTaskHandler(store)
 	voiceEntries := handlers.NewVoiceEntryHandler(store)
 	dayClose := handlers.NewDayCloseHandler(store)
@@ -78,8 +77,6 @@ func NewRouter(cfg config.Config, store *db.Store) *gin.Engine {
 
 	{
 		api.GET("/bootstrap", bootstrap.Get)
-		api.POST("/onboarding", onboarding.Complete)
-		api.PATCH("/settings", onboarding.UpdateSettings)
 		api.GET("/workflow", chatH.GetWorkflow)
 		api.GET("/chat/sessions", chatH.Sessions)
 		api.GET("/history", chatH.History)

@@ -70,7 +70,7 @@ $C drive path/to/your.spec.ts --name my-check -- --headed                  # any
 Writing a new drive spec:
 - Put it in `drives/` (`<feature>.<stack|mock>.spec.ts`) and import helpers from `'../lib/caprio'`, the repo fixture from `'../e2e/fixtures/day'`, and types from `'../src/lib/api'`.
 - Start with `requireMode('stack' | 'mock')`. It fails, never skips, on the wrong kind of run.
-- Stack mode: sign in with `enterAsDemoUser(page)`, which goes through Login → "Continue as demo user →" and completes onboarding through the UI on a fresh DB. Read stored state with `sql("select …")`, which is read-only (`default_transaction_read_only=on`).
+- Stack mode: sign in with `enterAsDemoUser(page)`, which goes through Login → "Continue as demo user →"; a fresh DB needs no setup. Read stored state with `sql("select …")`, which is read-only (`default_transaction_read_only=on`).
 - Mock mode: call `mockDay(page, {...})`, then add `page.route('**/api/**', …)` handlers for the writes you exercise. Later routes win. Fall back to `mockDay` with `route.fallback()`. `mockDay` pins the browser clock to 2026-09-14 12:00 local.
 - Use ARIA roles and accessible names. The stable handles live in each feature file. Avoid CSS, except where the app has no accessible name (`.today-carried > summary`).
 - Use the app's local day. `localDay(page)` returns the browser's `YYYY-MM-DD`, the same value as the app's `useLocalDay()`.

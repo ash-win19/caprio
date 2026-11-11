@@ -6,7 +6,7 @@ This directory is the maintained source for verifying Caprio's user-facing behav
 
 - Start a run with `$C up` (stack: Vite + Go API with dev-bypass auth + throwaway Postgres) or `$C up --mode mock` (Vite only, API answered in the browser).
 - Require `DOCTOR OK` from `$C doctor`. It confirms the URLs, the pids owning the ports, the throwaway `DATABASE_URL`, empty `AUTH0_DOMAIN`, and the migration version.
-- Stack runs start with an empty database. The first drive signs in through Login → "Continue as demo user →" and finishes onboarding (pick `Work` and `Gym`, then `Continue →`, then `Plan my day`). After that, everything belongs to `dev@caprio.app` in this run's database.
+- Stack runs start with an empty database. The first drive signs in through Login → "Continue as demo user →"; a new account needs no setup and lands in the Conversation. After that, everything belongs to `dev@caprio.app` in this run's database.
 - Mock runs seed state per spec with `mockDay(page, …)` from `frontend/e2e/fixtures/day.ts`. The browser clock is pinned to 2026-09-14 12:00 local.
 - Never drive an instance that this verification run did not start, and never point a run at production, Neon, or Auth0.
 

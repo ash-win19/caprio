@@ -22,7 +22,6 @@ export function useSignOut() {
 
     resetAccountState();
     clearActiveAccount();
-    localStorage.removeItem('onboarding_complete');
     localStorage.removeItem('caprio-store');
     navigate('/login');
   };

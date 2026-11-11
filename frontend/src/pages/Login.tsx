@@ -25,8 +25,7 @@ export default function Login() {
     localStorage.setItem('demo_user', 'true');
     setUser({ name: 'Demo User', email: 'demo@caprio.app', categories: ['Work', 'Gym', 'Personal Growth', 'Finance'] });
     initializeMockData();
-    const onboarded = localStorage.getItem('onboarding_complete');
-    navigate(onboarded ? '/today' : '/onboarding');
+    navigate('/today');
   };
 
   return (

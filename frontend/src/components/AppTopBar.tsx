@@ -44,18 +44,16 @@ function DayNavigation({ date, maxDate }: { date: string; maxDate?: string }) {
   </nav>;
 }
 
-export function AppTopBar({ title, date, maxDate, actions, parent, status }: {
+export function AppTopBar({ title, date, maxDate, actions, status }: {
   title: string;
   date?: string;
   maxDate?: string;
   actions?: ReactNode;
-  parent?: { label: string; href: string };
   status?: string;
 }) {
   const host = useContext(TopBarHost);
   const content = <>
     <div className="topbar-page">
-      {parent && <nav aria-label="Breadcrumb" className="topbar-breadcrumb"><Link to={parent.href}>{parent.label}</Link><span aria-hidden>/</span></nav>}
       <h1>{title}</h1>
       {status && <span className="topbar-status">{status}</span>}
     </div>
