@@ -803,6 +803,29 @@ func TestConversationEventsFrameTheDaysThread(t *testing.T) {
 	require.EqualValues(t, 4, sessions[0].MessageCount, "events are not counted as messages")
 }
 
+func TestAFutureDatedTaskShowsOnItsDayWhenThatDayArrives(t *testing.T) {
+	s, _, user, today := testService(t)
+	ctx := context.Background()
+	tomorrow, err := ParseDate("2026-09-07")
+	require.NoError(t, err)
+	planned := createTask(t, s, user, tomorrow, "Call the bank")
+	leftover := createTask(t, s, user, today, "Report")
+	w, err := s.Get(ctx, user, today)
+	require.NoError(t, err)
+	require.Len(t, w.Tasks, 1, "a task dated for tomorrow is not on today's list")
+
+	s.now = func() time.Time { return time.Date(2026, 9, 7, 8, 0, 0, 0, time.UTC) }
+	arrived, err := s.Rollover(ctx, user, tomorrow)
+	require.NoError(t, err)
+	onDay := map[uuid.UUID]generated.Task{}
+	for _, task := range arrived.Tasks {
+		onDay[task.ID] = task
+	}
+	require.Len(t, onDay, 2)
+	require.Zero(t, onDay[planned.ID].DeferCount, "it arrives as planned work, not as a Carried task")
+	require.EqualValues(t, 1, onDay[leftover.ID].DeferCount)
+}
+
 func TestHistoryListsPastDaysByTaskNameWithTheirNote(t *testing.T) {
 	s, _, user, today := testService(t)
 	ctx := context.Background()

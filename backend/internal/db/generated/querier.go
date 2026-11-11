@@ -40,6 +40,9 @@ type Querier interface {
 	ListChatMessagesByUserAndDate(ctx context.Context, arg ListChatMessagesByUserAndDateParams) ([]ChatMessage, error)
 	ListChatSessionsByUser(ctx context.Context, userID uuid.UUID) ([]ListChatSessionsByUserRow, error)
 	ListCompletedTasksByDate(ctx context.Context, arg ListCompletedTasksByDateParams) ([]Task, error)
+	// Later is everything not on today's list: planned tasks dated after today,
+	// soonest first, then undated (backlog) tasks in their own order.
+	ListLaterTasks(ctx context.Context, arg ListLaterTasksParams) ([]Task, error)
 	ListTasksByUser(ctx context.Context, userID uuid.UUID) ([]Task, error)
 	ListTodayTasksByUser(ctx context.Context, arg ListTodayTasksByUserParams) ([]Task, error)
 	ListVoiceEntriesByUser(ctx context.Context, arg ListVoiceEntriesByUserParams) ([]VoiceEntry, error)

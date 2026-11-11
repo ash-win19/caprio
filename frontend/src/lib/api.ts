@@ -223,12 +223,6 @@ export async function updateTask(
   return response.json();
 }
 
-export async function deleteTask(id: string): Promise<void> {
-  await fetchWithAuth(`/api/tasks/${id}`, {
-    method: 'DELETE',
-  });
-}
-
 export async function reorderTasks(tasks: Array<{ id: string; sortOrder: number }>): Promise<void> {
   await fetchWithAuth('/api/tasks/reorder', {
     method: 'POST',
@@ -529,8 +523,9 @@ export async function closeDay(input: CloseDayInput): Promise<DayReview & { next
   })).json();
 }
 
-export async function getInboxTasks(): Promise<Task[]> {
-  const data = await (await fetchWithAuth('/api/tasks?status=backlog')).json();
+/** Later: tasks dated after the given day, soonest first, then undated ones. */
+export async function getLaterTasks(today: string): Promise<Task[]> {
+  const data = await (await fetchWithAuth(`/api/tasks?status=later&date=${today}`)).json();
   return (data.tasks || []).map((task: BackendTask) => mapBackendTaskToTask(task));
 }
 

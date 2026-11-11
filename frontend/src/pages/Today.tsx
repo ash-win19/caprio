@@ -3,15 +3,16 @@ import { useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowRight, ArrowUp, CheckCircle2, ChevronDown, Plus } from 'lucide-react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
-import { useCreateTask, useTasks, useToggleTask, useReorderTasks, useWorkflow } from '@/lib/queries';
+import { useCreateTask, useLaterTasks, useTasks, useToggleTask, useReorderTasks, useUpdateTask, useWorkflow } from '@/lib/queries';
 import { useLocalDay } from '@/lib/useLocalDay';
 import { useNavigationLock } from '@/lib/dateDrafts';
 import { daysCarried } from '@/lib/carried';
 import { isConfirmed } from '@/lib/dayEntry';
+import { laterLabel } from '@/lib/date';
 import { formatMinutes } from '@/lib/duration';
 import { Button } from '@/components/ui/button';
 import { Page } from '@/components/PageLayout';
-import { TodayTaskRow } from '@/components/TodayTaskRow';
+import { LaterTaskRow, TodayTaskRow } from '@/components/TodayTaskRow';
 import { planChangeCount } from '@/components/workflow/PlanCard';
 import { WorkflowError } from '@/components/workflow/WorkflowUI';
 import { dateLabel } from '@/components/workflow/dates';
@@ -29,6 +30,9 @@ export default function Today() {
   const reorder = useReorderTasks();
   const toggle = useToggleTask();
   const create = useCreateTask();
+  const move = useUpdateTask();
+  const laterQuery = useLaterTasks(date);
+  const later = laterQuery.data ?? EMPTY_TASKS;
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const tasks = tasksQuery.data ?? EMPTY_TASKS;
   const active = tasks.filter(task => !task.completed);
@@ -37,7 +41,7 @@ export default function Today() {
   const editable = workflow?.state !== 'closed';
   const dayInProgress = workflow?.state === 'active';
   const remainingMinutes = active.reduce((sum, task) => sum + (task.duration || 0), 0);
-  const busy = reorder.isPending || toggle.isPending;
+  const busy = reorder.isPending || toggle.isPending || move.isPending;
   const rowsReadOnly = !editable || busy;
   const [newTitle, setNewTitle] = useState('');
   const quickAdd = useRef<HTMLInputElement>(null);
@@ -92,7 +96,11 @@ export default function Today() {
   const draftChanges = workflow?.plan ? planChangeCount(workflow.plan) : 0;
   const unplanned = Boolean(workflow) && !isConfirmed(workflow);
   const loadError = tasksQuery.error || workflowQuery.error;
-  const saveError = create.error || reorder.error || toggle.error;
+  const saveError = create.error || reorder.error || toggle.error || move.error;
+  // Moves save at once, like every edit made on the list. Later is undated;
+  // today is planned for the current Day. The backend places the task last.
+  const moveToLater = (task: Task) => move.mutate({ id: task.id, updates: { status: 'backlog' } });
+  const moveToToday = (task: Task) => move.mutate({ id: task.id, updates: { status: 'planned', plannedForDate: date } });
 
   return <Page className="today-page">
     <header className="list-head">
@@ -118,9 +126,16 @@ export default function Today() {
       {saveError && <WorkflowError error={saveError} />}
       {active.length > 0 ? <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={active.map(task => task.id)} strategy={verticalListSortingStrategy}>
-          <ol aria-label="Remaining tasks" className="today-task-list">{active.map((task, index) => <TodayTaskRow key={task.id} task={task} carriedDays={daysCarried(task, workflow?.carryoverOrigins?.[task.id], date)} readOnly={rowsReadOnly} sortable={editable} onToggle={toggleTask} canMoveUp={index > 0} canMoveDown={index < active.length - 1} onMove={direction => moveTask(index, index + direction, 'actions')} />)}</ol>
+          <ol aria-label="Remaining tasks" className="today-task-list">{active.map((task, index) => <TodayTaskRow key={task.id} task={task} carriedDays={daysCarried(task, workflow?.carryoverOrigins?.[task.id], date)} readOnly={rowsReadOnly} sortable={editable} onToggle={toggleTask} canMoveUp={index > 0} canMoveDown={index < active.length - 1} onMove={direction => moveTask(index, index + direction, 'actions')} onMoveToLater={() => moveToLater(task)} />)}</ol>
         </SortableContext>
       </DndContext> : <p className="list-empty">{tasks.length ? 'Nothing left for today.' : 'Nothing on today’s list yet.'}</p>}
+      <details className="today-later">
+        <summary><ChevronDown size={16} aria-hidden /><span>Later{laterQuery.isSuccess && ` · ${later.length}`}</span><span className="today-later-hint">No date, or a future day</span></summary>
+        {laterQuery.error ? <WorkflowError error={laterQuery.error} retry={() => { void laterQuery.refetch(); }} />
+          : !laterQuery.isSuccess ? <p role="status" className="list-empty">Loading…</p>
+          : later.length > 0 ? <ol aria-label="Later tasks" className="today-task-list mt-3">{later.map(task => <LaterTaskRow key={task.id} task={task} when={task.status === 'planned' && task.plannedForDate ? laterLabel(task.plannedForDate, date) : undefined} disabled={!editable || busy} onMoveToToday={() => moveToToday(task)} />)}</ol>
+          : <p className="list-empty">Nothing waiting.</p>}
+      </details>
       {completed.length > 0 && <details key={date} className="today-done">
         <summary id="today-done-toggle"><ChevronDown size={16} aria-hidden /><span>Done · {completed.length}</span></summary>
         <ol aria-label="Done tasks" className="today-task-list mt-3">{completed.map(task => <TodayTaskRow key={task.id} task={task} readOnly={rowsReadOnly} onToggle={toggleTask} />)}</ol>

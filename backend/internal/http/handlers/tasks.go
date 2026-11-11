@@ -56,16 +56,19 @@ func (h *TaskHandler) List(c *gin.Context) {
 		c.JSON(401, gin.H{"error": "unauthorized"})
 		return
 	}
+	// date is the client's current Day: its list by default, or everything
+	// after it and undated with status=later.
 	var tasks []generated.Task
-	var err error
-	if c.Query("status") == "backlog" {
-		tasks, err = h.store.Queries.ListBacklogTasks(c.Request.Context(), userID)
-	} else {
-		var date pgtype.Date
-		date, err = queryDate(c)
-		if err == nil {
-			tasks, err = h.store.Queries.ListTodayTasksByUser(c.Request.Context(), generated.ListTodayTasksByUserParams{UserID: userID, PlannedForDate: date})
-		}
+	later := c.Query("status") == "later"
+	if later && c.Query("date") == "" {
+		workflowError(c, badTask("date is required: Later is everything after the client's current day"))
+		return
+	}
+	date, err := queryDate(c)
+	if err == nil && later {
+		tasks, err = h.store.Queries.ListLaterTasks(c.Request.Context(), generated.ListLaterTasksParams{UserID: userID, Today: date})
+	} else if err == nil {
+		tasks, err = h.store.Queries.ListTodayTasksByUser(c.Request.Context(), generated.ListTodayTasksByUserParams{UserID: userID, PlannedForDate: date})
 	}
 	if err != nil {
 		workflowError(c, err)
@@ -267,6 +270,19 @@ func (h *TaskHandler) Update(c *gin.Context) {
 				return err
 			}
 		}
+		// A task moved to Later or onto another Day is re-planned: it goes
+		// below what is already there and is no longer a Carried task.
+		// Dropping a task, or restoring a dropped one, is not a move.
+		toLater, wasLater := status == "backlog", current.Status == generated.TaskStatusBacklog
+		dropped := status == "dropped" || current.Status == generated.TaskStatusDropped
+		moved := !dropped && (toLater != wasLater || (!toLater && !date.Time.Equal(current.PlannedForDate.Time)))
+		if moved && req.SortOrder == nil {
+			var next int32
+			if err := tx.QueryRow(ctx, `SELECT COALESCE(max(sort_order),-1)+1 FROM tasks WHERE user_id=$1 AND id<>$2 AND status=$3 AND ($3='backlog' OR planned_for_date=$4)`, userID, id, status, date).Scan(&next); err != nil {
+				return err
+			}
+			req.SortOrder = &next
+		}
 		completed := status == "completed"
 		urgencyPtr := generated.UrgencyLevel(urgency)
 		statusPtr := generated.TaskStatus(status)
@@ -277,6 +293,14 @@ func (h *TaskHandler) Update(c *gin.Context) {
 		_, err = tx.Exec(ctx, `UPDATE tasks SET completed_at=CASE WHEN completed THEN COALESCE(completed_at,clock_timestamp()) ELSE NULL END,updated_at=clock_timestamp() WHERE id=$1 AND user_id=$2`, id, userID)
 		if err != nil {
 			return err
+		}
+		if moved && current.DeferCount > 0 {
+			if _, err := tx.Exec(ctx, `UPDATE tasks SET defer_count=0,carried_over=false WHERE id=$1 AND user_id=$2`, id, userID); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, `DELETE FROM task_carryovers WHERE task_id=$1`, id); err != nil {
+				return err
+			}
 		}
 		task, err = q.GetTaskByID(ctx, generated.GetTaskByIDParams{ID: id, UserID: userID})
 		return err

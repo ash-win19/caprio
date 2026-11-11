@@ -14,6 +14,17 @@ export function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(`${to}T12:00:00`) - Date.parse(`${from}T12:00:00`)) / 86_400_000);
 }
 
+/**
+ * When a Later task is dated for: its weekday within the coming week
+ * ("Tuesday"), otherwise the weekday and date ("Sat, Sep 26").
+ */
+export function laterLabel(date: string, today: string): string {
+  const day = new Date(`${date}T12:00:00`);
+  return daysBetween(today, date) < 7
+    ? day.toLocaleDateString(undefined, { weekday: 'long' })
+    : day.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
 export function nextDate(value: string): string {
   const date = new Date(`${value}T12:00:00`);
   date.setDate(date.getDate() + 1);

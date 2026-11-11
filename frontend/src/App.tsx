@@ -10,7 +10,6 @@ import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import Today from "./pages/Today";
 import Conversation from "./pages/Conversation";
-import Capture from "./pages/Capture";
 import Review from "./pages/Review";
 import History from "./pages/History";
 import HistoryDay from "./pages/HistoryDay";
@@ -43,7 +42,7 @@ const App = () => (
             <Route path="/new" element={<ToConversation />} />
             <Route element={<AppLayout />}>
               <Route path="/today" element={<Today />} />
-              <Route path="/capture" element={<Capture />} />
+              <Route path="/capture" element={<Navigate to="/today" replace />} />
               <Route path="/review" element={<Review />} />
               <Route path="/history" element={<History />} />
               <Route path="/history/:date" element={<HistoryDay />} />

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/ashwinshanmugam/caprio/backend/internal/db"
 	generated "github.com/ashwinshanmugam/caprio/backend/internal/db/generated"
@@ -44,6 +45,7 @@ func setupWorkflowHTTP(t *testing.T) (*gin.Engine, *db.Store, uuid.UUID) {
 	r.GET("/api/workflow", workflow.GetWorkflow)
 	r.POST("/api/day/plan/confirm", workflow.Confirm)
 	r.GET("/api/history", workflow.History)
+	r.POST("/api/day/rollover", workflow.Rollover)
 	bootstrap := handlers.NewBootstrapHandler(store)
 	r.GET("/api/bootstrap", bootstrap.Get)
 	close := handlers.NewDayCloseHandler(store)
@@ -97,9 +99,9 @@ func TestTaskMutationKeepsCompletionConsistentAndKeepsTheDraft(t *testing.T) {
 	httpJSON(t, r, "POST", "/api/day/close", map[string]any{"date": "2090-09-06", "taskActions": []any{map[string]any{"taskId": id, "action": "done"}}}, 200)
 	httpJSON(t, r, "PATCH", "/api/tasks/"+id, map[string]any{"completed": false}, 409)
 	httpJSON(t, r, "POST", "/api/tasks", map[string]any{"title": "Late task", "plannedForDate": "2090-09-06"}, 409)
-	captured := httpJSON(t, r, "POST", "/api/tasks", map[string]any{"title": "Inbox task", "status": "backlog", "plannedForDate": "2090-09-06"}, 201)
-	inbox := httpJSON(t, r, "GET", "/api/tasks?status=backlog", nil, 200)
-	require.Len(t, inbox["tasks"], 1)
+	captured := httpJSON(t, r, "POST", "/api/tasks", map[string]any{"title": "Later task", "status": "backlog", "plannedForDate": "2090-09-06"}, 201)
+	later := httpJSON(t, r, "GET", "/api/tasks?status=later&date=2090-09-06", nil, 200)
+	require.Len(t, later["tasks"], 1)
 	moved := httpJSON(t, r, "PATCH", "/api/tasks/"+captured["id"].(string), map[string]any{"status": "planned", "plannedForDate": "2090-09-07"}, 200)
 	require.Equal(t, "2090-09-07", moved["plannedForDate"])
 }
@@ -171,4 +173,109 @@ func TestHistoryEndpointListsDaysBeforeTheGivenDate(t *testing.T) {
 	require.Empty(t, httpJSON(t, r, "GET", "/api/history?before=2090-09-06", nil, 200)["days"])
 	httpJSON(t, r, "GET", "/api/history", nil, 400)
 	httpJSON(t, r, "GET", "/api/history?before=soon", nil, 400)
+}
+
+func TestLaterListsUndatedAndFutureTasksAndRowsMoveBetweenLaterAndToday(t *testing.T) {
+	r, store, _ := setupWorkflowHTTP(t)
+	ctx := context.Background()
+	add := func(title string, fields map[string]any) string {
+		body := map[string]any{"title": title, "plannedForDate": "2090-09-06"}
+		for key, value := range fields {
+			body[key] = value
+		}
+		return httpJSON(t, r, "POST", "/api/tasks", body, 201)["id"].(string)
+	}
+	titles := func(path string) []string {
+		out := []string{}
+		for _, task := range httpJSON(t, r, "GET", path, nil, 200)["tasks"].([]any) {
+			out = append(out, task.(map[string]any)["title"].(string))
+		}
+		return out
+	}
+	onToday := add("On today", nil)
+	friday := add("Friday", map[string]any{"plannedForDate": "2090-09-11"})
+	add("Tomorrow, second", map[string]any{"plannedForDate": "2090-09-07", "sortOrder": 1})
+	add("Tomorrow, first", map[string]any{"plannedForDate": "2090-09-07", "sortOrder": 0})
+	add("Sometime, second", map[string]any{"status": "backlog", "sortOrder": 1})
+	sometime := add("Sometime, first", map[string]any{"status": "backlog", "sortOrder": 0})
+	dropped := add("Dropped", map[string]any{"status": "backlog"})
+	httpJSON(t, r, "PATCH", "/api/tasks/"+dropped, map[string]any{"status": "dropped"}, 200)
+	add("Yesterday", map[string]any{"plannedForDate": "2090-09-05"})
+
+	// Future-dated tasks come first, soonest first; undated ones follow in their own order.
+	const later = "/api/tasks?status=later&date=2090-09-06"
+	require.Equal(t, []string{"Tomorrow, first", "Tomorrow, second", "Friday", "Sometime, first", "Sometime, second"}, titles(later))
+
+	// Move to Later: off today's list, undated. A Carried task starts fresh there.
+	_, err := store.Pool.Exec(ctx, `UPDATE tasks SET defer_count=2,carried_over=true WHERE id=$1`, onToday)
+	require.NoError(t, err)
+	_, err = store.Pool.Exec(ctx, `INSERT INTO task_carryovers(task_id,first_planned_date) VALUES($1,'2090-09-01')`, onToday)
+	require.NoError(t, err)
+	moved := httpJSON(t, r, "PATCH", "/api/tasks/"+onToday, map[string]any{"status": "backlog"}, 200)
+	require.Equal(t, "backlog", moved["status"])
+	require.EqualValues(t, 0, moved["deferCount"])
+	require.Empty(t, titles("/api/tasks?date=2090-09-06"))
+	require.Contains(t, titles(later), "On today")
+	var records int
+	require.NoError(t, store.Pool.QueryRow(ctx, `SELECT count(*) FROM task_carryovers WHERE task_id=$1`, onToday).Scan(&records))
+	require.Zero(t, records)
+
+	// Move to today: planned for today, below what is already there, and out of Later.
+	httpJSON(t, r, "PATCH", "/api/tasks/"+onToday, map[string]any{"status": "planned", "plannedForDate": "2090-09-06"}, 200)
+	arrived := httpJSON(t, r, "PATCH", "/api/tasks/"+sometime, map[string]any{"status": "planned", "plannedForDate": "2090-09-06"}, 200)
+	require.Equal(t, "2090-09-06", arrived["plannedForDate"])
+	require.Equal(t, []string{"On today", "Sometime, first"}, titles("/api/tasks?date=2090-09-06"))
+	require.NotContains(t, titles(later), "Sometime, first")
+
+	// A task dated for a future day moves to today the same way.
+	httpJSON(t, r, "PATCH", "/api/tasks/"+friday, map[string]any{"status": "planned", "plannedForDate": "2090-09-06"}, 200)
+	require.Equal(t, []string{"On today", "Sometime, first", "Friday"}, titles("/api/tasks?date=2090-09-06"))
+	require.NotContains(t, titles(later), "Friday")
+
+	httpJSON(t, r, "GET", "/api/tasks?status=later", nil, 400)
+}
+
+func TestDroppingALaterTaskAndRestoringItKeepsItsPlace(t *testing.T) {
+	r, _, _ := setupWorkflowHTTP(t)
+	add := func(title string, order int) string {
+		return httpJSON(t, r, "POST", "/api/tasks", map[string]any{"title": title, "status": "backlog", "plannedForDate": "2090-09-06", "sortOrder": order}, 201)["id"].(string)
+	}
+	later := func() []string {
+		out := []string{}
+		for _, task := range httpJSON(t, r, "GET", "/api/tasks?status=later&date=2090-09-06", nil, 200)["tasks"].([]any) {
+			out = append(out, task.(map[string]any)["title"].(string))
+		}
+		return out
+	}
+	first := add("First", 0)
+	add("Second", 1)
+	httpJSON(t, r, "PATCH", "/api/tasks/"+first, map[string]any{"status": "dropped"}, 200)
+	require.Equal(t, []string{"Second"}, later())
+	httpJSON(t, r, "PATCH", "/api/tasks/"+first, map[string]any{"status": "backlog"}, 200)
+	require.Equal(t, []string{"First", "Second"}, later(), "a restored task is back where it was, not re-planned")
+}
+
+// Today reads its list over HTTP, so this follows a dated task through the
+// same endpoints: in Later the day before, on the list once its Day arrives.
+func TestAFutureDatedTaskIsOnItsDaysListAfterRollover(t *testing.T) {
+	r, _, _ := setupWorkflowHTTP(t)
+	now := time.Now().UTC()
+	today, yesterday := now.Format("2006-01-02"), now.AddDate(0, 0, -1).Format("2006-01-02")
+	listed := func(path string) []map[string]any {
+		out := []map[string]any{}
+		for _, task := range httpJSON(t, r, "GET", path, nil, 200)["tasks"].([]any) {
+			out = append(out, task.(map[string]any))
+		}
+		return out
+	}
+	httpJSON(t, r, "POST", "/api/tasks", map[string]any{"title": "Call the bank", "plannedForDate": today}, 201)
+	waiting := listed("/api/tasks?status=later&date=" + yesterday)
+	require.Len(t, waiting, 1, "the day before, it waits in Later")
+
+	httpJSON(t, r, "POST", "/api/day/rollover", map[string]any{"timezone": "UTC"}, 200)
+	onDay := listed("/api/tasks?date=" + today)
+	require.Len(t, onDay, 1)
+	require.Equal(t, "Call the bank", onDay[0]["title"])
+	require.EqualValues(t, 0, onDay[0]["deferCount"], "it arrives as planned work, not as a Carried task")
+	require.Empty(t, listed("/api/tasks?status=later&date="+today))
 }

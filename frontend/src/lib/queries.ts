@@ -6,9 +6,8 @@ import { localDate } from './date';
 export const QUERY_KEYS = {
   bootstrap: ['bootstrap'],
   tasks: ['tasks'],
-  categories: ['categories'],
   workflow: ['workflow'],
-  inbox: ['inbox'],
+  later: ['later'],
   history: ['history'],
 } as const;
 
@@ -38,13 +37,8 @@ export function useTasks(date = localDate()) {
   });
 }
 
-export function useInboxTasks() {
-  const { data: account } = useBootstrap();
-  return useQuery({
-    queryKey: QUERY_KEYS.inbox,
-    queryFn: api.getInboxTasks,
-    select: tasks => tasks.map(task => ({ ...task, category: account?.categories.find(category => category.id === task.categoryId)?.name || task.category })),
-  });
+export function useLaterTasks(today = localDate()) {
+  return useQuery({ queryKey: [...QUERY_KEYS.later, today], queryFn: () => api.getLaterTasks(today), staleTime: 30_000 });
 }
 
 export function useToggleTask() {
@@ -75,11 +69,6 @@ export function useUpdateTask() {
   });
 }
 
-export function useDeleteTask() {
-  const client = useQueryClient();
-  return useMutation({ mutationFn: api.deleteTask, onSuccess: () => invalidatePlanningQueries(client) });
-}
-
 export function useReorderTasks() {
   const client = useQueryClient();
   return useMutation({
@@ -96,7 +85,3 @@ export function useReorderTasks() {
   });
 }
 
-export function useCategories() {
-  const query = useBootstrap();
-  return { ...query, data: query.data?.categories };
-}

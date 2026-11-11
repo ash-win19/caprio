@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, ChevronDown, GripVertical, MoreHorizontal } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, Clock, GripVertical, MoreHorizontal, Sun } from 'lucide-react';
 import { useRef } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -7,7 +7,7 @@ import type { Task } from '@/lib/types';
 import { STALE_DAYS } from '@/lib/carried';
 import { formatMinutes } from '@/lib/duration';
 
-export function TodayTaskRow({ task, readOnly, sortable = false, canMoveUp = false, canMoveDown = false, onToggle, onMove, carriedDays = 0 }: {
+export function TodayTaskRow({ task, readOnly, sortable = false, canMoveUp = false, canMoveDown = false, onToggle, onMove, onMoveToLater, carriedDays = 0 }: {
   task: Task;
   readOnly: boolean;
   sortable?: boolean;
@@ -15,6 +15,7 @@ export function TodayTaskRow({ task, readOnly, sortable = false, canMoveUp = fal
   canMoveDown?: boolean;
   onToggle: (task: Task) => void;
   onMove?: (direction: -1 | 1) => void;
+  onMoveToLater?: () => void;
   /** Days this Carried task has rolled forward; zero when it isn't carried. */
   carriedDays?: number;
 }) {
@@ -57,9 +58,35 @@ export function TodayTaskRow({ task, readOnly, sortable = false, canMoveUp = fal
           }}>
             <DropdownMenuItem disabled={readOnly || !canMoveUp} onSelect={() => move(-1)}><ArrowUp size={16} className="mr-2" />Move up</DropdownMenuItem>
             <DropdownMenuItem disabled={readOnly || !canMoveDown} onSelect={() => move(1)}><ArrowDown size={16} className="mr-2" />Move down</DropdownMenuItem>
+            {onMoveToLater && <DropdownMenuItem disabled={readOnly} onSelect={onMoveToLater}><Clock size={16} className="mr-2" />Move to Later</DropdownMenuItem>}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>}
+    </div>
+  </li>;
+}
+
+// A task parked in Later: nothing to tick off, only a way onto today's list.
+// `when` labels a task dated for a future Day.
+export function LaterTaskRow({ task, when, disabled, onMoveToToday }: { task: Task; when?: string; disabled: boolean; onMoveToToday: () => void }) {
+  return <li className="today-task-row">
+    <div className="today-task-line">
+      <span className="today-later-dot" aria-hidden />
+      <div className="min-w-0 flex-1 py-2.5">
+        <p className="today-task-title text-foreground">{task.title}</p>
+        {(task.duration != null || when) && <div className="today-task-meta">
+          {task.duration != null && <span>{formatMinutes(task.duration)}</span>}
+          {when && <span className="today-task-carried">{when}</span>}
+        </div>}
+      </div>
+      <div className="today-task-tools">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild><button type="button" disabled={disabled} aria-label={`Task actions for ${task.title}`} className="today-task-tool disabled:opacity-40"><MoreHorizontal size={18} /></button></DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem disabled={disabled} onSelect={onMoveToToday}><Sun size={16} className="mr-2" />Move to today</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </div>
   </li>;
 }

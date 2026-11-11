@@ -71,7 +71,7 @@ for (const width of [320, 1440]) {
     await mockDay(page);
     let left: number | undefined;
     let bodyLeft: number | undefined;
-    for (const route of ['/capture', '/review']) {
+    for (const route of ['/review']) {
       await page.goto(route);
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       const heading = await box(page.locator('.topbar-page'));

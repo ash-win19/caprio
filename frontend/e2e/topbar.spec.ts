@@ -72,7 +72,7 @@ for (const width of [320, 390, 768, 1024]) {
     test.setTimeout(60_000); // This case loads several routes; each assertion keeps its normal timeout.
     await page.setViewportSize({ width, height: 844 });
     await mockDay(page);
-    for (const route of ['/today', '/conversation', '/capture', '/review?date=2026-09-06', '/history', '/missing']) {
+    for (const route of ['/today', '/conversation', '/review?date=2026-09-06', '/history', '/missing']) {
       await page.goto(route);
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);

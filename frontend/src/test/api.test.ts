@@ -236,23 +236,6 @@ describe('API Client', () => {
       );
     });
 
-    it('should delete a task', async () => {
-      vi.mocked(fetch).mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({ deleted: true }),
-      } as Response);
-
-      await api.deleteTask('1');
-
-      expect(fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/tasks/1'),
-        expect.objectContaining({
-          method: 'DELETE',
-        })
-      );
-    });
-
     it('should reorder tasks', async () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
