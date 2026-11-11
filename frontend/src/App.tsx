@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -15,12 +15,6 @@ import HistoryDay from "./pages/HistoryDay";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
-
-// The old Plan route keeps working for bookmarks and in-flight links.
-function ToConversation() {
-  const { search, state } = useLocation();
-  return <Navigate to={{ pathname: "/conversation", search }} state={state} replace />;
-}
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -38,7 +32,7 @@ const App = () => (
             <Route path="/onboarding/*" element={<Navigate to="/today" replace />} />
             <Route path="/settings/*" element={<Navigate to="/today" replace />} />
             <Route path="/conversation" element={<Conversation />} />
-            <Route path="/new" element={<ToConversation />} />
+            <Route path="/new" element={<Navigate to="/conversation" replace />} />
             <Route element={<AppLayout />}>
               <Route path="/today" element={<Today />} />
               <Route path="/capture" element={<Navigate to="/today" replace />} />

@@ -195,14 +195,14 @@ test('a Today tab left open overnight starts the new day in the Conversation', a
   await expect(composer(page)).toBeEnabled();
 });
 
-test('the old Plan route redirects to the Conversation and keeps its query', async ({ page }) => {
+test('the old Plan route redirects to today’s Conversation', async ({ page }) => {
   await mockDay(page, { state: 'planning' });
-  await page.goto('/new');
-  await expect(page).toHaveURL('/conversation');
-  await expect(composer(page)).toBeEnabled();
-  await page.goto(`/new?date=${date}&seed=Call%20the%20bank`);
-  await expect(page).toHaveURL(`/conversation?date=${date}`);
-  await expect(composer(page)).toHaveValue('Call the bank');
+  for (const old of ['/new', '/new?date=2026-09-01&seed=Call%20the%20bank']) {
+    await page.goto(old);
+    await expect(page).toHaveURL('/conversation');
+    await expect(composer(page)).toBeEnabled();
+    await expect(composer(page)).toHaveValue('');
+  }
 });
 
 for (const width of [390, 1440]) {

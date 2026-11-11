@@ -34,7 +34,7 @@ for (const width of [390, 1440]) {
       }
       return route.fallback();
     });
-    await page.goto(`/conversation?date=${date}&taskId=referenced-inbox-task`);
+    await page.goto('/conversation');
     await expect(page.getByRole('link', { name: 'Back to Today', exact: true })).toBeVisible();
     await page.getByRole('textbox', { name: 'Message about your day' }).fill('I have to fix Headlines publishing and prepare tomorrow’s demo. Two hours each.');
     await page.getByRole('button', { name: 'Send prompt', exact: true }).click();
@@ -44,7 +44,8 @@ for (const width of [390, 1440]) {
     await expect(proposal.getByRole('button', { name: 'Confirm plan' })).toBeVisible();
     await expect(proposal.getByRole('region', { name: 'Today' }).locator('li')).toHaveCount(3);
     await expect(page.getByRole('region', { name: 'Saved task changes' })).toHaveCount(0);
-    expect(writes[0].body).toMatchObject({ date, taskId: 'referenced-inbox-task' });
+    expect(writes[0].body).toMatchObject({ date });
+    expect(writes[0].body).not.toHaveProperty('taskId');
     expect(writes[0].body).not.toHaveProperty('contractVersion');
     await proposal.getByRole('button', { name: 'Confirm plan' }).click();
     // Confirm opens bare /today for local today (fixture clock = date) so overnight tabs are not pinned.

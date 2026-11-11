@@ -12,10 +12,8 @@ test('login opens today with no recovery notice or mutation', async ({ page }) =
 
 test('planner drafts survive browser history and page navigation', async ({ page }) => {
   const writes = await mockDay(page);
-  await page.goto(`/conversation?date=${date}&intent=interrupt&seed=Meeting%20ran%20late`);
+  await page.goto('/conversation');
   const input = page.getByRole('textbox', { name: 'Message about your day' });
-  await expect(input).toHaveValue('Meeting ran late');
-  await expect(page).not.toHaveURL(/seed=/);
   await input.fill('Keep my unsubmitted planning notes');
   await page.getByRole('link', { name: 'Back to Today', exact: true }).click();
   await expect(page).toHaveURL('/today');

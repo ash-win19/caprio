@@ -11,41 +11,6 @@ import (
 	"github.com/google/uuid"
 )
 
-const createCategory = `-- name: CreateCategory :one
-INSERT INTO categories (user_id, name, color, hours_per_week, sort_order)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, user_id, name, color, hours_per_week, sort_order, created_at
-`
-
-type CreateCategoryParams struct {
-	UserID       uuid.UUID `json:"userId"`
-	Name         string    `json:"name"`
-	Color        string    `json:"color"`
-	HoursPerWeek *float64  `json:"hoursPerWeek"`
-	SortOrder    int32     `json:"sortOrder"`
-}
-
-func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) (Category, error) {
-	row := q.db.QueryRow(ctx, createCategory,
-		arg.UserID,
-		arg.Name,
-		arg.Color,
-		arg.HoursPerWeek,
-		arg.SortOrder,
-	)
-	var i Category
-	err := row.Scan(
-		&i.ID,
-		&i.UserID,
-		&i.Name,
-		&i.Color,
-		&i.HoursPerWeek,
-		&i.SortOrder,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
 const listCategoriesByUser = `-- name: ListCategoriesByUser :many
 SELECT id, user_id, name, color, hours_per_week, sort_order, created_at FROM categories WHERE user_id = $1 ORDER BY sort_order ASC
 `

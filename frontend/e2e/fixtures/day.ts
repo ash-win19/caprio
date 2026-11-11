@@ -126,8 +126,6 @@ export async function mockDay(page: Page, options: {
       await route.fulfill({ json: { tasks: url.searchParams.get('status') === 'later' ? later : tasks } });
     } else if (url.pathname === '/api/history') {
       await route.fulfill({ json: { days: (options.history ?? []).filter(day => day.date < (url.searchParams.get('before') ?? '')) } });
-    } else if (url.pathname === '/api/chat/sessions') {
-      await route.fulfill({ json: { sessions: [{ sessionDate: date, title: 'A focused day', messageCount: 2, updatedAt: date, state: 'active' }] } });
     } else {
       await route.abort();
     }

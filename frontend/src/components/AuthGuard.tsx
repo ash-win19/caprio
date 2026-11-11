@@ -124,7 +124,7 @@ function DayEntry({ account, date, fromPublicRoute, openedToday, children }: { a
     <p role="alert">{workflow.error.message || 'Unable to load your day.'}</p>
     <button className="mt-4 underline" onClick={() => void workflow.refetch()}>Try again</button>
   </SessionStatus>;
-  if (!showsToday) return <Navigate to="/conversation" state={{ planningDay: date }} replace />;
+  if (!showsToday) return <Navigate to="/conversation" replace />;
   if (fromPublicRoute) return <Navigate to="/today" replace />;
   return <>{children}</>;
 }

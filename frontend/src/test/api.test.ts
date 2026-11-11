@@ -56,7 +56,7 @@ describe('API Client', () => {
   describe('Error Handling', () => {
     it('preserves a validation code from a JSON error response', async () => {
       vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ error: 'Incomplete plan', code: 'plan_incomplete' }), { status: 400 }));
-      await expect(api.sendChatMessage('Plan')).rejects.toMatchObject({ status: 400, code: 'plan_incomplete', message: 'Incomplete plan' });
+      await expect(api.streamChatMessage({ content: 'Plan' })).rejects.toMatchObject({ status: 400, code: 'plan_incomplete', message: 'Incomplete plan' });
     });
     it('should handle 500 errors', async () => {
       vi.mocked(fetch).mockResolvedValue({
@@ -81,40 +81,6 @@ describe('API Client', () => {
       vi.mocked(fetch).mockRejectedValue(new Error('Network error'));
 
       await expect(api.getTodayTasks()).rejects.toThrow('Network error');
-    });
-  });
-
-  describe('Chat Operations', () => {
-    it('should send a chat message and receive response', async () => {
-      vi.mocked(fetch).mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({ text: 'Hello! How can I help you?' }),
-      } as Response);
-
-      const result = await api.sendChatMessage('Hello', '2026-09-06', '92fc090b-0111-42cc-9a34-a8c0052205e9');
-
-      expect(fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/chat'),
-        expect.objectContaining({
-          method: 'POST',
-          body: JSON.stringify({
-            content: 'Hello',
-            date: '2026-09-06',
-            requestId: '92fc090b-0111-42cc-9a34-a8c0052205e9',
-          }),
-        })
-      );
-      expect(result.text).toBe('Hello! How can I help you?');
-    });
-
-    it('should handle chat errors', async () => {
-      vi.mocked(fetch).mockResolvedValue({
-        ok: false,
-        status: 500,
-      } as Response);
-
-      await expect(api.sendChatMessage('Hello')).rejects.toThrow('Internal server error');
     });
   });
 

@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ListChecks } from 'lucide-react';
 import { useDateDraft, useNavigationLock } from '@/lib/dateDrafts';
-import { useLocalDay } from '@/lib/useLocalDay';
 import { PromptInput } from '@/components/agents/prompt-input';
 import { SpeechMicButton } from '@/components/agents/SpeechMicButton';
 import { Button } from '@/components/ui/button';
@@ -12,7 +11,7 @@ import { WorkflowError } from './WorkflowUI';
 import { PlanPanel, PlanPill } from './PlanPanel';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { toast } from '@/hooks/use-toast';
-import { CHAT_MODELS, DEFAULT_CHAT_MODEL, FALLBACK_CHAT_MODEL } from '@/lib/chat-models';
+import { DEFAULT_CHAT_MODEL, FALLBACK_CHAT_MODEL } from '@/lib/chat-models';
 import { shouldFallbackToGroq } from '@/lib/chat-resilience';
 import { invalidatePlanningQueries, useWorkflow } from '@/lib/queries';
 import { useRevealedText } from '@/lib/hooks/use-revealed-text';
@@ -36,13 +35,8 @@ type PendingTurn = {
 
 const isReplying = (turn: PendingTurn | null) => turn?.status === 'thinking' || turn?.status === 'streaming';
 
-const INTERRUPT_CHIPS = [
-  { label: 'Meeting ran over', text: 'A meeting ran over and I have less time today. ' },
-  { label: 'Add work', text: 'I need to add work to today: ' },
-  { label: 'Cut scope', text: 'I need to cut scope from today. ' },
-] as const;
-
-export function DayConversation({ date, intent, seed, taskId }: { date: string; intent: string | null; seed: string; taskId?: string }) {
+// Today's Conversation with Caprio. Past Days' Conversations are read in History.
+export function DayConversation({ date }: { date: string }) {
   const navigate = useNavigate();
   const openSavedPlan = useCallback(() => {
     navigate('/today', { state: openTodayState(localDate()) });
@@ -51,16 +45,11 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
   const workflowQuery = useWorkflow(date);
   const workflow = workflowQuery.data;
   const [input, setInput] = useDateDraft('composer', date, '');
-  const [model, setModel] = useDateDraft('chat-model', date, DEFAULT_CHAT_MODEL);
   const [pending, setPending] = useDateDraft<PendingTurn | null>('pending-turn', date, null);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const today = useLocalDay();
-  const past = date < today;
   const mounted = useRef(true);
-  const consumedSeed = useRef('');
-  const readOnly = past;
   const replying = isReplying(pending);
   const settling = pending?.status === 'settling';
   const shownReply = useRevealedText(pending && (pending.status === 'streaming' || settling) ? pending.reply : '');
@@ -71,15 +60,8 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
   const [closedDraft, setClosedDraft] = useDateDraft<string | null>('plan-panel-closed', date, null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [highlight, setHighlight] = useState<{ refs: string[]; nonce: number } | null>(null);
-  const showInterruptChips = !readOnly && (intent === 'interrupt' || (intent !== 'plan' && workflow?.state === 'active' && workflow.tasks.length > 0));
-
-  useEffect(() => {
-    if (seed.trim() && seed !== consumedSeed.current) {
-      consumedSeed.current = seed;
-      setInput(previous => previous ? `${previous}\n${seed}` : seed);
-    }
-    if (!seed) consumedSeed.current = '';
-  }, [seed, setInput]);
+  // Once the Day is under way, the Conversation is for what changed.
+  const midDay = workflow?.state === 'active' && workflow.tasks.length > 0;
 
   const refresh = () => void invalidatePlanningQueries(queryClient);
   // Confirm's variable says whether this is the Day's first plan, for the toast.
@@ -119,7 +101,6 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
       const response = await api.streamChatMessage({
         ...request,
         date,
-        taskId,
         signal: controller.signal,
         onDelta: (text) => {
           if (!controller.signal.aborted && mounted.current) updatePending(request.requestId, (turn) => ({ ...turn, reply: turn.reply + text, status: 'streaming' }));
@@ -135,7 +116,6 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
     } catch (error) {
       if (controller.signal.aborted) return;
       if (allowFallback && shouldFallbackToGroq(error, request.model)) {
-        setModel(FALLBACK_CHAT_MODEL);
         toast({ title: 'Switched to GPT-OSS 20B', description: 'The previous model was unavailable. Retrying with GPT-OSS 20B.' });
         await send({ ...request, model: FALLBACK_CHAT_MODEL }, { allowFallback: false });
         return;
@@ -189,16 +169,17 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
     messagesEndRef.current?.scrollIntoView?.({ behavior: instant ? 'auto' : 'smooth', block: 'end' });
   }, [workflow?.messages.length, pending?.status, shownReply.length]);
 
-  const handleSend = (value: string, selectedModel?: string) => {
+  const handleSend = (value: string) => {
     const content = value.trim();
-    if (!content || replying || confirm.isPending || discard.isPending || readOnly) return;
+    if (!content || replying || confirm.isPending || discard.isPending) return;
     // Resending the same text after a failure reuses the request ID, so the
     // server never runs the model twice for one message.
     const requestId = pending && pending.content === content ? pending.requestId : crypto.randomUUID();
     confirm.reset();
     discard.reset();
     setInput('');
-    void send({ content, requestId, model: selectedModel || model });
+    // Every message starts on the default model; send falls back once if it is unavailable.
+    void send({ content, requestId, model: DEFAULT_CHAT_MODEL });
   };
   const retry = () => {
     if (pending) void send({ content: pending.content, requestId: pending.requestId, model: pending.model });
@@ -209,7 +190,7 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
     if (wide) setClosedDraft(open ? null : plan?.draftId ?? null);
     else setSheetOpen(open);
   };
-  const showPill = Boolean(plan) && !readOnly && !(wide && panelOpen);
+  const showPill = Boolean(plan) && !(wide && panelOpen);
   const showUpdate = (refs: string[]) => {
     setHighlight({ refs, nonce: Date.now() });
     setPanelOpen(true);
@@ -235,8 +216,8 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
       {workflowQuery.isLoading ? <p role="status" className="py-12 text-center text-sm text-muted-foreground">Loading your day…</p> : workflowQuery.error ? <WorkflowError error={workflowQuery.error} retry={() => void workflowQuery.refetch()} /> : <>
         {!messages.length && !pending && !plan && !opener && workflow?.state !== 'closed' && <div className="flex min-h-[38vh] flex-col items-center justify-center text-center">
           <ListChecks className="mb-5 h-7 w-7 text-primary" />
-          <h2 className="text-3xl font-medium">{past ? 'No conversation for this day' : showInterruptChips ? 'What changed?' : 'What needs your attention?'}</h2>
-          <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">{past ? 'What you did that day is in History.' : showInterruptChips ? 'Tell Caprio what shifted: less time, new work, or something to drop. Review the draft, then confirm to update your list.' : 'Tell me what you need to do. Review the draft plan, then confirm to save your tasks.'}</p>
+          <h2 className="text-3xl font-medium">{midDay ? 'What changed?' : 'What needs your attention?'}</h2>
+          <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">{midDay ? 'Tell Caprio what shifted: less time, new work, or something to drop. Review the draft, then confirm to update your list.' : 'Tell me what you need to do. Review the draft plan, then confirm to save your tasks.'}</p>
         </div>}
         {showOpener && <MessageBubble role="assistant">{opener}</MessageBubble>}
         {messages.map(message => <ThreadEntry key={message.id} message={message} onShowUpdate={plan ? showUpdate : undefined} />)}
@@ -249,29 +230,15 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
         </>}
         {/* The latest message, not the draft card below it, is what a new turn scrolls to. */}
         <div ref={messagesEndRef} />
-        {workflow?.state === 'closed' && !past && <p className="text-sm text-muted-foreground">This day is wrapped up. Add new work to continue it; what you finished stays recorded.</p>}
+        {workflow?.state === 'closed' && <p className="text-sm text-muted-foreground">This day is wrapped up. Add new work to continue it; what you finished stays recorded.</p>}
       </>}
     </div></div>
     <div className="conversation-composer bg-background px-4 pb-4 pt-2 md:px-8"><div className="mx-auto max-w-2xl">
-      {readOnly ? <div className="flex items-center justify-between gap-3 rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground"><span>Past conversations are read-only.</span><Link to="/conversation" className="shrink-0 text-primary hover:underline">Open today’s Conversation</Link></div> : <>
-        {showInterruptChips && !pending && !input && !plan && <div className="mb-3 flex flex-wrap gap-2" aria-label="Quick interruption prompts">
-          {INTERRUPT_CHIPS.map((chip) => (
-            <button
-              key={chip.label}
-              type="button"
-              className="rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
-              onClick={() => { setInput(chip.text); document.getElementById('day-message')?.focus(); }}
-            >
-              {chip.label}
-            </button>
-          ))}
-        </div>}
         {showPill && plan && <PlanPill plan={plan} expanded={panelOpen} onClick={() => setPanelOpen(true)} />}
-        <PromptInput id="day-message" value={input} onValueChange={setInput} models={CHAT_MODELS} model={model} defaultModel={DEFAULT_CHAT_MODEL} onModelChange={setModel} onSubmit={handleSend} loading={replying} onStop={stop} disabled={workflowQuery.isLoading || !!workflowQuery.error || confirm.isPending || discard.isPending} leadingAction={<SpeechMicButton value={input} onTranscript={setInput} disabled={workflowQuery.isLoading || !!workflowQuery.error || confirm.isPending || discard.isPending || replying} />} aria-label="Message about your day" maxLength={8000} placeholder={showInterruptChips ? 'Add a task or tell me what changed…' : 'Tell me what you want to work on…'} />
-      </>}
+        <PromptInput id="day-message" value={input} onValueChange={setInput} onSubmit={handleSend} loading={replying} onStop={stop} disabled={workflowQuery.isLoading || !!workflowQuery.error || confirm.isPending || discard.isPending} leadingAction={<SpeechMicButton value={input} onTranscript={setInput} disabled={workflowQuery.isLoading || !!workflowQuery.error || confirm.isPending || discard.isPending || replying} />} aria-label="Message about your day" maxLength={8000} placeholder={midDay ? 'Add a task or tell me what changed…' : 'Tell me what you want to work on…'} />
     </div></div>
   </section>
-  {plan && !readOnly && <PlanPanel wide={wide} open={panelOpen} onOpenChange={setPanelOpen} plan={plan} date={date} availableMinutes={workflow?.availableMinutes ?? null} busy={busy} highlight={highlight}
+  {plan && <PlanPanel wide={wide} open={panelOpen} onOpenChange={setPanelOpen} plan={plan} date={date} availableMinutes={workflow?.availableMinutes ?? null} busy={busy} highlight={highlight}
     confirming={confirm.isPending} discarding={discard.isPending}
     error={(confirm.error || discard.error) && <WorkflowError error={confirm.error || discard.error} />}
     onConfirm={() => confirm.mutate(workflow!.state === 'planning')} onDiscard={() => discard.mutate()} />}

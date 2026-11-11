@@ -1,6 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
 import { conversationDay, date, tasksForDay, planView, openPlan } from './fixtures/day';
-import type { Workflow } from '../src/lib/api';
 
 async function send(page: Page, text: string, reply: string) {
   await page.getByRole('textbox', { name: 'Message about your day' }).fill(text);
@@ -58,17 +57,6 @@ test('Discard clears the Draft and stays in the Conversation', async ({ page }) 
   await expect(page.getByRole('complementary', { name: 'Today’s plan' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^Plan( ·|$)/ })).toHaveCount(0);
   await expect(page.getByRole('textbox', { name: 'Message about your day' })).toBeEnabled();
-});
-
-test('the Conversation shows no Undo receipts for saved changes', async ({ page }) => {
-  await conversationDay(page, { state: 'active', changeReceipts: [{
-    id: 'receipt-1', requestId: 'request-1', summary: 'Added 1 task', undone: false, canUndo: true, affectedDates: [date],
-    changes: [{ taskId: 'task-0', title: 'Call the bank', action: 'Added', date }],
-  }] } as Partial<Workflow>, []);
-  await page.goto(`/conversation?date=${date}`);
-  await expect(page.getByRole('textbox', { name: 'Message about your day' })).toBeEnabled();
-  await expect(page.getByRole('region', { name: 'Saved task changes' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /^Undo/ })).toHaveCount(0);
 });
 
 for (const [available, footer] of [[240, 'Planned ~3h 55m for your 4h'], [null, 'Planned ~3h 55m']] as const) {

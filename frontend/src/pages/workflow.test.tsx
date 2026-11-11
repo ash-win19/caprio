@@ -270,14 +270,6 @@ describe('Daily planning workflow', () => {
     expect(api.confirmDayPlan).not.toHaveBeenCalled();
   });
 
-  it('keeps a historical conversation read-only', async () => {
-    workflow = { ...workflow, date: '2020-01-01', plan: plan(), messages: [{ id: 'past', role: 'assistant', content: 'Your old plan.' }] };
-    mount(<Conversation />, '/conversation?date=2020-01-01');
-    expect(await screen.findByText('Your old plan.')).toBeInTheDocument();
-    expect(screen.queryByRole('textbox', { name: 'Message about your day' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Confirm plan' })).not.toBeInTheDocument();
-  });
-
   it('keeps completion failure visible after restoring the task to its previous list', async () => {
     workflow = { ...workflow, state: 'active', tasks: [task('report')] };
     vi.mocked(api.getTodayTasks).mockResolvedValue([{ id: 'report', title: 'Finish report', urgency: 'medium', category: 'Uncategorized', completed: false, addedToday: true, carriedOver: false, order: 0 }]);
@@ -327,13 +319,6 @@ describe('Daily planning workflow', () => {
     expect(link).toHaveAttribute('href', '/today');
     expect(screen.getAllByRole('link', { name: /Skip to my list|Back to Today/ })).toHaveLength(1);
   });
-
-  it.each([['past', previousDate(today)], ['future', nextDate(today)]])('offers the way back to today from a %s day', async (_, date) => {
-    workflow = { ...workflow, date };
-    mount(<Conversation />, `/conversation?date=${date}`);
-    expect(await screen.findByRole('link', { name: 'Back to Today' })).toHaveAttribute('href', '/today');
-  });
-
 
   it.each([0, 60])('lets users confirm all tasks with %i minutes available', async (availableMinutes) => {
     workflow = {
@@ -404,12 +389,15 @@ describe('Daily planning workflow', () => {
     expect(screen.getByRole('button', { name: 'Plan updated · Added Ship hotfix · Moved Team meeting' })).toBeInTheDocument();
   });
 
-  it('seeds interrupt chips on the planner when intent=interrupt', async () => {
+  it('offers no quick prompts or model choice in the composer, mid-day or from an old link', async () => {
     workflow = { ...workflow, state: 'active', tasks: [task('report')] };
-    mount(<Conversation />, `/conversation?date=${today}&intent=interrupt`);
-    expect(await screen.findByLabelText('Quick interruption prompts')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Meeting ran over' }));
-    expect(screen.getByRole('textbox', { name: 'Message about your day' })).toHaveValue('A meeting ran over and I have less time today. ');
+    mount(<Conversation />, '/conversation?intent=interrupt&seed=Meeting%20ran%20late');
+    const input = await screen.findByRole('textbox', { name: 'Message about your day' });
+    await waitFor(() => expect(input).toBeEnabled());
+    expect(input).toHaveValue('');
+    expect(screen.queryByLabelText('Quick interruption prompts')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Meeting ran over' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/GPT-OSS|Gemini|Choose model/)).not.toBeInTheDocument();
   });
 
   it('retries a failed plan update once on the fallback model, then says the plan was not updated', async () => {
@@ -501,7 +489,7 @@ describe('Plan side panel', () => {
 });
 
 describe('Model resilience', () => {
-  it('starts with GPT-OSS 120B and retries once with 20B after a capacity failure', async () => {
+  it('sends on the default model and retries once on the fallback after a capacity failure', async () => {
     const { toast } = await import('@/hooks/use-toast');
     vi.mocked(api.streamChatMessage)
       .mockRejectedValueOnce(Object.assign(new Error('the planning model is overloaded or timed out; try again or switch models'), { status: 503 }))
@@ -514,7 +502,7 @@ describe('Model resilience', () => {
     mount(<Conversation />, '/conversation');
     const input = await screen.findByRole('textbox', { name: 'Message about your day' });
     await waitFor(() => expect(input).toBeEnabled());
-    expect(screen.getByRole('button', { name: 'GPT-OSS 120B' })).toBeEnabled();
+    expect(screen.queryByText(/GPT-OSS|Gemini|Choose model/)).not.toBeInTheDocument();
     fireEvent.change(input, { target: { value: 'Plan with less load' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send prompt' }));
     await waitFor(() => expect(api.streamChatMessage).toHaveBeenCalledTimes(2));

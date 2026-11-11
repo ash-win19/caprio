@@ -26,7 +26,7 @@ for (const width of [320, 390, 1440]) {
   });
 }
 
-test('proposal keeps the conversation visible beside its decisions and the model picker inside the composer', async ({ page }, info) => {
+test('a Draft keeps the conversation visible beside its decisions, and the composer has no model picker', async ({ page }, info) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   const writes = await mockDay(page, { messages: [{ id: 'm1', role: 'assistant', content: 'Previous planning conversation', createdAt: date }], plan: planView([
     { ref: 'task-0', taskId: 'task-0', title: titles[0], duration: 40, date },
@@ -41,10 +41,9 @@ test('proposal keeps the conversation visible beside its decisions and the model
   await expect(page.getByRole('region', { name: 'Today' })).toContainText('Prepare a handoff');
   await expect(page.getByRole('region', { name: 'Later' }).locator('li')).toHaveCount(2);
   const composer = page.locator('.conversation-composer form');
-  await expect(composer.getByRole('button', { name: 'GPT-OSS 120B' })).toBeVisible();
-  await composer.getByRole('button', { name: 'GPT-OSS 120B' }).click();
-  await page.getByRole('option', { name: 'GPT-OSS 20B', exact: true }).click();
-  await expect(composer.getByRole('button', { name: 'GPT-OSS 20B' })).toBeVisible();
+  await expect(composer.getByRole('textbox', { name: 'Message about your day' })).toBeEnabled();
+  await expect(composer.getByText(/GPT-OSS|Gemini|Choose model/)).toHaveCount(0);
+  await expect(page.getByLabel('Quick interruption prompts')).toHaveCount(0);
   expect(writes).toEqual([]);
   await page.screenshot({ path: info.outputPath('plan-proposal.png'), animations: 'disabled' });
 });

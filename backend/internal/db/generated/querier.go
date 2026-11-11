@@ -14,7 +14,6 @@ type Querier interface {
 	CloseTaskDone(ctx context.Context, arg CloseTaskDoneParams) error
 	CloseTaskDrop(ctx context.Context, arg CloseTaskDropParams) error
 	CloseTaskTomorrow(ctx context.Context, arg CloseTaskTomorrowParams) error
-	CreateCategory(ctx context.Context, arg CreateCategoryParams) (Category, error)
 	CreateChatEvent(ctx context.Context, arg CreateChatEventParams) (ChatMessage, error)
 	CreateChatMessage(ctx context.Context, arg CreateChatMessageParams) (ChatMessage, error)
 	CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error)

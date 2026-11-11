@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUp, Plus, Square } from "lucide-react";
+import { ArrowUp, Square } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   type FormEvent,
@@ -14,36 +14,8 @@ import {
   useState,
 } from "react";
 import { Button } from "@/components/motion/button";
-import {
-  MorphPopover,
-  MorphPopoverContent,
-  MorphPopoverTrigger,
-} from "@/components/motion/popover-morph";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/motion/select";
 import { SPRING_SWAP } from "@/lib/ease";
 import { cn } from "@/lib/utils";
-
-export interface PromptModel {
-  value: string;
-  label: ReactNode;
-  description?: ReactNode;
-  icon?: ReactNode;
-  disabled?: boolean;
-}
-
-export interface PromptAction {
-  value: string;
-  label: ReactNode;
-  description?: ReactNode;
-  icon?: ReactNode;
-  disabled?: boolean;
-}
 
 export interface PromptInputProps extends Omit<
   TextareaHTMLAttributes<HTMLTextAreaElement>,
@@ -52,13 +24,7 @@ export interface PromptInputProps extends Omit<
   value?: string;
   defaultValue?: string;
   onValueChange?: (value: string) => void;
-  models?: PromptModel[];
-  model?: string;
-  defaultModel?: string;
-  onModelChange?: (model: string) => void;
-  actions?: PromptAction[];
-  onAction?: (action: string) => void;
-  onSubmit?: (value: string, model?: string) => void | Promise<void>;
+  onSubmit?: (value: string) => void | Promise<void>;
   loading?: boolean;
   onStop?: () => void;
   minRows?: number;
@@ -71,12 +37,6 @@ export function PromptInput({
   value,
   defaultValue = "",
   onValueChange,
-  models = [],
-  model,
-  defaultModel,
-  onModelChange,
-  actions = [],
-  onAction,
   onSubmit,
   loading = false,
   onStop,
@@ -94,15 +54,7 @@ export function PromptInput({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const measurementRef = useRef<HTMLDivElement | null>(null);
   const [internalValue, setInternalValue] = useState(defaultValue);
-  const [internalModel, setInternalModel] = useState(
-    defaultModel ?? models[0]?.value,
-  );
-  const [actionsOpen, setActionsOpen] = useState(false);
   const currentValue = value ?? internalValue;
-  const currentModelValue = model ?? internalModel;
-  const currentModel = models.find(
-    (option) => option.value === currentModelValue,
-  );
   const canSubmit = Boolean(currentValue.trim()) && !disabled && !loading;
 
   const resizeTextarea = useCallback(() => {
@@ -136,17 +88,12 @@ export function PromptInput({
     onValueChange?.(next);
   };
 
-  const setModel = (next: string) => {
-    if (model === undefined) setInternalModel(next);
-    onModelChange?.(next);
-  };
-
   const submit = (event?: FormEvent) => {
     event?.preventDefault();
     const prompt = currentValue.trim();
     if (!prompt || disabled || loading) return;
 
-    onSubmit?.(prompt, currentModelValue);
+    onSubmit?.(prompt);
     if (value === undefined) setInternalValue("");
     textareaRef.current?.focus({ preventScroll: true });
   };
@@ -195,103 +142,7 @@ export function PromptInput({
       />
 
       <div className="flex items-center justify-between gap-1.5 pt-1">
-        {actions.length ? (
-          <MorphPopover open={actionsOpen} onOpenChange={setActionsOpen}>
-            <MorphPopoverTrigger>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                disabled={disabled || loading}
-                aria-label="Add to prompt"
-                className="size-8 rounded-full"
-              >
-                <motion.span
-                  aria-hidden="true"
-                  animate={{ rotate: actionsOpen ? 45 : 0 }}
-                  transition={reduce ? { duration: 0 } : SPRING_SWAP}
-                >
-                  <Plus className="h-4 w-4" />
-                </motion.span>
-              </Button>
-            </MorphPopoverTrigger>
-
-            <MorphPopoverContent
-              side="top"
-              align="start"
-              sideOffset={8}
-              radius={12}
-              className="w-56 p-1.5"
-            >
-              {actions.map((action) => (
-                <button
-                  key={action.value}
-                  type="button"
-                  disabled={action.disabled}
-                  onClick={() => {
-                    onAction?.(action.value);
-                    setActionsOpen(false);
-                  }}
-                  className="flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left outline-none transition-colors hover:bg-muted focus-visible:bg-muted disabled:pointer-events-none disabled:opacity-50"
-                >
-                  {action.icon ? (
-                    <span className="text-muted-foreground">{action.icon}</span>
-                  ) : null}
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-medium text-foreground">
-                      {action.label}
-                    </span>
-                    {action.description ? (
-                      <span className="mt-0.5 block text-xs text-muted-foreground">
-                        {action.description}
-                      </span>
-                    ) : null}
-                  </span>
-                </button>
-              ))}
-            </MorphPopoverContent>
-          </MorphPopover>
-        ) : null}
         {leadingAction}
-        {models.length ? (
-          <Select
-            value={currentModelValue}
-            onValueChange={setModel}
-            disabled={disabled || loading}
-            className="min-w-0"
-          >
-            <SelectTrigger className="h-8 gap-1.5 px-2.5 text-xs">
-              <span className="flex items-center gap-1.5">
-                {currentModel?.icon ? (
-                  <span className="shrink-0">{currentModel.icon}</span>
-                ) : null}
-                <SelectValue placeholder="Choose model" />
-              </span>
-            </SelectTrigger>
-            <SelectContent>
-              {models.map((option) => (
-                <SelectItem
-                  key={option.value}
-                  value={option.value}
-                  disabled={option.disabled}
-                  description={option.description}
-                  className="py-2"
-                >
-                  {typeof option.label === "string" && !option.icon ? (
-                    option.label
-                  ) : (
-                    <span className="flex items-center gap-1.5">
-                      {option.icon ? (
-                        <span className="shrink-0">{option.icon}</span>
-                      ) : null}
-                      <span>{option.label}</span>
-                    </span>
-                  )}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        ) : null}
 
         <Button
           type={loading ? "button" : "submit"}

@@ -1,4 +1,4 @@
-import type { Task, TaskChange, Category, UserPrefs } from './types';
+import type { Task, Category, UserPrefs } from './types';
 import { toast } from '@/hooks/use-toast';
 import { localDate } from './date';
 
@@ -80,13 +80,6 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promi
   return response;
 }
 
-// Persisted daily conversations and proposals
-export interface DayStatus {
-  date: string;
-  hasTasks: boolean;
-  taskCount: number;
-}
-
 // Task types
 export interface BackendTask {
   id: string;
@@ -149,17 +142,6 @@ export function mapBackendTaskToTask(backendTask: BackendTask, categories: Categ
     carryCount: backendTask.deferCount,
     order: backendTask.sortOrder,
   };
-}
-
-// Day endpoints
-export async function getDayStatus(date: string): Promise<DayStatus> {
-  const response = await fetchWithAuth(`/api/day/${date}/status`);
-  return response.json();
-}
-
-export async function getLeftovers(): Promise<{ leftovers: BackendTask[] }> {
-  const response = await fetchWithAuth(`/api/day/leftovers`);
-  return response.json();
 }
 
 // Standalone functions for React Query hooks
@@ -230,49 +212,6 @@ export async function reorderTasks(tasks: Array<{ id: string; sortOrder: number 
   });
 }
 
-export interface ReprioritizeResponse {
-  tasks: BackendTask[];
-  changes: Array<{
-    task_id: string;
-    rank: number;
-    reason: string;
-  }>;
-}
-
-export async function prioritizeTasks(
-  voiceTranscript?: string,
-  voiceEntryId?: string,
-): Promise<{ tasks: Task[]; changes: TaskChange[] }> {
-  const body: { voiceEntryId?: string } = {};
-  if (voiceEntryId) {
-    body.voiceEntryId = voiceEntryId;
-  }
-
-  const response = await fetchWithAuth('/api/tasks/reprioritize', {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
-
-  const data: ReprioritizeResponse = await response.json();
-
-  return {
-    tasks: data.tasks.map((task) => mapBackendTaskToTask(task)),
-    changes: data.changes.map((c) => ({
-      taskId: c.task_id,
-      direction: 'up',
-      reason: c.reason,
-    })),
-  };
-}
-
-export async function createVoiceEntry(transcript: string): Promise<{ id: string }> {
-  const response = await fetchWithAuth('/api/voice-entries', {
-    method: 'POST',
-    body: JSON.stringify({ transcript }),
-  });
-  return response.json();
-}
-
 function mapBackendCategory(category: BackendCategory | Category): Category {
   return {
     id: category.id,
@@ -280,10 +219,6 @@ function mapBackendCategory(category: BackendCategory | Category): Category {
     color: category.color,
     hoursPerWeek: category.hoursPerWeek || undefined,
   };
-}
-
-export async function getCategories(): Promise<Category[]> {
-  return (await bootstrap()).categories;
 }
 
 // One row of the day's plan: saved work with the draft applied. The badge
@@ -393,27 +328,13 @@ export interface ChatReply {
   workflow: Workflow;
 }
 
-function chatMessageBody(content: string, date: string, requestId: string, model?: string, taskId?: string) {
-  const body = { content, date, requestId, model, taskId };
+function chatMessageBody(content: string, date: string, requestId: string, model?: string) {
+  const body = { content, date, requestId, model };
   if (model) body.model = model;
   return JSON.stringify(body);
 }
 
-export async function sendChatMessage(
-  content: string,
-  date = localDate(),
-  requestId: string = crypto.randomUUID(),
-  model?: string,
-): Promise<ChatReply> {
-  const response = await fetchWithAuth('/api/chat', {
-    method: 'POST',
-    body: chatMessageBody(content, date, requestId, model),
-  });
-  return response.json();
-}
-
 export interface ChatStreamInput {
-  taskId?: string;
   content: string;
   date?: string;
   requestId?: string;
@@ -457,7 +378,6 @@ function createEventParser(onEvent: (event: string, data: Record<string, unknown
 // failure after streaming began. Errors before the first delta arrive as
 // ordinary HTTP status codes and are thrown by fetchWithAuth.
 export async function streamChatMessage({
-  taskId,
   content,
   date = localDate(),
   requestId = crypto.randomUUID(),
@@ -468,7 +388,7 @@ export async function streamChatMessage({
   const response = await fetchWithAuth('/api/chat/stream', {
     method: 'POST',
     headers: { Accept: 'text/event-stream' },
-    body: chatMessageBody(content, date, requestId, model, taskId),
+    body: chatMessageBody(content, date, requestId, model),
     signal,
   });
   const result: { reply: ChatReply | null } = { reply: null };
