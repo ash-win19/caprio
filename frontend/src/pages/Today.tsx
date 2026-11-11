@@ -130,8 +130,10 @@ export default function Today() {
         </SortableContext>
       </DndContext> : <p className="list-empty">{tasks.length ? 'Nothing left for today.' : 'Nothing on today’s list yet.'}</p>}
       <details className="today-later">
-        <summary><ChevronDown size={16} aria-hidden /><span>Later · {later.length}</span><span className="today-later-hint">No date, or a future day</span></summary>
-        {later.length > 0 ? <ol aria-label="Later tasks" className="today-task-list mt-3">{later.map(task => <LaterTaskRow key={task.id} task={task} when={task.status === 'planned' && task.plannedForDate ? laterLabel(task.plannedForDate, date) : undefined} disabled={!editable || busy} onMoveToToday={() => moveToToday(task)} />)}</ol>
+        <summary><ChevronDown size={16} aria-hidden /><span>Later{laterQuery.isSuccess && ` · ${later.length}`}</span><span className="today-later-hint">No date, or a future day</span></summary>
+        {laterQuery.error ? <WorkflowError error={laterQuery.error} retry={() => { void laterQuery.refetch(); }} />
+          : !laterQuery.isSuccess ? <p role="status" className="list-empty">Loading…</p>
+          : later.length > 0 ? <ol aria-label="Later tasks" className="today-task-list mt-3">{later.map(task => <LaterTaskRow key={task.id} task={task} when={task.status === 'planned' && task.plannedForDate ? laterLabel(task.plannedForDate, date) : undefined} disabled={!editable || busy} onMoveToToday={() => moveToToday(task)} />)}</ol>
           : <p className="list-empty">Nothing waiting.</p>}
       </details>
       {completed.length > 0 && <details key={date} className="today-done">

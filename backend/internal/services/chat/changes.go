@@ -402,7 +402,8 @@ func receipt(ctx context.Context, conn generated.DBTX, user uuid.UUID, b changeB
 				noun = "task"
 			}
 			r.Summary = fmt.Sprintf("%s %d %s", action, len(r.Changes), noun)
-			if action == "Moved from Later" {
+			// Batches saved before the Inbox became Later carry the old action.
+			if action == "Moved from Later" || action == "Moved from Inbox" {
 				r.Summary = fmt.Sprintf("Moved %d %s from Later", len(r.Changes), noun)
 			}
 		}

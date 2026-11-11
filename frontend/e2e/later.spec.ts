@@ -121,3 +121,22 @@ test('a task the Draft sends to Later is in Later as soon as Confirm lands on To
   await expect(section(page).locator('summary')).toContainText('Later · 1');
   await expect(today(page).filter({ hasText: first.title })).toHaveCount(0);
 });
+
+test('Later says so when its list can’t load, instead of claiming nothing is waiting', async ({ page }) => {
+  await mockDay(page, { later: laterTasks() });
+  let failing = true;
+  await page.route('**/api/tasks?status=later**', route => failing ? route.fulfill({ status: 400, json: { error: 'Could not load Later.' } }) : route.fallback());
+  await page.goto('/today');
+  await expect(today(page)).toHaveCount(3);
+  await section(page).locator('summary').click();
+  await expect(section(page).getByRole('status')).toHaveText('Loading…');
+  // The request is retried a few times before the error shows.
+  await expect(section(page).getByRole('alert')).toContainText('Could not load Later.', { timeout: 20_000 });
+  await expect(section(page).locator('summary')).not.toContainText('·');
+  await expect(section(page)).not.toContainText('Nothing waiting.');
+
+  failing = false;
+  await section(page).getByRole('button', { name: 'Try again' }).click();
+  await expect(section(page).locator('summary')).toContainText('Later · 3');
+  await expect(laterRows(page)).toHaveCount(3);
+});

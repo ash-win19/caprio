@@ -307,3 +307,12 @@ func TestCompletedDuplicateNeedsAnExplicitNewOccurrence(t *testing.T) {
 		}
 	}
 }
+
+// Batches saved before the Inbox became Later still carry the old action.
+func TestAReceiptForAMoveOutOfLaterSaysLaterEvenWhenSavedAsInbox(t *testing.T) {
+	for _, action := range []string{"Moved from Later", "Moved from Inbox"} {
+		r, err := receipt(context.Background(), nil, uuid.New(), changeBatch{Undone: true, Changes: []TaskChange{{Action: action}, {Action: action}}})
+		require.NoError(t, err)
+		require.Equal(t, "Moved 2 tasks from Later", r.Summary, action)
+	}
+}
