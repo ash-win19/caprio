@@ -8,7 +8,7 @@ SELECT * FROM tasks
 WHERE user_id = $1
     AND planned_for_date = $2
     AND status IN ('planned', 'completed')
-ORDER BY sort_order ASC;
+ORDER BY sort_order ASC, created_at ASC;
 
 -- name: ListLaterTasks :many
 -- Later is everything not on today's list: planned tasks dated after today,

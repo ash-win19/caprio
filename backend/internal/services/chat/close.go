@@ -59,7 +59,7 @@ func validateClose(req CloseRequest, tasks []generated.Task) error {
 		seen[a.TaskID] = true
 	}
 	if len(seen) != len(candidates) {
-		return invalid("choose an outcome for every task before closing the day")
+		return invalid("choose Keep or Drop for every task before wrapping up")
 	}
 	return nil
 }
@@ -127,11 +127,11 @@ func (s *Service) close(ctx context.Context, userID uuid.UUID, req CloseRequest,
 				_, err = tx.Exec(ctx, `UPDATE tasks SET completed=true,status='completed',completed_at=COALESCE(completed_at,clock_timestamp()),updated_at=clock_timestamp() WHERE id=$1 AND user_id=$2`, a.TaskID, userID)
 				result.CompletedCount++
 			case "tomorrow":
-				// Do not silently add carryovers to an already closed next day.
+				// Do not silently add carried tasks to a next day that is already wrapped up.
 				var closed bool
 				err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM daily_plans WHERE user_id=$1 AND plan_date=$2 AND state='closed')`, userID, nextDate).Scan(&closed)
 				if err == nil && closed {
-					return invalid("tomorrow is already closed")
+					return invalid("the next day is already wrapped up")
 				}
 				if err == nil {
 					_, err = tx.Exec(ctx, `INSERT INTO task_carryovers(task_id,first_planned_date) SELECT id,planned_for_date FROM tasks WHERE id=$1 AND user_id=$2 ON CONFLICT DO NOTHING`, a.TaskID, userID)

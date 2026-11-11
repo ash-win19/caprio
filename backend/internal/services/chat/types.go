@@ -15,7 +15,7 @@ import (
 )
 
 var ErrConflict = errors.New("the plan changed; reload and review a new proposal")
-var ErrClosed = errors.New("this day is closed; start the next day's plan")
+var ErrClosed = errors.New("this day is wrapped up; start the next day's plan")
 var ErrUnavailable = errors.New("the planning assistant is not configured")
 var ErrModelCapacity = errors.New("the planning model is overloaded or timed out; try again or switch models")
 var ErrTurnInProgress = errors.New("still replying to your last message")

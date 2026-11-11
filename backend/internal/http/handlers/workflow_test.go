@@ -279,3 +279,68 @@ func TestAFutureDatedTaskIsOnItsDaysListAfterRollover(t *testing.T) {
 	require.EqualValues(t, 0, onDay[0]["deferCount"], "it arrives as planned work, not as a Carried task")
 	require.Empty(t, listed("/api/tasks?status=later&date="+today))
 }
+
+// Wrap up is the close-day endpoint with Keep ("tomorrow") or Drop per
+// unchecked task and an optional note. New work afterwards continues the Day.
+func TestWrapUpNeedsNoEnergyLevelAndNewWorkContinuesTheDay(t *testing.T) {
+	r, _, _ := setupWorkflowHTTP(t)
+	today := time.Now().UTC().Format("2006-01-02")
+	add := func(title string, fields map[string]any) string {
+		body := map[string]any{"title": title, "plannedForDate": today}
+		for key, value := range fields {
+			body[key] = value
+		}
+		return httpJSON(t, r, "POST", "/api/tasks", body, 201)["id"].(string)
+	}
+	state := func() string {
+		return httpJSON(t, r, "GET", "/api/workflow?date="+today, nil, 200)["state"].(string)
+	}
+	titles := func() []string {
+		out := []string{}
+		for _, task := range httpJSON(t, r, "GET", "/api/tasks?date="+today, nil, 200)["tasks"].([]any) {
+			out = append(out, task.(map[string]any)["title"].(string))
+		}
+		return out
+	}
+	wrapUp := func(body map[string]any) map[string]any {
+		body["date"] = today
+		return httpJSON(t, r, "POST", "/api/day/close", body, 200)
+	}
+	report, reading, errand := add("Report", nil), add("Reading", map[string]any{"sortOrder": 1}), add("Errand", map[string]any{"sortOrder": 2})
+	someday := add("Someday", map[string]any{"status": "backlog"})
+	httpJSON(t, r, "PATCH", "/api/tasks/"+report, map[string]any{"completed": true}, 200)
+
+	wrapped := wrapUp(map[string]any{"notes": "Lab ran long.", "taskActions": []any{
+		map[string]any{"taskId": report, "action": "done"},
+		map[string]any{"taskId": reading, "action": "tomorrow"},
+		map[string]any{"taskId": errand, "action": "drop"},
+	}})
+	require.Equal(t, "Lab ran long.", wrapped["notes"])
+	require.Nil(t, wrapped["energyLevel"])
+	require.EqualValues(t, 1, wrapped["carriedToTomorrowCount"])
+	require.EqualValues(t, 1, wrapped["droppedCount"])
+	require.Equal(t, time.Now().UTC().AddDate(0, 0, 1).Format("2006-01-02"), wrapped["carriedToDate"])
+	require.Equal(t, "closed", state())
+
+	// Quick add after Wrap up: the task is saved and the Day goes on.
+	oneMore := add("One more", map[string]any{"sortOrder": 3})
+	require.Equal(t, "active", state())
+	require.Equal(t, []string{"Report", "One more"}, titles())
+
+	// The same holds for a task moved onto today from Later.
+	wrapUp(map[string]any{"taskActions": []any{
+		map[string]any{"taskId": report, "action": "done"},
+		map[string]any{"taskId": oneMore, "action": "tomorrow"},
+	}})
+	require.Equal(t, "closed", state())
+	httpJSON(t, r, "PATCH", "/api/tasks/"+someday, map[string]any{"status": "planned", "plannedForDate": today}, 200)
+	require.Equal(t, "active", state())
+	require.Equal(t, []string{"Report", "Someday"}, titles())
+
+	// Edits to what is already on a wrapped-up Day are still refused.
+	wrapUp(map[string]any{"taskActions": []any{
+		map[string]any{"taskId": report, "action": "done"},
+		map[string]any{"taskId": someday, "action": "drop"},
+	}})
+	httpJSON(t, r, "PATCH", "/api/tasks/"+report, map[string]any{"completed": false}, 409)
+}
