@@ -11,6 +11,8 @@ import { isConfirmed } from '@/lib/dayEntry';
 import { laterLabel, nextDate, weekday } from '@/lib/date';
 import { formatMinutes } from '@/lib/duration';
 import { Button } from '@/components/ui/button';
+import { ToastAction } from '@/components/ui/toast';
+import { toast } from '@/hooks/use-toast';
 import { Page } from '@/components/PageLayout';
 import { LaterTaskRow, TodayTaskRow } from '@/components/TodayTaskRow';
 import { WrapUpSheet } from '@/components/WrapUpSheet';
@@ -108,6 +110,16 @@ export default function Today() {
   // today is planned for the current Day. The backend places the task last.
   const moveToLater = (task: Task) => move.mutate({ id: task.id, updates: { status: 'backlog' } });
   const moveToToday = (task: Task) => move.mutate({ id: task.id, updates: { status: 'planned', plannedForDate: date } });
+  // Drop is quick and reversible: Undo gives the task back the status it had.
+  const dropTask = (task: Task) => move.mutate({ id: task.id, updates: { status: 'dropped' } }, {
+    onSuccess: () => {
+      const dropped = toast({
+        title: 'Dropped',
+        description: task.title,
+        action: <ToastAction altText={`Undo dropping ${task.title}`} onClick={() => { dropped.dismiss(); move.mutate({ id: task.id, updates: { status: task.status } }); }}>Undo</ToastAction>,
+      });
+    },
+  });
 
   return <Page className="today-page">
     <header className="list-head">
@@ -133,14 +145,14 @@ export default function Today() {
       {saveError && <WorkflowError error={saveError} />}
       {active.length > 0 ? <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={active.map(task => task.id)} strategy={verticalListSortingStrategy}>
-          <ol aria-label="Remaining tasks" className="today-task-list">{active.map((task, index) => <TodayTaskRow key={task.id} task={task} carriedDays={daysCarried(task, workflow?.carryoverOrigins?.[task.id], date)} readOnly={rowsReadOnly} sortable={!wrappedUp} onToggle={toggleTask} canMoveUp={index > 0} canMoveDown={index < active.length - 1} onMove={direction => moveTask(index, index + direction, 'actions')} onMoveToLater={() => moveToLater(task)} />)}</ol>
+          <ol aria-label="Remaining tasks" className="today-task-list">{active.map((task, index) => <TodayTaskRow key={task.id} task={task} carriedDays={daysCarried(task, workflow?.carryoverOrigins?.[task.id], date)} readOnly={rowsReadOnly} sortable={!wrappedUp} onToggle={toggleTask} canMoveUp={index > 0} canMoveDown={index < active.length - 1} onMove={direction => moveTask(index, index + direction, 'actions')} onMoveToLater={() => moveToLater(task)} onDrop={() => dropTask(task)} />)}</ol>
         </SortableContext>
       </DndContext> : <p className="list-empty">{tasks.length ? 'Nothing left for today.' : 'Nothing on today’s list yet.'}</p>}
       <details className="today-later">
         <summary><ChevronDown size={16} aria-hidden /><span>Later{laterQuery.isSuccess && ` · ${later.length}`}</span><span className="today-later-hint">No date, or a future day</span></summary>
         {laterQuery.error ? <WorkflowError error={laterQuery.error} retry={() => { void laterQuery.refetch(); }} />
           : !laterQuery.isSuccess ? <p role="status" className="list-empty">Loading…</p>
-          : later.length > 0 ? <ol aria-label="Later tasks" className="today-task-list mt-3">{later.map(task => <LaterTaskRow key={task.id} task={task} when={task.status === 'planned' && task.plannedForDate ? laterLabel(task.plannedForDate, date) : undefined} disabled={busy} onMoveToToday={() => moveToToday(task)} />)}</ol>
+          : later.length > 0 ? <ol aria-label="Later tasks" className="today-task-list mt-3">{later.map(task => <LaterTaskRow key={task.id} task={task} when={task.status === 'planned' && task.plannedForDate ? laterLabel(task.plannedForDate, date) : undefined} disabled={busy} onMoveToToday={() => moveToToday(task)} onDrop={() => dropTask(task)} />)}</ol>
           : <p className="list-empty">Nothing waiting.</p>}
       </details>
       {completed.length > 0 && <details key={date} className="today-done">
