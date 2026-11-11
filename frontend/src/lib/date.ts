@@ -19,10 +19,14 @@ export function daysBetween(from: string, to: string): number {
  * ("Tuesday"), otherwise the weekday and date ("Sat, Sep 26").
  */
 export function laterLabel(date: string, today: string): string {
-  const day = new Date(`${date}T12:00:00`);
   return daysBetween(today, date) < 7
-    ? day.toLocaleDateString(undefined, { weekday: 'long' })
-    : day.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    ? weekday(date)
+    : new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+/** A date's day of the week, as in "Tuesday". */
+export function weekday(date: string): string {
+  return new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long' });
 }
 
 export function nextDate(value: string): string {

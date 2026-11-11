@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useLayoutEffect, useRef, useState, type FormEvent } from 'react';
-import { ArrowRight, ArrowUp, CheckCircle2, ChevronDown, Plus } from 'lucide-react';
+import { ArrowUp, ChevronDown, Plus } from 'lucide-react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { useCreateTask, useLaterTasks, useTasks, useToggleTask, useReorderTasks, useUpdateTask, useWorkflow } from '@/lib/queries';
@@ -8,17 +8,24 @@ import { useLocalDay } from '@/lib/useLocalDay';
 import { useNavigationLock } from '@/lib/dateDrafts';
 import { daysCarried } from '@/lib/carried';
 import { isConfirmed } from '@/lib/dayEntry';
-import { laterLabel } from '@/lib/date';
+import { laterLabel, nextDate, weekday } from '@/lib/date';
 import { formatMinutes } from '@/lib/duration';
 import { Button } from '@/components/ui/button';
 import { Page } from '@/components/PageLayout';
 import { LaterTaskRow, TodayTaskRow } from '@/components/TodayTaskRow';
+import { WrapUpSheet } from '@/components/WrapUpSheet';
 import { planChangeCount } from '@/components/workflow/PlanCard';
 import { WorkflowError } from '@/components/workflow/WorkflowUI';
 import { dateLabel } from '@/components/workflow/dates';
 import type { Task } from '@/lib/types';
 
 const EMPTY_TASKS: Task[] = [];
+
+// How a wrapped-up Day ended, in one line.
+function wrappedLine(carried: number, to: string) {
+  if (carried === 0) return 'Wrapped up · nothing carries over';
+  return `Wrapped up · ${carried} ${carried === 1 ? 'task carries' : 'tasks carry'} to ${weekday(to)}`;
+}
 
 // The current Day's list: what's left, in priority order. Talking to Caprio
 // happens in the Conversation, which the prompts and the message bar open.
@@ -38,11 +45,12 @@ export default function Today() {
   const active = tasks.filter(task => !task.completed);
   const completed = tasks.filter(task => task.completed);
   const workflow = workflowQuery.data;
-  const editable = workflow?.state !== 'closed';
-  const dayInProgress = workflow?.state === 'active';
+  // A wrapped-up Day keeps its finished work as it was; new work continues it.
+  const wrappedUp = workflow?.state === 'closed';
   const remainingMinutes = active.reduce((sum, task) => sum + (task.duration || 0), 0);
   const busy = reorder.isPending || toggle.isPending || move.isPending;
-  const rowsReadOnly = !editable || busy;
+  const rowsReadOnly = wrappedUp || busy;
+  const [wrappingUp, setWrappingUp] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const quickAdd = useRef<HTMLInputElement>(null);
   const focusAfterTaskAction = useRef<({ id: string; date: string } & (
@@ -92,7 +100,6 @@ export default function Today() {
       onSuccess: () => { setNewTitle(''); quickAdd.current?.focus(); },
     });
   };
-  const allComplete = tasks.length > 0 && active.length === 0;
   const draftChanges = workflow?.plan ? planChangeCount(workflow.plan) : 0;
   const unplanned = Boolean(workflow) && !isConfirmed(workflow);
   const loadError = tasksQuery.error || workflowQuery.error;
@@ -118,35 +125,34 @@ export default function Today() {
         <p><strong>You haven’t planned today.</strong> {active.some(task => task.carriedOver) ? 'Caprio has your carried tasks ready.' : 'Tell Caprio what’s on, or add tasks below.'}</p>
         <Button asChild size="sm" variant="outline" className="shrink-0"><Link to="/conversation">Plan with Caprio</Link></Button>
       </div> : null}
-      {editable && <form className="today-quick-add" onSubmit={addTask}>
+      <form className="today-quick-add" onSubmit={addTask}>
         <Plus size={18} aria-hidden />
         <input ref={quickAdd} value={newTitle} onChange={event => setNewTitle(event.target.value)} aria-label="Add a task to today" placeholder="Add a task" maxLength={500} autoComplete="off" enterKeyHint="done" />
         <span className="today-quick-add-hint" aria-hidden>saves now</span>
-      </form>}
+      </form>
       {saveError && <WorkflowError error={saveError} />}
       {active.length > 0 ? <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={active.map(task => task.id)} strategy={verticalListSortingStrategy}>
-          <ol aria-label="Remaining tasks" className="today-task-list">{active.map((task, index) => <TodayTaskRow key={task.id} task={task} carriedDays={daysCarried(task, workflow?.carryoverOrigins?.[task.id], date)} readOnly={rowsReadOnly} sortable={editable} onToggle={toggleTask} canMoveUp={index > 0} canMoveDown={index < active.length - 1} onMove={direction => moveTask(index, index + direction, 'actions')} onMoveToLater={() => moveToLater(task)} />)}</ol>
+          <ol aria-label="Remaining tasks" className="today-task-list">{active.map((task, index) => <TodayTaskRow key={task.id} task={task} carriedDays={daysCarried(task, workflow?.carryoverOrigins?.[task.id], date)} readOnly={rowsReadOnly} sortable={!wrappedUp} onToggle={toggleTask} canMoveUp={index > 0} canMoveDown={index < active.length - 1} onMove={direction => moveTask(index, index + direction, 'actions')} onMoveToLater={() => moveToLater(task)} />)}</ol>
         </SortableContext>
       </DndContext> : <p className="list-empty">{tasks.length ? 'Nothing left for today.' : 'Nothing on today’s list yet.'}</p>}
       <details className="today-later">
         <summary><ChevronDown size={16} aria-hidden /><span>Later{laterQuery.isSuccess && ` · ${later.length}`}</span><span className="today-later-hint">No date, or a future day</span></summary>
         {laterQuery.error ? <WorkflowError error={laterQuery.error} retry={() => { void laterQuery.refetch(); }} />
           : !laterQuery.isSuccess ? <p role="status" className="list-empty">Loading…</p>
-          : later.length > 0 ? <ol aria-label="Later tasks" className="today-task-list mt-3">{later.map(task => <LaterTaskRow key={task.id} task={task} when={task.status === 'planned' && task.plannedForDate ? laterLabel(task.plannedForDate, date) : undefined} disabled={!editable || busy} onMoveToToday={() => moveToToday(task)} />)}</ol>
+          : later.length > 0 ? <ol aria-label="Later tasks" className="today-task-list mt-3">{later.map(task => <LaterTaskRow key={task.id} task={task} when={task.status === 'planned' && task.plannedForDate ? laterLabel(task.plannedForDate, date) : undefined} disabled={busy} onMoveToToday={() => moveToToday(task)} />)}</ol>
           : <p className="list-empty">Nothing waiting.</p>}
       </details>
       {completed.length > 0 && <details key={date} className="today-done">
         <summary id="today-done-toggle"><ChevronDown size={16} aria-hidden /><span>Done · {completed.length}</span></summary>
         <ol aria-label="Done tasks" className="today-task-list mt-3">{completed.map(task => <TodayTaskRow key={task.id} task={task} readOnly={rowsReadOnly} onToggle={toggleTask} />)}</ol>
       </details>}
-      {dayInProgress && tasks.length > 0 && <section aria-labelledby="review-entry-heading" className={`today-review-entry ${allComplete ? 'today-review-ready' : ''}`}>
-        <div className="min-w-0">
-          <h2 id="review-entry-heading" className="flex items-center gap-2 text-sm font-medium">{allComplete && <CheckCircle2 size={18} aria-hidden />}{allComplete ? 'Your tasks are complete' : 'Finished for today?'}</h2>
-          <p className="mt-1 text-sm leading-6 text-muted-foreground">{allComplete ? 'Review your day and close it when you’re ready.' : 'Review what’s done and decide what to carry forward or drop.'}</p>
-        </div>
-        <Button asChild variant={allComplete ? 'default' : 'outline'} className="shrink-0"><Link to={`/review?date=${date}`}>Review day<ArrowRight size={15} className="ml-2" /></Link></Button>
+      {workflow?.state === 'active' && <section aria-label="Wrap up" className="today-wrap-up">
+        <p><strong>Done for the day?</strong> Wrap up is optional. Unchecked tasks carry over on their own.</p>
+        <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => setWrappingUp(true)}>Wrap up</Button>
       </section>}
+      {wrappedUp && <p className="today-wrapped">{wrappedLine(workflow.review?.carriedToTomorrowCount ?? 0, workflow.review?.carriedToDate || nextDate(date))}</p>}
+      <WrapUpSheet open={wrappingUp} onOpenChange={setWrappingUp} date={date} tasks={tasks} />
     </section>}
     <div className="today-message-bar">
       <Link to="/conversation">{unplanned ? 'Plan your day with Caprio…' : 'Tell Caprio what changed…'}<span aria-hidden><ArrowUp size={15} /></span></Link>

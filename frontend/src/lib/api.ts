@@ -514,7 +514,6 @@ export interface CloseDayInput {
   date: string;
   taskActions: Array<{ taskId: string; action: 'done' | 'tomorrow' | 'drop' }>;
   notes?: string;
-  energyLevel?: number;
 }
 
 export async function closeDay(input: CloseDayInput): Promise<DayReview & { nextDate: string }> {
