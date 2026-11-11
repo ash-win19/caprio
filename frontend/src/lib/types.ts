@@ -1,5 +1,4 @@
 export type Urgency = 'low' | 'medium' | 'high';
-export type VoiceState = 'idle' | 'listening' | 'processing';
 
 export interface Task {
   id: string;
@@ -21,12 +20,6 @@ export interface Task {
   status?: string;
 }
 
-export interface TaskChange {
-  taskId: string;
-  direction: 'up' | 'down' | 'new';
-  reason: string;
-}
-
 export interface Category {
   id: string;
   name: string;
@@ -44,19 +37,3 @@ export interface UserPrefs {
   language: string;
   saveTranscripts: boolean;
 }
-
-export interface VoiceEntry {
-  id: string;
-  transcript: string;
-  timestamp: string;
-}
-export const DEFAULT_CATEGORIES: Category[] = [
-  { id: '1', name: 'Work', color: '#4A7CFF', hoursPerWeek: 40 },
-  { id: '2', name: 'Gym', color: '#F97316', hoursPerWeek: 5 },
-  { id: '3', name: 'Personal Growth', color: '#A855F7', hoursPerWeek: 5 },
-  { id: '4', name: 'Health', color: '#EF4444', hoursPerWeek: 3 },
-  { id: '5', name: 'Finance', color: '#EAB308', hoursPerWeek: 2 },
-  { id: '6', name: 'Social', color: '#EC4899', hoursPerWeek: 4 },
-  { id: '7', name: 'Learning', color: '#06B6D4', hoursPerWeek: 3 },
-  { id: '8', name: 'Family', color: '#84CC16', hoursPerWeek: 5 },
-];

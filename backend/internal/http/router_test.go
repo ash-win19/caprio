@@ -61,6 +61,7 @@ func TestRemovedEndpointsReturnNotFound(t *testing.T) {
 		{"GET", "/api/bootstrap?date=2090-09-06"},
 		{"GET", "/api/workflow?date=2090-09-06"},
 		{"GET", "/api/tasks?date=2090-09-06"},
+		{"POST", "/api/tasks"},
 		{"GET", "/api/history?before=2090-09-06"},
 		{"POST", "/api/tasks/reorder"},
 		{"POST", "/api/day/close"},

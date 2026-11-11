@@ -797,10 +797,6 @@ func TestConversationEventsFrameTheDaysThread(t *testing.T) {
 	after, err := s.Get(ctx, user, date)
 	require.NoError(t, err)
 	require.Nil(t, after.Opener, "an active day opens on the adjust prompt, not an opener")
-
-	sessions, err := s.store.Queries.ListChatSessionsByUser(ctx, user)
-	require.NoError(t, err)
-	require.EqualValues(t, 4, sessions[0].MessageCount, "events are not counted as messages")
 }
 
 func TestAFutureDatedTaskShowsOnItsDayWhenThatDayArrives(t *testing.T) {
@@ -969,16 +965,13 @@ func TestClosePersistsOutcomesAndCarriesExactlyOnce(t *testing.T) {
 	past, err := s.Get(ctx, user, date)
 	require.NoError(t, err)
 	require.Equal(t, result.Workflow.Tasks, past.Tasks)
-	sessions, err := s.store.Queries.ListChatSessionsByUser(ctx, user)
+	// History still lists the Day as it ended, not as the later edit left the task.
+	days, err := s.History(ctx, user, nextDate)
 	require.NoError(t, err)
-	require.Len(t, sessions, 1)
-	require.Equal(t, "Daily plan", sessions[0].Title)
-	require.Zero(t, sessions[0].MessageCount)
-	require.Equal(t, "closed", sessions[0].State)
-	require.Equal(t, int32(1), sessions[0].CompletedCount)
-	require.Equal(t, int32(1), sessions[0].CarriedCount)
-	require.Equal(t, int32(1), sessions[0].DroppedCount)
-	require.Equal(t, int32(3), sessions[0].PlannedCount)
+	require.Len(t, days, 1)
+	require.Equal(t, []string{"Done"}, days[0].Done)
+	require.Equal(t, []string{"Tomorrow"}, days[0].Carried)
+	require.Equal(t, []string{"Drop"}, days[0].Dropped)
 	// A closed day remains immutable through the planner.
 	_, err = s.Confirm(ctx, user, date, uuid.New(), 0)
 	require.ErrorIs(t, err, ErrClosed)

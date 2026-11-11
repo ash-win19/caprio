@@ -4,7 +4,7 @@ const KNOWN_ERRORS: Record<string, string> = {
   'the next day is already wrapped up': 'The next day is already wrapped up, so tasks can’t carry there. Drop them, or leave this day as it is.',
   'Internal server error': 'Something went wrong on our end. Please try again.',
   'the planning assistant is not configured': 'Planning isn’t available right now. Please try again in a moment.',
-  'the planning model is overloaded or timed out; try again or switch models': 'The planning model is busy or timed out. Try again, or switch to Groq in the model picker.',
+  'the planning model is overloaded or timed out; try again in a moment': 'The planning model is busy or timed out. Try again in a moment.',
 };
 
 export type WorkflowErrorCategory = 'capacity' | 'validation' | 'auth' | 'model' | 'generic';
@@ -51,9 +51,9 @@ export function workflowErrorMessage(error: unknown): string {
     return 'Your session expired. Sign in again to continue.';
   }
   if (category === 'capacity') {
-    if (/planning model is overloaded/i.test(error.message)) return KNOWN_ERRORS['the planning model is overloaded or timed out; try again or switch models'];
+    if (/planning model is overloaded/i.test(error.message)) return KNOWN_ERRORS['the planning model is overloaded or timed out; try again in a moment'];
     if (/planning assistant is not configured/i.test(error.message)) return KNOWN_ERRORS['the planning assistant is not configured'];
-    return 'The planning model is busy or timed out. Try again, or switch models.';
+    return 'The planning model is busy or timed out. Try again in a moment.';
   }
   if (category === 'validation' || /failed validation/i.test(error.message)) {
     if (/failed validation/i.test(error.message)) {
@@ -64,7 +64,7 @@ export function workflowErrorMessage(error: unknown): string {
     }
   }
   if (category === 'model') {
-    return 'The planning model couldn’t answer. Try again or switch models.';
+    return 'The planning model couldn’t answer. Try again in a moment.';
   }
   if (KNOWN_ERRORS[error.message]) return KNOWN_ERRORS[error.message];
   return error.message;

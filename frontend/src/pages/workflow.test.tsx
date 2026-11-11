@@ -492,7 +492,7 @@ describe('Model resilience', () => {
   it('sends on the default model and retries once on the fallback after a capacity failure', async () => {
     const { toast } = await import('@/hooks/use-toast');
     vi.mocked(api.streamChatMessage)
-      .mockRejectedValueOnce(Object.assign(new Error('the planning model is overloaded or timed out; try again or switch models'), { status: 503 }))
+      .mockRejectedValueOnce(Object.assign(new Error('the planning model is overloaded or timed out; try again in a moment'), { status: 503 }))
       .mockImplementationOnce(async ({ onDelta, model }) => {
         expect(model).toBe('groq/openai/gpt-oss-20b');
         onDelta?.('Fallback reply');
@@ -511,6 +511,13 @@ describe('Model resilience', () => {
     expect(models[1]).toBe('groq/openai/gpt-oss-20b');
     expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Switched to GPT-OSS 20B' }));
     await waitFor(() => expect(screen.getByText('Fallback reply')).toBeInTheDocument());
+    // The fallback is for that one message: the next starts on the default again.
+    vi.mocked(api.streamChatMessage).mockResolvedValueOnce({ text: 'Fallback reply', workflow });
+    await waitFor(() => expect(input).toBeEnabled());
+    fireEvent.change(input, { target: { value: 'And one more thing' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send prompt' }));
+    await waitFor(() => expect(api.streamChatMessage).toHaveBeenCalledTimes(3));
+    expect(vi.mocked(api.streamChatMessage).mock.calls[2][0].model).toBe('groq/openai/gpt-oss-120b');
   });
 
 });

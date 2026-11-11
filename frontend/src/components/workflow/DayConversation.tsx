@@ -12,7 +12,7 @@ import { PlanPanel, PlanPill } from './PlanPanel';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { toast } from '@/hooks/use-toast';
 import { DEFAULT_CHAT_MODEL, FALLBACK_CHAT_MODEL } from '@/lib/chat-models';
-import { shouldFallbackToGroq } from '@/lib/chat-resilience';
+import { shouldUseFallbackModel } from '@/lib/chat-resilience';
 import { invalidatePlanningQueries, useWorkflow } from '@/lib/queries';
 import { useRevealedText } from '@/lib/hooks/use-revealed-text';
 import { localDate } from '@/lib/date';
@@ -115,7 +115,7 @@ export function DayConversation({ date }: { date: string }) {
       refresh();
     } catch (error) {
       if (controller.signal.aborted) return;
-      if (allowFallback && shouldFallbackToGroq(error, request.model)) {
+      if (allowFallback && shouldUseFallbackModel(error, request.model)) {
         toast({ title: 'Switched to GPT-OSS 20B', description: 'The previous model was unavailable. Retrying with GPT-OSS 20B.' });
         await send({ ...request, model: FALLBACK_CHAT_MODEL }, { allowFallback: false });
         return;
@@ -182,7 +182,7 @@ export function DayConversation({ date }: { date: string }) {
     void send({ content, requestId, model: DEFAULT_CHAT_MODEL });
   };
   const retry = () => {
-    if (pending) void send({ content: pending.content, requestId: pending.requestId, model: pending.model });
+    if (pending) void send({ content: pending.content, requestId: pending.requestId, model: DEFAULT_CHAT_MODEL });
   };
   const plan = workflow?.plan;
   const panelOpen = Boolean(plan) && (wide ? closedDraft !== plan?.draftId : sheetOpen);

@@ -329,9 +329,7 @@ export interface ChatReply {
 }
 
 function chatMessageBody(content: string, date: string, requestId: string, model?: string) {
-  const body = { content, date, requestId, model };
-  if (model) body.model = model;
-  return JSON.stringify(body);
+  return JSON.stringify({ content, date, requestId, model });
 }
 
 export interface ChatStreamInput {

@@ -25,8 +25,8 @@ vi.mock('@/lib/api', async (load) => {
     rolloverDay: vi.fn(),
     bootstrap: vi.fn(async () => ({
       user: { id: 'user-a', name: 'User A', email: 'a@example.com' },
-      preferences: useAppStore.getState().prefs,
-      categories: useAppStore.getState().categories,
+      preferences: {},
+      categories: [],
       todayTasks: [],
       backlog: [],
       streak: 0,

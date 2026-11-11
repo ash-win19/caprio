@@ -1,5 +1,5 @@
 import { Outlet } from 'react-router-dom';
-import { VoiceWidget } from '@/components/VoiceWidget';
+import { ConversationShortcut } from '@/components/ConversationShortcut';
 import { motion, useReducedMotion } from 'framer-motion';
 import { AppShell } from './AppShell';
 
@@ -17,7 +17,7 @@ export default function AppLayout() {
           <Outlet />
         </motion.div>
       </main>
-      <VoiceWidget showLauncher={false} />
+      <ConversationShortcut />
     </AppShell>
   );
 }

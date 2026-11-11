@@ -285,7 +285,7 @@ func applyOperations(ctx context.Context, tx pgx.Tx, user uuid.UUID, date pgtype
 	if len(batch.Changes) == 0 {
 		return nil, nil
 	}
-	// Inbox changes can invalidate a suggestion on any day. Versions advance for
+	// Later changes can invalidate a suggestion on any day. Versions advance for
 	// touched days; unrelated days advance only when their suggestion is cleared.
 	if _, err := tx.Exec(ctx, `UPDATE daily_plans SET proposal=NULL,proposal_snapshot=NULL,draft=NULL,version=version+1,updated_at=clock_timestamp() WHERE user_id=$1 AND (proposal IS NOT NULL OR draft IS NOT NULL)`, user); err != nil {
 		return nil, err

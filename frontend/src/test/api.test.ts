@@ -71,7 +71,7 @@ describe('API Client', () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
         status: 503,
-        json: async () => ({ error: 'the planning model is overloaded or timed out; try again or switch models' }),
+        json: async () => ({ error: 'the planning model is overloaded or timed out; try again in a moment' }),
       } as Response);
 
       await expect(api.getTodayTasks()).rejects.toThrow(/overloaded or timed out/i);

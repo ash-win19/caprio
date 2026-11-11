@@ -25,7 +25,6 @@ type Querier interface {
 	ListBacklogTasks(ctx context.Context, userID uuid.UUID) ([]Task, error)
 	ListCategoriesByUser(ctx context.Context, userID uuid.UUID) ([]Category, error)
 	ListChatMessagesByUserAndDate(ctx context.Context, arg ListChatMessagesByUserAndDateParams) ([]ChatMessage, error)
-	ListChatSessionsByUser(ctx context.Context, userID uuid.UUID) ([]ListChatSessionsByUserRow, error)
 	// Tasks dropped on a Day: from its list or from Later by a row menu, or
 	// from its list through a Draft.
 	ListDroppedTasksForDay(ctx context.Context, arg ListDroppedTasksForDayParams) ([]Task, error)
