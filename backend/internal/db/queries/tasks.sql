@@ -11,7 +11,8 @@ WHERE user_id = $1
 ORDER BY sort_order ASC, created_at ASC;
 
 -- name: ListDroppedTasksForDay :many
--- Tasks dropped from a Day's list, from a row menu or through a Draft.
+-- Tasks dropped on a Day: from its list or from Later by a row menu, or
+-- from its list through a Draft.
 SELECT * FROM tasks
 WHERE user_id = $1
     AND planned_for_date = $2

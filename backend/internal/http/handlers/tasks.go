@@ -287,12 +287,16 @@ func (h *TaskHandler) Update(c *gin.Context) {
 		// below what is already there and is no longer a Carried task.
 		// Dropping a task, or restoring a dropped one, is not a move.
 		toLater, wasLater := status == "backlog", current.Status == generated.TaskStatusBacklog
-		dropped := status == "dropped" || current.Status == generated.TaskStatusDropped
-		moved := !dropped && (toLater != wasLater || (!toLater && !date.Time.Equal(current.PlannedForDate.Time)))
-		if wasLater && status == "dropped" {
+		toDropped, wasDropped := status == "dropped", current.Status == generated.TaskStatusDropped
+		moved := !toDropped && !wasDropped && (toLater != wasLater || (!toLater && !date.Time.Equal(current.PlannedForDate.Time)))
+		if wasLater && toDropped {
 			// A Later task has no Day of its own. It is dropped on today, so
-			// today's archive is where History will show it.
+			// today's record is where History will show it. Once today is
+			// wrapped up that record is settled, and the drop is refused.
 			date = chat.CurrentDate(ctx)
+			if err := dayIsOpen(ctx, tx, userID, date); err != nil {
+				return err
+			}
 		} else if !toLater {
 			open := dayIsOpen
 			if moved && status == "planned" {

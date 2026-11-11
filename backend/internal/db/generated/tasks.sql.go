@@ -470,7 +470,8 @@ type ListDroppedTasksForDayParams struct {
 	PlannedForDate pgtype.Date `json:"plannedForDate"`
 }
 
-// Tasks dropped from a Day's list, from a row menu or through a Draft.
+// Tasks dropped on a Day: from its list or from Later by a row menu, or
+// from its list through a Draft.
 func (q *Queries) ListDroppedTasksForDay(ctx context.Context, arg ListDroppedTasksForDayParams) ([]Task, error) {
 	rows, err := q.db.Query(ctx, listDroppedTasksForDay, arg.UserID, arg.PlannedForDate)
 	if err != nil {

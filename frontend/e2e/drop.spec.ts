@@ -76,3 +76,25 @@ test('a wrapped-up Day keeps its finished rows without a Drop action', async ({ 
   await expect(page.getByRole('list', { name: 'Done tasks' }).locator(':scope > li')).toHaveCount(3);
   await expect(page.getByRole('button', { name: /^Task actions for/ })).toHaveCount(0);
 });
+
+test('each of two quick drops keeps its own Undo', async ({ page }) => {
+  await mockDay(page);
+  await page.goto('/today');
+  await drop(page, titles[0]);
+  await drop(page, titles[1]);
+  await expect(remaining(page)).toHaveCount(1);
+  await expect(toast(page)).toHaveCount(2);
+  await toast(page).filter({ hasText: titles[0] }).getByRole('button', { name: 'Undo' }).click();
+  await expect(remaining(page)).toHaveText([new RegExp(titles[0]), new RegExp(titles[2])]);
+  await expect(toast(page)).toHaveText([new RegExp(titles[1])]);
+});
+
+test('after Wrap up, Later rows can move to today but not be dropped', async ({ page }) => {
+  const [base] = tasksForDay();
+  await mockDay(page, { state: 'closed', later: [{ ...base, id: 'someday', title: 'Book a dentist appointment', status: 'backlog' }] });
+  await page.goto('/today');
+  await page.locator('details.today-later summary').click();
+  await page.getByRole('button', { name: 'Task actions for Book a dentist appointment' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Move to today' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Drop' })).toHaveCount(0);
+});

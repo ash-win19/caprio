@@ -331,6 +331,10 @@ func TestWrapUpNeedsNoEnergyLevelAndNewWorkContinuesTheDay(t *testing.T) {
 	require.EqualValues(t, 1, wrapped["droppedCount"])
 	require.Equal(t, time.Now().UTC().AddDate(0, 0, 1).Format("2006-01-02"), wrapped["carriedToDate"])
 	require.Equal(t, "closed", state())
+	// This Wrap up's own record lists each task once.
+	record := httpJSON(t, r, "GET", "/api/workflow?date="+today, nil, 200)["reviewHistory"].([]any)[0].(map[string]any)
+	require.Len(t, record["tasks"], 3)
+	require.EqualValues(t, 1, record["review"].(map[string]any)["droppedCount"])
 
 	// Quick add after Wrap up: the task is saved and the Day goes on.
 	oneMore := add("One more", map[string]any{"sortOrder": 3})
@@ -380,7 +384,7 @@ func TestWrappingUpAgainCountsOnlyWhatStillCarries(t *testing.T) {
 	require.Nil(t, again["carriedToDate"])
 }
 
-// Drop from a row menu is only a status change, so the Day's archive has to
+// Drop from a row menu is only a status change, so the Day's record has to
 // pick the task up for it to stay findable in History.
 func TestADirectlyDroppedTaskIsUnderDroppedInHistoryAfterWrapUp(t *testing.T) {
 	r, _, _ := setupWorkflowHTTP(t)
@@ -431,6 +435,29 @@ func TestADirectlyDroppedTaskIsUnderDroppedInHistoryAfterWrapUp(t *testing.T) {
 		statuses[task.(map[string]any)["title"].(string)] = task.(map[string]any)["status"].(string)
 	}
 	require.Equal(t, map[string]string{"Errand": "dropped", "Someday": "dropped", "Reading": "planned"}, statuses)
+
+	// Once the Day is wrapped up its record is settled, so a Later task can't
+	// be dropped onto it and go missing from History.
+	parked := add("Parked", map[string]any{"status": "backlog"})
+	httpJSON(t, r, "PATCH", "/api/tasks/"+parked, map[string]any{"status": "dropped"}, 409)
+	require.Contains(t, titles("/api/tasks?status=later&date="+today), "Parked")
+}
+
+func TestALaterTaskDroppedThroughADraftIsUnderDroppedForTheDayItWasDroppedOn(t *testing.T) {
+	r, store, user := setupWorkflowHTTP(t)
+	now := time.Now().UTC()
+	today, tomorrow := now.Format("2006-01-02"), now.AddDate(0, 0, 1).Format("2006-01-02")
+	someday := httpJSON(t, r, "POST", "/api/tasks", map[string]any{"title": "Someday", "status": "backlog", "plannedForDate": "2020-01-01"}, 201)["id"].(string)
+	draftID := uuid.NewString()
+	draft := `{"id":"` + draftID + `","entries":{"` + someday + `":{"ref":"` + someday + `","taskId":"` + someday + `","remove":true,"turns":[]}},"order":["` + someday + `"]}`
+	_, err := store.Pool.Exec(context.Background(), `INSERT INTO daily_plans (user_id,plan_date,state,version,draft) VALUES ($1,$2,'planning',1,$3)`, user, today, draft)
+	require.NoError(t, err)
+	httpJSON(t, r, "POST", "/api/day/plan/confirm", map[string]any{"date": today, "draftId": draftID, "version": 1}, 200)
+	httpJSON(t, r, "POST", "/api/day/close", map[string]any{"date": today, "taskActions": []any{}}, 200)
+	days := httpJSON(t, r, "GET", "/api/history?before="+tomorrow, nil, 200)["days"].([]any)
+	require.Len(t, days, 1, "the drop is on today's record, not on the long-past Day the task was last dated for")
+	require.Equal(t, today, days[0].(map[string]any)["date"])
+	require.Equal(t, []any{"Someday"}, days[0].(map[string]any)["dropped"])
 }
 
 func TestADirectlyDroppedTaskIsUnderDroppedInHistoryAfterRollover(t *testing.T) {

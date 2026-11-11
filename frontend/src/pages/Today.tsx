@@ -39,7 +39,7 @@ export default function Today() {
   const reorder = useReorderTasks();
   const toggle = useToggleTask();
   const create = useCreateTask();
-  const move = useUpdateTask();
+  const update = useUpdateTask();
   const laterQuery = useLaterTasks(date);
   const later = laterQuery.data ?? EMPTY_TASKS;
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
@@ -50,7 +50,7 @@ export default function Today() {
   // A wrapped-up Day keeps its finished work as it was; new work continues it.
   const wrappedUp = workflow?.state === 'closed';
   const remainingMinutes = active.reduce((sum, task) => sum + (task.duration || 0), 0);
-  const busy = reorder.isPending || toggle.isPending || move.isPending;
+  const busy = reorder.isPending || toggle.isPending || update.isPending;
   const rowsReadOnly = wrappedUp || busy;
   const [wrappingUp, setWrappingUp] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -105,18 +105,19 @@ export default function Today() {
   const draftChanges = workflow?.plan ? planChangeCount(workflow.plan) : 0;
   const unplanned = Boolean(workflow) && !isConfirmed(workflow);
   const loadError = tasksQuery.error || workflowQuery.error;
-  const saveError = create.error || reorder.error || toggle.error || move.error;
+  const saveError = create.error || reorder.error || toggle.error || update.error;
   // Moves save at once, like every edit made on the list. Later is undated;
   // today is planned for the current Day. The backend places the task last.
-  const moveToLater = (task: Task) => move.mutate({ id: task.id, updates: { status: 'backlog' } });
-  const moveToToday = (task: Task) => move.mutate({ id: task.id, updates: { status: 'planned', plannedForDate: date } });
+  const moveToLater = (task: Task) => update.mutate({ id: task.id, updates: { status: 'backlog' } });
+  const moveToToday = (task: Task) => update.mutate({ id: task.id, updates: { status: 'planned', plannedForDate: date } });
   // Drop is quick and reversible: Undo gives the task back the status it had.
-  const dropTask = (task: Task) => move.mutate({ id: task.id, updates: { status: 'dropped' } }, {
+  // A wrapped-up Day's record is settled, so nothing is dropped onto it.
+  const dropTask = (task: Task) => update.mutate({ id: task.id, updates: { status: 'dropped' } }, {
     onSuccess: () => {
       const dropped = toast({
         title: 'Dropped',
         description: task.title,
-        action: <ToastAction altText={`Undo dropping ${task.title}`} onClick={() => { dropped.dismiss(); move.mutate({ id: task.id, updates: { status: task.status } }); }}>Undo</ToastAction>,
+        action: <ToastAction altText={`Undo dropping ${task.title}`} onClick={() => { dropped.dismiss(); update.mutate({ id: task.id, updates: { status: task.status } }); }}>Undo</ToastAction>,
       });
     },
   });
@@ -152,7 +153,7 @@ export default function Today() {
         <summary><ChevronDown size={16} aria-hidden /><span>Later{laterQuery.isSuccess && ` · ${later.length}`}</span><span className="today-later-hint">No date, or a future day</span></summary>
         {laterQuery.error ? <WorkflowError error={laterQuery.error} retry={() => { void laterQuery.refetch(); }} />
           : !laterQuery.isSuccess ? <p role="status" className="list-empty">Loading…</p>
-          : later.length > 0 ? <ol aria-label="Later tasks" className="today-task-list mt-3">{later.map(task => <LaterTaskRow key={task.id} task={task} when={task.status === 'planned' && task.plannedForDate ? laterLabel(task.plannedForDate, date) : undefined} disabled={busy} onMoveToToday={() => moveToToday(task)} onDrop={() => dropTask(task)} />)}</ol>
+          : later.length > 0 ? <ol aria-label="Later tasks" className="today-task-list mt-3">{later.map(task => <LaterTaskRow key={task.id} task={task} when={task.status === 'planned' && task.plannedForDate ? laterLabel(task.plannedForDate, date) : undefined} disabled={busy} onMoveToToday={() => moveToToday(task)} onDrop={wrappedUp ? undefined : () => dropTask(task)} />)}</ol>
           : <p className="list-empty">Nothing waiting.</p>}
       </details>
       {completed.length > 0 && <details key={date} className="today-done">

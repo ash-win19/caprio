@@ -273,6 +273,10 @@ func applyOperations(ctx context.Context, tx pgx.Tx, user uuid.UUID, date pgtype
 				}
 			}
 		case "remove":
+			// A Later task has no Day of its own; it is dropped on today.
+			if task.Status == generated.TaskStatusBacklog {
+				task.PlannedForDate = CurrentDate(ctx)
+			}
 			task.Status = generated.TaskStatusDropped
 			action = "Removed"
 		}
