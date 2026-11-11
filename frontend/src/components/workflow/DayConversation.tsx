@@ -14,7 +14,7 @@ import { useMediaQuery } from '@/lib/useMediaQuery';
 import { toast } from '@/hooks/use-toast';
 import { CHAT_MODELS, DEFAULT_CHAT_MODEL, FALLBACK_CHAT_MODEL } from '@/lib/chat-models';
 import { shouldFallbackToGroq } from '@/lib/chat-resilience';
-import { useWorkflow } from '@/lib/queries';
+import { invalidatePlanningQueries, useWorkflow } from '@/lib/queries';
 import { useRevealedText } from '@/lib/hooks/use-revealed-text';
 import { localDate } from '@/lib/date';
 import { openTodayState } from '@/lib/dayEntry';
@@ -81,9 +81,7 @@ export function DayConversation({ date, intent, seed, taskId }: { date: string; 
     if (!seed) consumedSeed.current = '';
   }, [seed, setInput]);
 
-  const refresh = () => {
-    for (const key of ['workflow', 'tasks', 'inbox', 'bootstrap', 'history']) void queryClient.invalidateQueries({ queryKey: [key] });
-  };
+  const refresh = () => void invalidatePlanningQueries(queryClient);
   // Confirm's variable says whether this is the Day's first plan, for the toast.
   const confirm = useMutation({
     mutationFn: (_firstPlanOfDay: boolean) => api.confirmDayPlan({ date, draftId: workflow!.plan!.draftId, version: workflow!.version }),

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { mockDay, date, tasksForDay } from './fixtures/day';
+import { mockDay, conversationDay, date, tasksForDay, planView, openPlan } from './fixtures/day';
 import type { BackendTask } from '../src/lib/api';
 
 const laterTasks = (): BackendTask[] => {
@@ -100,4 +100,24 @@ test('the old Inbox route leads to Today', async ({ page }) => {
   await page.goto('/capture');
   await expect(page).toHaveURL('/today');
   await expect(page.getByRole('heading', { level: 1, name: 'Today', exact: true })).toBeVisible();
+});
+
+test('a task the Draft sends to Later is in Later as soon as Confirm lands on Today', async ({ page }) => {
+  const [first] = tasksForDay();
+  const parked: BackendTask[] = [];
+  const plan = planView([], { otherDays: [{ ref: first.id, taskId: first.id, title: first.title, badge: 'moved', inbox: true }] });
+  await conversationDay(page, { state: 'active', plan }, []);
+  await page.route('**/api/**', async route => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/day/plan/confirm') parked.push({ ...first, status: 'backlog' });
+    if (url.pathname === '/api/tasks' && url.searchParams.get('status') === 'later') return route.fulfill({ json: { tasks: parked } });
+    return route.fallback();
+  });
+  await page.goto('/today');
+  await expect(section(page).locator('summary')).toContainText('Later · 0');
+  await page.getByRole('link', { name: /Tell Caprio what changed/ }).click();
+  await (await openPlan(page)).getByRole('button', { name: 'Confirm plan' }).click();
+  await expect(page).toHaveURL('/today');
+  await expect(section(page).locator('summary')).toContainText('Later · 1');
+  await expect(today(page).filter({ hasText: first.title })).toHaveCount(0);
 });

@@ -6,7 +6,6 @@ import { localDate } from './date';
 export const QUERY_KEYS = {
   bootstrap: ['bootstrap'],
   tasks: ['tasks'],
-  categories: ['categories'],
   workflow: ['workflow'],
   later: ['later'],
   history: ['history'],
@@ -68,11 +67,6 @@ export function useUpdateTask() {
     mutationFn: ({ id, updates }: { id: string; updates: Parameters<typeof api.updateTask>[1] }) => api.updateTask(id, updates),
     onSuccess: () => invalidatePlanningQueries(client),
   });
-}
-
-export function useDeleteTask() {
-  const client = useQueryClient();
-  return useMutation({ mutationFn: api.deleteTask, onSuccess: () => invalidatePlanningQueries(client) });
 }
 
 export function useReorderTasks() {

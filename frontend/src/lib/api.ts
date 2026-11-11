@@ -223,12 +223,6 @@ export async function updateTask(
   return response.json();
 }
 
-export async function deleteTask(id: string): Promise<void> {
-  await fetchWithAuth(`/api/tasks/${id}`, {
-    method: 'DELETE',
-  });
-}
-
 export async function reorderTasks(tasks: Array<{ id: string; sortOrder: number }>): Promise<void> {
   await fetchWithAuth('/api/tasks/reorder', {
     method: 'POST',

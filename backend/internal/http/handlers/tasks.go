@@ -272,7 +272,10 @@ func (h *TaskHandler) Update(c *gin.Context) {
 		}
 		// A task moved to Later or onto another Day is re-planned: it goes
 		// below what is already there and is no longer a Carried task.
-		moved := (status == "backlog") != (current.Status == generated.TaskStatusBacklog) || (status != "backlog" && !date.Time.Equal(current.PlannedForDate.Time))
+		// Dropping a task, or restoring a dropped one, is not a move.
+		toLater, wasLater := status == "backlog", current.Status == generated.TaskStatusBacklog
+		dropped := status == "dropped" || current.Status == generated.TaskStatusDropped
+		moved := !dropped && (toLater != wasLater || (!toLater && !date.Time.Equal(current.PlannedForDate.Time)))
 		if moved && req.SortOrder == nil {
 			var next int32
 			if err := tx.QueryRow(ctx, `SELECT COALESCE(max(sort_order),-1)+1 FROM tasks WHERE user_id=$1 AND id<>$2 AND status=$3 AND ($3='backlog' OR planned_for_date=$4)`, userID, id, status, date).Scan(&next); err != nil {

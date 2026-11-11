@@ -14,7 +14,7 @@ This directory is the maintained source for verifying Caprio's user-facing behav
 
 - Write or reuse a spec in `../drives/` and run it with `$C drive <spec>`. Helpers come from `../drives/lib/caprio.ts`.
 - Prefer ARIA roles and accessible names (listed per feature) over CSS or DOM position.
-- Navigate the way a user does: `navigation "Primary"` links (`Today`, `Plan`, `Inbox`, `Review …`, `History`), page buttons, and the `View tasks` link. Use `page.goto` only for routes a link would open, such as `/today?date=<localDay>`.
+- Navigate the way a user does: `navigation "Primary"` links (`Today`, `Plan`, `Review …`, `History`), page buttons, and the `View tasks` link. Use `page.goto` only for routes a link would open, such as `/today?date=<localDay>`.
 - Use titles containing the run id (`env.run`) so assertions only see rows this drive created.
 - Treat quoted names as literal. Several contain typographic apostrophes (`’`) or arrows (`→`). Match those with a regex when unsure.
 
@@ -36,7 +36,6 @@ Each feature file starts with an H1 title and one paragraph describing the user-
 | Feature | Modes | Shipped spec | Last proven |
 |---|---|---|---|
 | [Plan the day](./plan-day.md): composer → draft plan → Confirm / Discard | mock (full), stack (unavailable path only; 503 observed in an exploratory drive) | `plan-day.mock.spec.ts` | 2026-10-06 at 7279f1d, mock run, 2/2 passed |
-| [Inbox](./inbox.md): capture now, add to today later | stack | `inbox-capture.stack.spec.ts` | 2026-10-06 at 7279f1d, stack run, passed (skill acceptance drive) |
 | [Today checklist](./today.md): check off, reorder, carried forward | stack (check-off), mock (carried forward) | `day-loop.stack.spec.ts` (check-off only) | 2026-10-06 at 7279f1d, stack run, check-off passed; reorder and carried forward not yet driven by this skill |
 | [Review](./review.md): resolve unfinished tasks, close the day | stack | `day-loop.stack.spec.ts` | 2026-10-06 at 7279f1d, stack run, close passed; per-task outcomes and reflection not yet driven |
 | [History](./history.md): closed days and their outcomes | stack | `day-loop.stack.spec.ts` | 2026-10-06 at 7279f1d, stack run, list passed; search not yet driven |

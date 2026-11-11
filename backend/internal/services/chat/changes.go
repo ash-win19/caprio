@@ -403,7 +403,7 @@ func receipt(ctx context.Context, conn generated.DBTX, user uuid.UUID, b changeB
 			}
 			r.Summary = fmt.Sprintf("%s %d %s", action, len(r.Changes), noun)
 			if action == "Moved from Later" {
-				r.Summary = fmt.Sprintf("Moved %d %s from Inbox", len(r.Changes), noun)
+				r.Summary = fmt.Sprintf("Moved %d %s from Later", len(r.Changes), noun)
 			}
 		}
 	}

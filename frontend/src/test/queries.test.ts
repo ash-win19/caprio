@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createElement } from 'react';
-import { useTasks, useToggleTask, useCreateTask, useDeleteTask, useReorderTasks } from '@/lib/queries';
+import { useTasks, useToggleTask, useCreateTask, useReorderTasks } from '@/lib/queries';
 import * as api from '@/lib/api';
 import type { Task } from '@/lib/types';
 
@@ -100,21 +100,6 @@ describe('React Query Hooks', () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       expect(api.createTask).toHaveBeenCalledWith(newTask);
-    });
-  });
-
-  describe('useDeleteTask', () => {
-    it('should delete a task', async () => {
-      vi.mocked(api.deleteTask).mockResolvedValue();
-
-      const { result } = renderHook(() => useDeleteTask(), {
-        wrapper: createWrapper(),
-      });
-
-      result.current.mutate('1');
-
-      await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(api.deleteTask).toHaveBeenCalledWith('1');
     });
   });
 

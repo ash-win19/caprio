@@ -6,7 +6,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ArrowRight, Check, ChevronDown, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { useWorkflow } from '@/lib/queries';
+import { invalidatePlanningQueries, useWorkflow } from '@/lib/queries';
 import { useLocalDay } from '@/lib/useLocalDay';
 import { useDateDraft, useNavigationLock } from '@/lib/dateDrafts';
 import * as api from '@/lib/api';
@@ -50,7 +50,7 @@ function DayReview({ date, forceCloseBanner }: { date: string; forceCloseBanner:
     onSuccess: async () => {
       setSaved(true);
       setActions({}); setNotes(''); setEnergy(null); setReflectionOpen(false); setStep(0);
-      await Promise.all(['workflow', 'tasks', 'inbox', 'bootstrap', 'history'].map((key) => queryClient.invalidateQueries({ queryKey: [key] })));
+      await invalidatePlanningQueries(queryClient);
     },
     onError: () => { void workflowQuery.refetch(); },
   });

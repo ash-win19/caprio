@@ -59,7 +59,6 @@ The doctor checks that the Vite and API pids are alive and own their ports. It c
 The harness is the repo's Playwright (`frontend/node_modules/@playwright/test`, Chromium), pointed at the run:
 
 ```bash
-$C drive .cursor/skills/verify-caprio/drives/inbox-capture.stack.spec.ts   # stack run
 $C drive .cursor/skills/verify-caprio/drives/day-loop.stack.spec.ts        # stack run; closes today, so run it last
 $C drive .cursor/skills/verify-caprio/drives/plan-day.mock.spec.ts         # mock run
 $C drive path/to/your.spec.ts --name my-check -- --headed                  # anything after -- goes to playwright
@@ -110,7 +109,6 @@ $C list               # every run, up or down, with its evidence dir
 | `bin/control-caprio` | `up`, `doctor`, `drive`, `sql`, `env`, `down`, `list` (see `$C help`) |
 | `drives/playwright.verify.config.ts` | Playwright config used by `drive`. It refuses to run without `control-caprio`'s env |
 | `drives/lib/caprio.ts` | `requireMode`, `enterAsDemoUser`, `localDay`, `sql`, `proof`, `saveEvidence`, `env` |
-| `drives/inbox-capture.stack.spec.ts` | Inbox capture → persisted backlog row → Add to today → Today list (stack) |
 | `drives/day-loop.stack.spec.ts` | Today check-off → Review close → History (stack, closes today) |
 | `drives/plan-day.mock.spec.ts` | Composer → draft plan → Confirm / Discard contract (mock) |
 
@@ -121,6 +119,5 @@ The repo's own suites still apply and are not replaced by this skill: `cd fronte
 - The Go API binds `:PORT` on all interfaces with dev-bypass auth for the life of the run. It holds only throwaway data, but don't leave runs up.
 - `/` and `/today` (without `?date=`) redirect to `/new` while today's plan is in `planning` state or this is the first visit of the day (`AuthGuard` → `DayEntry`). Use `/today?date=<localDay>`, the route the "View tasks" link opens, to reach the checklist.
 - The Today checkbox is controlled by the server response. Playwright's `check()` reports "did not change its state". Use `click()` and wait on `progressbar "Tasks completed"` `aria-valuenow`.
-- Inbox's "Add to today" becomes "Add to tomorrow" once today is closed. `day-loop.stack.spec.ts` closes today, so run it after the other stack specs, or start a new run.
 - The demo user is shared by every spec in a run. Use titles containing the run id (`env.run`) and assert on those rows only.
 - Do not run `npm run test:e2e` while relying on port 4174. Its `webServer` reuses anything already listening there.
