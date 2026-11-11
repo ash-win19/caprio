@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient, useIsMutating } from '@tanstack/react-query';
 import type { Task } from './types';
 import * as api from './api';
 import { localDate } from './date';
@@ -61,12 +61,23 @@ export function useCreateTask() {
   return useMutation({ mutationFn: api.createTask, onSuccess: () => invalidatePlanningQueries(client) });
 }
 
+const UPDATE_TASK_KEY = ['update-task'];
+
 export function useUpdateTask() {
   const client = useQueryClient();
   return useMutation({
+    mutationKey: UPDATE_TASK_KEY,
     mutationFn: ({ id, updates }: { id: string; updates: Parameters<typeof api.updateTask>[1] }) => api.updateTask(id, updates),
     onSuccess: () => invalidatePlanningQueries(client),
   });
+}
+
+/**
+ * Whether any task update is still saving. A mutation hook reports only its
+ * latest call, so overlapping updates (an Undo during another drop) need this.
+ */
+export function useTaskUpdatesPending() {
+  return useIsMutating({ mutationKey: UPDATE_TASK_KEY }) > 0;
 }
 
 export function useReorderTasks() {

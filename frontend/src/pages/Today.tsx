@@ -3,7 +3,7 @@ import { useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowUp, ChevronDown, Plus } from 'lucide-react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
-import { useCreateTask, useLaterTasks, useTasks, useToggleTask, useReorderTasks, useUpdateTask, useWorkflow } from '@/lib/queries';
+import { useCreateTask, useLaterTasks, useTasks, useToggleTask, useReorderTasks, useTaskUpdatesPending, useUpdateTask, useWorkflow } from '@/lib/queries';
 import { useLocalDay } from '@/lib/useLocalDay';
 import { useNavigationLock } from '@/lib/dateDrafts';
 import { daysCarried } from '@/lib/carried';
@@ -50,7 +50,8 @@ export default function Today() {
   // A wrapped-up Day keeps its finished work as it was; new work continues it.
   const wrappedUp = workflow?.state === 'closed';
   const remainingMinutes = active.reduce((sum, task) => sum + (task.duration || 0), 0);
-  const busy = reorder.isPending || toggle.isPending || update.isPending;
+  const updating = useTaskUpdatesPending();
+  const busy = reorder.isPending || toggle.isPending || updating;
   const rowsReadOnly = wrappedUp || busy;
   const [wrappingUp, setWrappingUp] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -112,15 +113,17 @@ export default function Today() {
   const moveToToday = (task: Task) => update.mutate({ id: task.id, updates: { status: 'planned', plannedForDate: date } });
   // Drop is quick and reversible: Undo gives the task back the status it had.
   // A wrapped-up Day's record is settled, so nothing is dropped onto it.
-  const dropTask = (task: Task) => update.mutate({ id: task.id, updates: { status: 'dropped' } }, {
-    onSuccess: () => {
+  // The toast hangs off this drop's own promise: a per-call callback is lost
+  // when another update starts before this one finishes.
+  const dropTask = (task: Task) => {
+    void update.mutateAsync({ id: task.id, updates: { status: 'dropped' } }).then(() => {
       const dropped = toast({
         title: 'Dropped',
         description: task.title,
         action: <ToastAction altText={`Undo dropping ${task.title}`} onClick={() => { dropped.dismiss(); update.mutate({ id: task.id, updates: { status: task.status } }); }}>Undo</ToastAction>,
       });
-    },
-  });
+    }, () => { /* the failure shows through the mutation's error */ });
+  };
 
   return <Page className="today-page">
     <header className="list-head">

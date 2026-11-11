@@ -98,3 +98,22 @@ test('after Wrap up, Later rows can move to today but not be dropped', async ({ 
   await expect(page.getByRole('menuitem', { name: 'Move to today' })).toBeVisible();
   await expect(page.getByRole('menuitem', { name: 'Drop' })).toHaveCount(0);
 });
+
+test('an Undo while another drop is still saving loses neither', async ({ page }) => {
+  await mockDay(page);
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/api/tasks/task-1', async route => { await held; await route.fallback(); });
+  await page.goto('/today');
+  await drop(page, titles[0]);
+  await expect(toast(page)).toHaveCount(1);
+  await drop(page, titles[1]);
+  await toast(page).getByRole('button', { name: 'Undo' }).click();
+  await expect(remaining(page).first()).toContainText(titles[0]);
+  // The second drop is still saving, so its row can't be acted on yet.
+  await expect(page.getByRole('button', { name: `Task actions for ${titles[1]}` })).toBeDisabled();
+
+  release();
+  await expect(toast(page).filter({ hasText: titles[1] })).toBeVisible();
+  await expect(remaining(page)).toHaveText([new RegExp(titles[0]), new RegExp(titles[2])]);
+});
